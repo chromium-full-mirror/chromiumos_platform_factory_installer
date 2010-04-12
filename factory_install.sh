@@ -20,47 +20,47 @@ sleep 60
 DST=/dev/sda
 DST_FACTORY_PART=3
 DST_RELEASE_PART=5
+DST_OEM_PART=8
+DST_STATE_PART=1
 
 log "Factory Install: Setting partition table"
 
 /usr/sbin/chromeos-install --dst "${DST}" --skip_rootfs --run_as_root --yes \
   2>&1 | cat >> "$MEMENTO_AU_LOG"
 
-cleanup_loop() {
-  sleep 1  # TODO(adlr): figure out why this sleep seems to be required
-  losetup -d "$LOOP_DEV" 2>&1 | cat >> "$MEMENTO_AU_LOG"
-}
+# Load the new partition table. The autoupdater has trouble with loop devices.
+sync
+echo 3 > /proc/sys/vm/drop_caches
+/sbin/sfdisk -R "$DST"
 
-# Call as: setup_loop loop_dev device partition#
-setup_loop() {
-  OFFSET=$(partsize "$2" "$3")
-  losetup -o "$OFFSET" "$1" "$2" 2>&1 | cat >> "$MEMENTO_AU_LOG"
-}
+FACTORY_CHANNEL_ARG='--force_track=factory-channel'
+RELEASE_CHANNEL_ARG='--force_track=release-channel'
+OEM_CHANNEL_ARG='--force_track=oempartitionimg-channel'
+STATE_CHANNEL_ARG='--force_track=stateimg-channel'
 
-# Install the two partitions
-for i in FACTORY RELEASE; do
+# Install the partitions
+for i in FACTORY RELEASE STATE OEM; do
   PART=$(eval "echo \$DST_${i}_PART")
-  if [ "$i" = "FACTORY" ]; then
-    CHANNEL_ARG='--force_track=factory-channel'
-  else
-    CHANNEL_ARG=""
-  fi
+  CHANNEL_ARG=$(eval "echo \$${i}_CHANNEL_ARG")
+  KPART="none"
   
-  LOOP_DEV=$(losetup -f)
-  setup_loop "$LOOP_DEV" "$DST" "$PART" || exit 1
-  trap cleanup_loop INT TERM EXIT
-
   log "Factory Install: Installing $i partition to $PART"
 
+  SKIP_POSTINST_ARG="--skip_postinst"
+  if [ "$i" = "FACTORY" -o "$i" = "RELEASE" ]; then
+    # Set up kernel partition
+    SKIP_POSTINST_ARG=""
+    KPART=""
+  fi
+
   RESULT="$(/opt/google/memento_updater/memento_updater.sh --dst_partition \
-    "${DST}${PART}" --allow_removable_boot $CHANNEL_ARG)"
+    "${DST}${PART}" --kernel_partition "${KPART}" \
+    --allow_removable_boot $CHANNEL_ARG $SKIP_POSTINST_ARG)"
 
   if [ "$RESULT" != "UPDATED" ]; then
     log "Factory Install: AU failed"
     exit 1
   fi
-  cleanup_loop
-  trap - INT TERM EXIT
 done
 
 log "All done installing."
