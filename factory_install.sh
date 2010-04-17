@@ -39,7 +39,7 @@ OEM_CHANNEL_ARG='--force_track=oempartitionimg-channel'
 STATE_CHANNEL_ARG='--force_track=stateimg-channel'
 
 # Install the partitions
-for i in FACTORY RELEASE STATE OEM; do
+for i in OEM STATE RELEASE FACTORY; do
   PART=$(eval "echo \$DST_${i}_PART")
   CHANNEL_ARG=$(eval "echo \$${i}_CHANNEL_ARG")
   KPART="none"
