@@ -12,9 +12,6 @@ if [ $(id -u) -ne 0 ]; then
   exit 1
 fi
 
-# If we get in a respawn loop, sleeping for 1 minute before starting is nice.
-sleep 60
-
 # TODO(adlr): pick an install device in a matter that works on x86 and ARM.
 # This works on x86 only, afaik.
 DST=/dev/sda
