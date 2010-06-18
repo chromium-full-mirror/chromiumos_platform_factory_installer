@@ -11,8 +11,12 @@ if [ $(id -u) -ne 0 ]; then
   echo "You must run this as root."
   exit 1
 fi
+
 log "Pause to ensure ethernet connectivity"
-sleep 10
+while ! ifconfig eth0 | grep -q "inet addr"; do
+  sleep 1
+done
+log "$(ifconfig eth0 | grep 'inet addr')"
 
 # TODO(adlr): pick an install device in a matter that works on x86 and ARM.
 # This works on x86 only, afaik.
@@ -33,6 +37,8 @@ log "Factory Install: Setting partition table"
 sync
 echo 3 > /proc/sys/vm/drop_caches
 /sbin/sfdisk -R "$DST_DRIVE"
+
+log "Done preparing disk"
 
 FACTORY_CHANNEL_ARG='--force_track=factory-channel'
 RELEASE_CHANNEL_ARG='--force_track=release-channel'
@@ -64,9 +70,17 @@ for i in EFI OEM STATE RELEASE FACTORY FIRMWARE; do
   RESULT="$(/opt/google/memento_updater/memento_updater.sh --dst_partition \
     "${DST}" --kernel_partition "${KPART}" \
     --allow_removable_boot $CHANNEL_ARG $SKIP_POSTINST_ARG)"
+  RETURNCODE="$?"
 
-  # Firmware update is optional; still OK if it does not be updated.
-  if [ "$RESULT" != "UPDATED" -a "$i" != "FIRMWARE" ]; then
+  # memento update has encountered a fatal error.
+  if [ "${RETURNCODE}" != "0" ]; then
+    log "Factory install of target ${DST} has failed."
+    exit 1
+  fi
+
+  # Only updating the primary root/kernel partition is strictly required.
+  # If the omahaserver is configured to not update others that's fine.
+  if [ "$RESULT" != "UPDATED" -a "$i" == "FACTORY" ]; then
     log "Factory Install: AU failed"
     exit 1
   fi
@@ -74,5 +88,6 @@ done
 
 log "All done installing."
 
+sleep 3
 shutdown -r now
 sleep 1d  # sleep indefinitely to avoid respawning rather than shutting down
