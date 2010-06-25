@@ -80,7 +80,7 @@ for i in EFI OEM STATE RELEASE FACTORY FIRMWARE; do
 
   # Only updating the primary root/kernel partition is strictly required.
   # If the omahaserver is configured to not update others that's fine.
-  if [ "$RESULT" != "UPDATED" -a "$i" == "FACTORY" ]; then
+  if [ "${RESULT}" != "UPDATED" -a "$i" = "FACTORY" ]; then
     log "Factory Install: AU failed"
     exit 1
   fi
