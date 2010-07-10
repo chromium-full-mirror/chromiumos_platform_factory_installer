@@ -59,12 +59,16 @@ for i in EFI OEM STATE RELEASE FACTORY FIRMWARE; do
   log "Factory Install: Installing $i image to $DST"
 
   CHANNEL_ARG=$(eval "echo \$${i}_CHANNEL_ARG")
-  SKIP_POSTINST_ARG="--skip_postinst"
   KPART="none"
   if [ "$i" = "FACTORY" -o "$i" = "RELEASE" ]; then
     # Set up kernel partition
-    SKIP_POSTINST_ARG=""
     KPART=""
+  fi
+
+  SKIP_POSTINST_ARG="--skip_postinst"
+  if [ "$i" = "FACTORY" ]; then
+    # Do postinst after update
+    SKIP_POSTINST_ARG=""
   fi
 
   RESULT="$(/opt/google/memento_updater/memento_updater.sh --dst_partition \
