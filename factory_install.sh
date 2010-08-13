@@ -65,15 +65,15 @@ for i in EFI OEM STATE RELEASE FACTORY FIRMWARE; do
     KPART=""
   fi
 
-  SKIP_POSTINST_ARG="--skip_postinst"
+  EXTRA_ARG="--skip_postinst"
   if [ "$i" = "FACTORY" ]; then
-    # Do postinst after update
-    SKIP_POSTINST_ARG=""
+    # Do postinst and firmware update after update
+    EXTRA_ARG="--update_firmware"
   fi
 
   RESULT="$(/opt/google/memento_updater/memento_updater.sh --dst_partition \
     "${DST}" --kernel_partition "${KPART}" \
-    --allow_removable_boot $CHANNEL_ARG $SKIP_POSTINST_ARG)"
+    --allow_removable_boot $CHANNEL_ARG $EXTRA_ARG)"
   RETURNCODE="$?"
 
   # memento update has encountered a fatal error.
