@@ -30,8 +30,25 @@ DST_FIRMWARE=/tmp/firmware.sh
 
 log "Factory Install: Setting partition table"
 
-/usr/sbin/chromeos-install --dst "${DST_DRIVE}" --skip_rootfs --run_as_root \
-  --yes 2>&1 | cat >> "$MEMENTO_AU_LOG"
+INST_FLAGS="--dst ${DST_DRIVE} --skip_rootfs --run_as_root --yes"
+
+# in factory mode, we need both GPT_LAYOUT and PMBR_CODE always generated.
+FACTORY_GPT_LAYOUT=/root/.gpt_layout
+FACTORY_PMBR_CODE=/root/.pmbr_code
+if [ -s $FACTORY_GPT_LAYOUT ]; then
+  INST_FLAGS="${INST_FLAGS} --gpt_layout $FACTORY_GPT_LAYOUT"
+else
+  echo "ERROR: MISSING $FACTORY_GPT_LAYOUT ; PLEASE REBUILD FACTORY IMAGE."
+  exit 1
+fi
+if [ -s $FACTORY_PMBR_CODE ]; then
+  INST_FLAGS="${INST_FLAGS} --pmbr_code $FACTORY_PMBR_CODE"
+else
+  echo "ERROR: MISSING $FACTORY_PMBR_CODE ; PLEASE REBUILD FACTORY IMAGE."
+  exit 1
+fi
+
+/usr/sbin/chromeos-install $INST_FLAGS 2>&1 | cat >> "$MEMENTO_AU_LOG"
 
 # Load the new partition table. The autoupdater has trouble with loop devices.
 sync
