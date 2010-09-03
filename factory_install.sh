@@ -12,6 +12,7 @@ if [ $(id -u) -ne 0 ]; then
   exit 1
 fi
 
+log "Starting Factory Installer."
 log "Pause to ensure ethernet connectivity"
 while ! ifconfig eth0 | grep -q "inet addr"; do
   sleep 1
@@ -38,13 +39,15 @@ FACTORY_PMBR_CODE=/root/.pmbr_code
 if [ -s $FACTORY_GPT_LAYOUT ]; then
   INST_FLAGS="${INST_FLAGS} --gpt_layout $FACTORY_GPT_LAYOUT"
 else
-  echo "ERROR: MISSING $FACTORY_GPT_LAYOUT ; PLEASE REBUILD FACTORY IMAGE."
+  log "ERROR: MISSING $FACTORY_GPT_LAYOUT ; PLEASE REBUILD FACTORY IMAGE."
+  log "FACTORY INSTALLER STOPPED."
   exit 1
 fi
 if [ -s $FACTORY_PMBR_CODE ]; then
   INST_FLAGS="${INST_FLAGS} --pmbr_code $FACTORY_PMBR_CODE"
 else
-  echo "ERROR: MISSING $FACTORY_PMBR_CODE ; PLEASE REBUILD FACTORY IMAGE."
+  log "ERROR: MISSING $FACTORY_PMBR_CODE ; PLEASE REBUILD FACTORY IMAGE."
+  log "FACTORY INSTALLER STOPPED."
   exit 1
 fi
 
