@@ -43,7 +43,7 @@ else
   log "FACTORY INSTALLER STOPPED."
   exit 1
 fi
-if [ -s $FACTORY_PMBR_CODE ]; then
+if [ -r $FACTORY_PMBR_CODE ]; then
   INST_FLAGS="${INST_FLAGS} --pmbr_code $FACTORY_PMBR_CODE"
 else
   log "ERROR: MISSING $FACTORY_PMBR_CODE ; PLEASE REBUILD FACTORY IMAGE."
@@ -87,12 +87,13 @@ for i in EFI OEM STATE RELEASE FACTORY FIRMWARE; do
 
   EXTRA_ARG="--skip_postinst"
   if [ "$i" = "FACTORY" ]; then
-    # Do postinst and firmware update after update
-    EXTRA_ARG="--update_firmware"
+    # Do postinst after update
+    EXTRA_ARG=""
   fi
 
-  RESULT="$(/opt/google/memento_updater/memento_updater.sh --dst_partition \
-    "${DST}" --kernel_partition "${KPART}" \
+  RESULT="$(IS_FACTORY_INSTALL=1 \
+    /opt/google/memento_updater/memento_updater.sh \
+    --dst_partition "${DST}" --kernel_partition "${KPART}" \
     --allow_removable_boot $CHANNEL_ARG $EXTRA_ARG)"
   RETURNCODE="$?"
 
