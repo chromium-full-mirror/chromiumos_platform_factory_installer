@@ -29,6 +29,14 @@ DST_EFI_PART=12
 DST_STATE_PART=1
 DST_FIRMWARE=/tmp/firmware.sh
 
+# Light up screen in case you can't see our splash image.
+LIGHTUP_SCREEN="/usr/sbin/lightup_screen"
+if [ -x /usr/sbin/lightup_screen ]; then
+  ${LIGHTUP_SCREEN}
+else
+  log "${LIGHTUP_SCREEN} does not exist or not executable"
+fi
+
 log "Factory Install: Setting partition table"
 
 INST_FLAGS="--dst ${DST_DRIVE} --skip_rootfs --run_as_root --yes"
