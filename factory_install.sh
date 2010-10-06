@@ -119,6 +119,18 @@ for i in EFI OEM STATE RELEASE FACTORY FIRMWARE; do
   fi
 done
 
+# Release image is not allowed to boot unless the factory test is passed
+# otherwise the wipe and final verification can be skipped.
+# TODO(hungte) do this in memento_updater or postinst may be better
+# TODO(hungte) make a better way to find location of cgpt
+if ! cgpt add -i $((${DST_RELEASE_PART} - 1)) -P 0 -T 0 -S 0 ${DST_DRIVE}; then
+  log "Factory Install: failed to lock release image. Destroy all kernels."
+  # Destroy kernels otherwise the system is still bootable.
+  dd if=/dev/zero of=${DST_DRIVE}$((${DST_RELEASE_PART} - 1))
+  dd if=/dev/zero of=${DST_DRIVE}$((${DST_FACTORY_PART} - 1))
+  exit 1
+fi
+
 log "All done installing."
 
 sleep 3
