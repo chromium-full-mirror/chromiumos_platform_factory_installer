@@ -12,7 +12,63 @@ if [ $(id -u) -ne 0 ]; then
   exit 1
 fi
 
+
+clear_fwwp() {
+  log "Firmware Write Protect disabled, clearing status registers."
+  flashrom -p internal:bus=lpc --wp-disable
+  flashrom -p internal:bus=spi --wp-disable
+  log "WP registers should be cleared now"
+}
+
+clear_tpm() {
+  log "Clearing TPM"
+
+  # Reset TPM
+  # tcsd needs to have not been run. It locks the TPM.
+  tpmc ppon
+  tpmc clear
+  tpmc enable
+  tpmc activate
+
+  firmware_index="0x1007"
+  firmware_struct_version="1"
+  firmware_flags="0"
+  firmware_fw_versions="1 0 1 0"
+  firmware_reserved="0 0 0 0"
+
+  tpmc write $firmware_index $firmware_struct_version $firmware_flags \
+      $firmware_fw_versions $firmware_reserved
+
+  kernel_index="0x1008"
+  kernel_struct_version="1"
+  kernel_uid="4c 57 52 47"
+  kernel_kernel_versions="1 0 1 0"
+  kernel_reserved="0 0 0 0"
+
+  tpmc write $kernel_index $kernel_struct_version $kernel_uid \
+      $kernel_kernel_versions $kernel_reserved
+
+  log "Done clearing TPM"
+}
+
 log "Starting Factory Installer."
+
+log "Checking for Firmware Write Protect"
+
+# Only ChromeOS machines have this setting.
+if [ -e /sys/devices/platform/chromeos_acpi/CHSW ]; then
+  # Check for physical firmware write protect. We'll only
+  # clear this stuff if the case is open.
+  CHROME_SWITCHES=/sys/devices/platform/chromeos_acpi/CHSW
+  if [ $(( $(cat "${CHROME_SWITCHES}") & 512 )) = 512 ]; then
+    # Ensure that flash chips are in a known good state.
+    clear_fwwp
+
+    # Ensure that we can wipe TPM if necessary.
+    clear_tpm
+  fi
+fi
+
 log "Pause to ensure ethernet connectivity"
 while ! ifconfig eth0 | grep -q "inet addr"; do
   sleep 1
