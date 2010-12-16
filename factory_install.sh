@@ -6,6 +6,7 @@
 
 . "$(dirname "$0")/chromeos-common.sh"
 . "/opt/google/memento_updater/memento_updater_logging.sh"
+. "/opt/google/memento_updater/find_omaha.sh"
 
 if [ $(id -u) -ne 0 ]; then
   echo "You must run this as root."
@@ -51,6 +52,24 @@ clear_tpm() {
   log "Done clearing TPM"
 }
 
+set_time() {
+  log "Setting time from:"
+  # Extract only the server and port.
+  AUSERVER_URL=$(findLSBValue "CHROMEOS_AUSERVER" |
+      sed "s|/update||; s|http://||")
+  log "Server $AUSERVER_URL."
+  echo "Server $AUSERVER_URL."
+  RESULT=$(htpdate -s "${AUSERVER_URL}" 2>&1)
+  if ! echo "${RESULT}" | grep -Eq "(failed|unavailable)"; then
+    log "Success, time set to $(date)"
+    return 0
+  fi
+
+  log $(echo "${RESULT}" | grep -E "(failed|unavailable)")
+  log "Failed to set time"
+  return 1
+}
+
 log "Starting Factory Installer."
 
 log "Checking for Firmware Write Protect"
@@ -74,6 +93,8 @@ while ! ifconfig eth0 | grep -q "inet addr"; do
   sleep 1
 done
 log "$(ifconfig eth0 | grep 'inet addr')"
+
+set_time || exit 1
 
 # TODO(adlr): pick an install device in a matter that works on x86 and ARM.
 # This works on x86 only, afaik.
