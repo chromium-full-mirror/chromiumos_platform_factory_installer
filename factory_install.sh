@@ -75,10 +75,10 @@ log "Starting Factory Installer."
 log "Checking for Firmware Write Protect"
 
 # Only ChromeOS machines have this setting.
-if [ -e /sys/devices/platform/chromeos_acpi/CHSW ]; then
+CHROME_SWITCHES=/sys/devices/platform/chromeos_acpi/CHSW
+if [ -e "${CHROME_SWITCHES}" ]; then
   # Check for physical firmware write protect. We'll only
   # clear this stuff if the case is open.
-  CHROME_SWITCHES=/sys/devices/platform/chromeos_acpi/CHSW
   if [ $(( $(cat "${CHROME_SWITCHES}") & 512 )) = 512 ]; then
     # Ensure that flash chips are in a known good state.
     clear_fwwp
@@ -86,10 +86,29 @@ if [ -e /sys/devices/platform/chromeos_acpi/CHSW ]; then
     # Ensure that we can wipe TPM if necessary.
     clear_tpm
   fi
+
+  # If this is an H2C BIOS, setup GPIO readout so we can use it
+  # in the next step.
+  mkdir -p /home/gpio
+  /usr/sbin/gpio_setup
 fi
 
 log "Pause to ensure ethernet connectivity"
+log "Or toggle developer mode to factory reset."
 while ! ifconfig eth0 | grep -q "inet addr"; do
+  # If developer switch is flipped, go to "reset mode" instead of
+  # network install mode.
+  if [ -e /home/gpio ] && \
+     [ "$(cat /home/gpio/developer_switch)" == "0" ]; then
+    log "Performing factory reset"
+    if ! /usr/sbin/factory_reset.sh; then
+      log "Factory reset failed."
+      exit 1
+    fi
+
+    log "Done"
+    exit 0
+  fi
   sleep 1
 done
 log "$(ifconfig eth0 | grep 'inet addr')"
