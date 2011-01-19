@@ -1,4 +1,4 @@
-#!/bin/sh -e
+#!/bin/sh -ex
 
 # Copyright (c) 2010 The Chromium OS Authors. All rights reserved.
 # Use of this source code is governed by a BSD-style license that can be
@@ -90,16 +90,19 @@ if [ -e "${CHROME_SWITCHES}" ]; then
   # If this is an H2C BIOS, setup GPIO readout so we can use it
   # in the next step.
   mkdir -p /home/gpio
-  /usr/sbin/gpio_setup
 fi
 
 log "Pause to ensure ethernet connectivity"
 log "Or toggle developer mode to factory reset."
 while ! ifconfig eth0 | grep -q "inet addr"; do
   # If developer switch is flipped, go to "reset mode" instead of
-  # network install mode.
-  if [ -e /home/gpio ] && \
-     [ "$(cat /home/gpio/developer_switch)" == "0" ]; then
+  # network install mode. Make sure gpio can be read (gpio_setup may
+  # fail if the device is not ready).  TODO(nsanders): fix developer
+  # switch detection when interface is standardized.
+  # See https://code.google.com/p/chrome-os-partner/issues/detail?id=1940
+  if [ -e /home/gpio ] &&
+     /usr/sbin/gpio_setup &&
+     [ "$(cat /home/gpio/developer_switch)" = "0" ]; then
     log "Performing factory reset"
     if ! /usr/sbin/factory_reset.sh; then
       log "Factory reset failed."
