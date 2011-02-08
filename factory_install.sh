@@ -74,35 +74,26 @@ log "Starting Factory Installer."
 
 log "Checking for Firmware Write Protect"
 
-# Only ChromeOS machines have this setting.
-CHROME_SWITCHES=/sys/devices/platform/chromeos_acpi/CHSW
-if [ -e "${CHROME_SWITCHES}" ]; then
+# Only ChromeOS machines have meaninful output here.
+if crossystem hwid >/dev/null; then
   # Check for physical firmware write protect. We'll only
   # clear this stuff if the case is open.
-  if [ $(( $(cat "${CHROME_SWITCHES}") & 512 )) = 512 ]; then
+  if [ "$(crossystem wpsw_cur)" = "0" ; then
     # Ensure that flash chips are in a known good state.
     clear_fwwp
 
     # Ensure that we can wipe TPM if necessary.
     clear_tpm
   fi
-
-  # If this is an H2C BIOS, setup GPIO readout so we can use it
-  # in the next step.
-  mkdir -p /home/gpio
 fi
 
-log "Pause to ensure ethernet connectivity"
-log "Or toggle developer mode to factory reset."
+log "Waiting for ethernet connectivity to install"
+log "Or disable developer mode to factory reset."
 while ! ifconfig eth0 | grep -q "inet addr"; do
   # If developer switch is flipped, go to "reset mode" instead of
   # network install mode. Make sure gpio can be read (gpio_setup may
-  # fail if the device is not ready).  TODO(nsanders): fix developer
-  # switch detection when interface is standardized.
-  # See https://code.google.com/p/chrome-os-partner/issues/detail?id=1940
-  if [ -e /home/gpio ] &&
-     /usr/sbin/gpio_setup &&
-     [ "$(cat /home/gpio/developer_switch)" = "0" ]; then
+  # fail if the device is not ready).
+  if [ "$(crossystem devsw_cur)" = "0" ]; then
     log "Performing factory reset"
     if ! /usr/sbin/factory_reset.sh; then
       log "Factory reset failed."
