@@ -78,7 +78,7 @@ log "Checking for Firmware Write Protect"
 if crossystem hwid >/dev/null; then
   # Check for physical firmware write protect. We'll only
   # clear this stuff if the case is open.
-  if [ "$(crossystem wpsw_cur)" = "0" ; then
+  if [ "$(crossystem wpsw_cur)" = "0" ]; then
     # Ensure that flash chips are in a known good state.
     clear_fwwp
 
