@@ -70,6 +70,16 @@ set_time() {
   return 1
 }
 
+list_ethernet_interface() {
+  local candidates="$(ifconfig | grep 'Link encap:Ethernet' | cut -d ' ' -f 1)"
+  for candidate in $candidates; do
+    # output if it is not a wifi interface
+    if ! iw $candidate info >/dev/null 2>&1; then
+      echo $candidate
+    fi
+  done
+}
+
 log "Starting Factory Installer."
 
 log "Checking for Firmware Write Protect"
@@ -87,9 +97,35 @@ if crossystem hwid >/dev/null; then
   fi
 fi
 
+#
+# factory_install.sh implements two operations for assembly line
+# operators: install (obviously) and reset.
+#
+# Somehow the way that operators switch between the two operations
+# is by plugging in a Ethernet cable.
+#
+# The operation is:
+# * Install if it is connected to Ethernet;
+# * Reset if developer switch is toggled to consumer mode.
+#
+# So we have to detect a possible ethernet connection here.
+#
+
 log "Waiting for ethernet connectivity to install"
 log "Or disable developer mode to factory reset."
-while ! ifconfig eth0 | grep -q "inet addr"; do
+while true; do
+  connected=0
+  for ethernet_interface in $(list_ethernet_interface); do
+    if ifconfig $ethernet_interface | grep -q "inet addr"; then
+      log "$(ifconfig $ethernet_interface | grep 'inet addr')"
+      connected=1
+      break
+    fi
+  done
+  if [ $connected -eq 1 ]; then
+    break
+  fi
+
   # If developer switch is flipped, go to "reset mode" instead of
   # network install mode. Make sure gpio can be read (gpio_setup may
   # fail if the device is not ready).
@@ -105,13 +141,26 @@ while ! ifconfig eth0 | grep -q "inet addr"; do
   fi
   sleep 1
 done
-log "$(ifconfig eth0 | grep 'inet addr')"
 
 set_time || exit 1
 
-# TODO(adlr): pick an install device in a matter that works on x86 and ARM.
-# This works on x86 only, afaik.
-DST_DRIVE=/dev/sda
+# TODO(crosbug:10680): replace arch detection with crossystem?
+if uname -m | grep -q "^i.86\$"; then
+  ARCH="INTEL"
+elif [ $(uname -m ) = "x86_64" ]; then
+  ARCH="INTEL"
+elif [ $(uname -m ) = "armv7l" ]; then
+  ARCH="ARM"
+else
+  log "Error: Failed to auto detect architecture"
+  exit 1
+fi
+
+if [ "$ARCH" = "INTEL" ]; then
+  DST_DRIVE=/dev/sda
+else
+  DST_DRIVE=/dev/mmcblk0
+fi
 DST_FACTORY_PART=3
 DST_RELEASE_PART=5
 DST_OEM_PART=8
@@ -121,7 +170,7 @@ DST_FIRMWARE=/tmp/firmware.sh
 
 # Light up screen in case you can't see our splash image.
 LIGHTUP_SCREEN="/usr/sbin/lightup_screen"
-if [ -x /usr/sbin/lightup_screen ]; then
+if [ -x "${LIGHTUP_SCREEN}" ]; then
   ${LIGHTUP_SCREEN}
 else
   log "${LIGHTUP_SCREEN} does not exist or not executable"
@@ -155,6 +204,7 @@ fi
 sync
 echo 3 > /proc/sys/vm/drop_caches
 /sbin/sfdisk -R "$DST_DRIVE"
+partprobe # inform the OS of partition table changes
 
 log "Done preparing disk"
 
@@ -171,7 +221,7 @@ for i in EFI OEM STATE RELEASE FACTORY FIRMWARE; do
     DST="${DST_FIRMWARE}"
   else
     PART=$(eval "echo \$DST_${i}_PART")
-    DST="${DST_DRIVE}${PART}"
+    DST="$(make_partition_dev ${DST_DRIVE} ${PART})"
   fi
 
   log "Factory Install: Installing $i image to $DST"
@@ -216,8 +266,10 @@ done
 if ! cgpt add -i $((${DST_RELEASE_PART} - 1)) -P 0 -T 0 -S 0 ${DST_DRIVE}; then
   log "Factory Install: failed to lock release image. Destroy all kernels."
   # Destroy kernels otherwise the system is still bootable.
-  dd if=/dev/zero of=${DST_DRIVE}$((${DST_RELEASE_PART} - 1))
-  dd if=/dev/zero of=${DST_DRIVE}$((${DST_FACTORY_PART} - 1))
+  DST_RELEASE=$(make_partition_dev ${DST_DRIVE} $((${DST_RELEASE_PART} - 1)))
+  DST_FACTORY=$(make_partition_dev ${DST_DRIVE} $((${DST_FACTORY_PART} - 1)))
+  dd if=/dev/zero of=$DST_RELEASE
+  dd if=/dev/zero of=$DST_FACTORY
   exit 1
 fi
 

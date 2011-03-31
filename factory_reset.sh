@@ -9,12 +9,26 @@
 # put the system back into factory fresh/shippable state.
 echo "Factory reset"
 
-# TODO: How do we know what this is for the general case?
-if [ -b /dev/sda ]; then
-  STATE_DEV="/dev/sda1"
-elif [ -b /dev/mmcblk0 ]; then
-  STATE_DEV="/dev/mmcblk01"
+# TODO(crosbug:10680): replace arch detection with crossystem?
+if uname -m | grep -q "^i.86\$"; then
+  ARCH="INTEL"
+elif [ $(uname -m ) = "x86_64" ]; then
+  ARCH="INTEL"
+elif [ $(uname -m ) = "armv7l" ]; then
+  ARCH="ARM"
 else
+  echo "Failed to auto detect architecture"
+  exit 1
+fi
+
+if [ "$ARCH" = "INTEL" ]; then
+  STATE_DEV="/dev/sda1"
+elif [ "$ARCH" = "ARM" ]; then
+  STATE_DEV="/dev/mmcblk0p1"
+else
+  STATE_DEV=""
+fi
+if [ ! -b "$STATE_DEV" ]; then
   echo "Failed to find root SSD."
   exit 1
 fi
