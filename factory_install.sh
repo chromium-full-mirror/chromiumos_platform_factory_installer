@@ -1,6 +1,6 @@
 #!/bin/sh -ex
 
-# Copyright (c) 2010 The Chromium OS Authors. All rights reserved.
+# Copyright (c) 2011 The Chromium OS Authors. All rights reserved.
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -89,9 +89,14 @@ if crossystem hwid >/dev/null; then
   # Check for physical firmware write protect. We'll only
   # clear this stuff if the case is open.
   if [ "$(crossystem wpsw_cur)" = "0" ]; then
-    # Ensure that flash chips are in a known good state.
+    # Clear software firmware write protect.
     clear_fwwp
+  fi
 
+  # Check for software firmware write protect.  We only clear the TPM if
+  # software write protect is disabled.
+  if flashrom -p internal:bus=spi --wp-status 2>/dev/null |
+      grep -q "write protect is disabled"; then
     # Ensure that we can wipe TPM if necessary.
     clear_tpm
   fi
