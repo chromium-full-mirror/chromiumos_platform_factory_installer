@@ -209,7 +209,7 @@ fi
 sync
 echo 3 > /proc/sys/vm/drop_caches
 /sbin/sfdisk -R "$DST_DRIVE"
-partprobe # inform the OS of partition table changes
+partprobe "$DST_DRIVE" # inform the OS of partition table changes
 
 log "Done preparing disk"
 
