@@ -26,6 +26,8 @@ clear_tpm() {
 
   # Reset TPM
   # tcsd needs to have not been run. It locks the TPM.
+  # Add tpm startup command. Second startup won't hurt.
+  tpmc startup || true
   tpmc ppon
   tpmc clear
   tpmc enable
