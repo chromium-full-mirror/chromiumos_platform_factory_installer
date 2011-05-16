@@ -13,6 +13,13 @@ if [ $(id -u) -ne 0 ]; then
   exit 1
 fi
 
+# Error message for any unexpected error exit.
+on_error_exit() {
+  log "
+    ERROR: Factory installation has been stopped.
+    Press Ctrl-Alt-F3 (Refresh) to get the detail information."
+}
+trap on_error_exit EXIT
 
 clear_fwwp() {
   log "Firmware Write Protect disabled, clearing status registers."
@@ -82,10 +89,9 @@ list_ethernet_interface() {
 
 log "Starting Factory Installer."
 
-log "Checking for Firmware Write Protect"
-
 # Only ChromeOS machines have meaninful output here.
 if crossystem hwid >/dev/null; then
+  log "Checking for Firmware Write Protect"
   # Check for physical firmware write protect. We'll only
   # clear this stuff if the case is open.
   if [ "$(crossystem wpsw_cur)" = "0" ]; then
@@ -93,12 +99,32 @@ if crossystem hwid >/dev/null; then
     clear_fwwp
   fi
 
-  # Check for software firmware write protect.  We only clear the TPM if
-  # software write protect is disabled.
-  if flashrom -p internal:bus=spi --wp-status 2>/dev/null |
-      grep -q "write protect is disabled"; then
-    # Ensure that we can wipe TPM if necessary.
-    clear_tpm
+  log "Checking if TPM should be cleared"
+  # To clear TPM, we need both software firmware write protect to be off, and
+  # boot type as "recovery". Booting with USB in developer mode (Ctrl-U) does
+  # not work.
+  TPM_IS_CLEARED=
+  if ! crossystem "mainfw_type?recovery"; then
+    mainfw_type="$(crossystem mainfw_type)"
+    log " - System was not booted in recovery mode (current: $mainfw_type)."
+  elif flashrom -p internal:bus=spi --wp-status 2>/dev/null |
+       grep -q "write protect is enabled"; then
+    log " - Firmware write protection is not disabled."
+  else
+    if ! clear_tpm; then
+      log "ERROR: Failed to clear TPM. Installation is stopped."
+      exit 1
+    else
+      TPM_IS_CLEARED=True
+    fi
+  fi
+
+  if [ -z "$TPM_IS_CLEARED" ]; then
+    log "
+
+    WARNING: TPM won't be cleared. To force clearing TPM, ensure firmware write
+    protection is disabled, hold recovery button and reboot the system again.
+    "
   fi
 fi
 
@@ -279,6 +305,7 @@ if ! cgpt add -i $((${DST_RELEASE_PART} - 1)) -P 0 -T 0 -S 0 ${DST_DRIVE}; then
 fi
 
 log "All done installing."
+trap - EXIT
 
 sleep 3
 shutdown -r now
