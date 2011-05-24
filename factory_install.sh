@@ -40,7 +40,7 @@ clear_tpm() {
   firmware_reserved="0 0 0 0"
 
   tpmc write $firmware_index $firmware_struct_version $firmware_flags \
-      $firmware_fw_versions $firmware_reserved
+      $firmware_fw_versions $firmware_reserved || true
 
   kernel_index="0x1008"
   kernel_struct_version="1"
@@ -49,7 +49,7 @@ clear_tpm() {
   kernel_reserved="0 0 0 0"
 
   tpmc write $kernel_index $kernel_struct_version $kernel_uid \
-      $kernel_kernel_versions $kernel_reserved
+      $kernel_kernel_versions $kernel_reserved || true
 
   log "Done clearing TPM"
 }
