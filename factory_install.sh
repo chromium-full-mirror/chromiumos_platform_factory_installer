@@ -246,6 +246,15 @@ EFI_CHANNEL_ARG='--force_track=efipartitionimg-channel'
 STATE_CHANNEL_ARG='--force_track=stateimg-channel'
 FIRMWARE_CHANNEL_ARG='--force_track=firmware-channel'
 
+# Prompt the user if USER_SELECT is true.
+USER_SELECT=$(findLSBValue "USER_SELECT")
+USER_SELECT=`echo $USER_SELECT | tr '[:upper:]' '[:lower:]'`
+if [ "$USER_SELECT" = "true" ]; then
+  echo -n "Enter the board you want to install (x86-mario, x86-alex, x86-zgb, \
+etc): " >/dev/tty1
+  read BOARD </dev/tty1
+fi
+
 # Install the partitions
 for i in EFI OEM STATE RELEASE FACTORY FIRMWARE; do
   if [ "$i" = "FIRMWARE" ]; then
@@ -268,6 +277,10 @@ for i in EFI OEM STATE RELEASE FACTORY FIRMWARE; do
   if [ "$i" = "FACTORY" ]; then
     # Do postinst after update
     EXTRA_ARG=""
+  fi
+
+  if [ "$USER_SELECT" = "true" ]; then
+    EXTRA_ARG="${EXTRA_ARG} --board=${BOARD}"
   fi
 
   RESULT="$(IS_FACTORY_INSTALL=1 \
