@@ -197,7 +197,9 @@ DST_RELEASE_PART=5
 DST_OEM_PART=8
 DST_EFI_PART=12
 DST_STATE_PART=1
-DST_FIRMWARE=/tmp/firmware.sh
+
+DST_FIRMWARE_PART="$(mktemp --tmpdir "fw_XXXXXXXX")"
+DST_HWID_PART="$(mktemp --tmpdir "hwid_XXXXXXXX")"
 
 # Light up screen in case you can't see our splash image.
 LIGHTUP_SCREEN="/usr/sbin/lightup_screen"
@@ -245,6 +247,7 @@ OEM_CHANNEL_ARG='--force_track=oempartitionimg-channel'
 EFI_CHANNEL_ARG='--force_track=efipartitionimg-channel'
 STATE_CHANNEL_ARG='--force_track=stateimg-channel'
 FIRMWARE_CHANNEL_ARG='--force_track=firmware-channel'
+HWID_CHANNEL_ARG='--force_track=hwid-channel'
 
 # Prompt the user if USER_SELECT is true.
 USER_SELECT=$(findLSBValue "USER_SELECT")
@@ -256,12 +259,18 @@ etc): " >/dev/tty1
 fi
 
 # Install the partitions
-for i in EFI OEM STATE RELEASE FACTORY FIRMWARE; do
-  if [ "$i" = "FIRMWARE" ]; then
-    DST="${DST_FIRMWARE}"
-  else
-    PART=$(eval "echo \$DST_${i}_PART")
+for i in EFI OEM STATE RELEASE FACTORY FIRMWARE HWID; do
+  # DST_*_PART can be a numeric partition number or plain file.
+  PART=$(eval "echo \$DST_${i}_PART")
+  DST_ARG=""
+  if [ -z "$PART" ]; then
+    log "ERROR: INVALID CHANNEL: $i."
+    exit 1
+  elif echo "$PART" | grep -qs "^[0-9]*$"; then
     DST="$(make_partition_dev ${DST_DRIVE} ${PART})"
+  else
+    DST="$PART"
+    DST_ARG="--nocheck_block_device"
   fi
 
   log "Factory Install: Installing $i image to $DST"
@@ -286,7 +295,7 @@ for i in EFI OEM STATE RELEASE FACTORY FIRMWARE; do
   RESULT="$(IS_FACTORY_INSTALL=1 \
     /opt/google/memento_updater/memento_updater.sh \
     --dst_partition "${DST}" --kernel_partition "${KPART}" \
-    --allow_removable_boot $CHANNEL_ARG $EXTRA_ARG)"
+    --allow_removable_boot $CHANNEL_ARG $DST_ARG $EXTRA_ARG)"
   RETURNCODE="$?"
 
   # memento update has encountered a fatal error.
@@ -302,6 +311,23 @@ for i in EFI OEM STATE RELEASE FACTORY FIRMWARE; do
     exit 1
   fi
 done
+
+# Post-processing channels in self-executable file.
+if [ -s "$DST_FIRMWARE_PART" ]; then
+  log execute firmware-install script
+  if ! sh "$DST_FIRMWARE_PART" --force --mode=factory_install \
+     >"$MEMENTO_AU_LOG" 2>&1; then
+    log "Firmware updating failed with error code $?. Abort."
+    exit 1
+  fi
+fi
+if [ -s "$DST_HWID_PART" ]; then
+  log execute HWID component list updater script
+  if ! sh "$DST_HWID_PART" "${DST_DRIVE}" >"$MEMENTO_AU_LOG" 2>&1; then
+    log "HWID component list updating failed with error code $?. Abort."
+    exit 1
+  fi
+fi
 
 # Release image is not allowed to boot unless the factory test is passed
 # otherwise the wipe and final verification can be skipped.
