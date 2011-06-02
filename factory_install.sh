@@ -13,13 +13,41 @@ if [ $(id -u) -ne 0 ]; then
   exit 1
 fi
 
+# Change color in tty1 by ANSI escape sequence code
+colorize() {
+  local code="$1"
+  case "$code" in
+    "red" )
+      code="1;31"
+      ;;
+    "green" )
+      code="1;32"
+      ;;
+    "yellow" )
+      code="1;33"
+      ;;
+  esac
+  printf "\033[%sm" "$code" >/dev/tty1
+}
+
 # Error message for any unexpected error exit.
 on_error_exit() {
+  set +x  # prevent extra log in console
+  colorize "red"
   log "
     ERROR: Factory installation has been stopped.
     Press Ctrl-Alt-F3 (Refresh) to get the detail information."
 }
+
 trap on_error_exit EXIT
+colorize "green"
+
+error_exit() {
+  set +x  # prevent extra log in console
+  colorize "red"
+  log "ERROR: $*"
+  exit 1
+}
 
 clear_fwwp() {
   log "Firmware Write Protect disabled, clearing status registers."
@@ -120,6 +148,7 @@ if crossystem hwid >/dev/null; then
   fi
 
   if [ -z "$TPM_IS_CLEARED" ]; then
+    colorize "yellow"
     log "
 
     WARNING: TPM won't be cleared. To force clearing TPM, ensure firmware write
@@ -142,6 +171,7 @@ fi
 # So we have to detect a possible ethernet connection here.
 #
 
+colorize "yellow"
 log "Waiting for ethernet connectivity to install"
 log "Or disable developer mode to factory reset."
 while true; do
@@ -163,8 +193,7 @@ while true; do
   if [ "$(crossystem devsw_cur)" = "0" ]; then
     log "Performing factory reset"
     if ! /usr/sbin/factory_reset.sh; then
-      log "Factory reset failed."
-      exit 1
+      error_exit "Factory reset failed."
     fi
 
     log "Done"
@@ -173,6 +202,7 @@ while true; do
   sleep 1
 done
 
+colorize "green"
 set_time || exit 1
 
 # TODO(crosbug:10680): replace arch detection with crossystem?
@@ -300,32 +330,28 @@ for i in EFI OEM STATE RELEASE FACTORY FIRMWARE HWID; do
 
   # memento update has encountered a fatal error.
   if [ "${RETURNCODE}" != "0" ]; then
-    log "Factory install of target ${DST} has failed."
-    exit 1
+    error_exit "Factory install of target ${DST} has failed."
   fi
 
   # Only updating the primary root/kernel partition is strictly required.
   # If the omahaserver is configured to not update others that's fine.
   if [ "${RESULT}" != "UPDATED" -a "$i" = "FACTORY" ]; then
-    log "Factory Install: AU failed"
-    exit 1
+    error_exit "AU failed."
   fi
 done
 
 # Post-processing channels in self-executable file.
 if [ -s "$DST_FIRMWARE_PART" ]; then
-  log execute firmware-install script
+  log "execute firmware-install script"
   if ! sh "$DST_FIRMWARE_PART" --force --mode=factory_install \
      >"$MEMENTO_AU_LOG" 2>&1; then
-    log "Firmware updating failed with error code $?. Abort."
-    exit 1
+    error_exit "Firmware updating failed."
   fi
 fi
 if [ -s "$DST_HWID_PART" ]; then
-  log execute HWID component list updater script
+  log "execute HWID component list updater script"
   if ! sh "$DST_HWID_PART" "${DST_DRIVE}" >"$MEMENTO_AU_LOG" 2>&1; then
-    log "HWID component list updating failed with error code $?. Abort."
-    exit 1
+    error_exit "HWID component list updating failed."
   fi
 fi
 
@@ -334,12 +360,12 @@ fi
 # TODO(hungte) do this in memento_updater or postinst may be better
 # TODO(hungte) make a better way to find location of cgpt
 if ! cgpt add -i $((${DST_RELEASE_PART} - 1)) -P 0 -T 0 -S 0 ${DST_DRIVE}; then
-  log "Factory Install: failed to lock release image. Destroy all kernels."
   # Destroy kernels otherwise the system is still bootable.
   DST_RELEASE=$(make_partition_dev ${DST_DRIVE} $((${DST_RELEASE_PART} - 1)))
   DST_FACTORY=$(make_partition_dev ${DST_DRIVE} $((${DST_FACTORY_PART} - 1)))
   dd if=/dev/zero of=$DST_RELEASE
   dd if=/dev/zero of=$DST_FACTORY
+  error_exit "Failed to lock release image. Destroy all kernels."
   exit 1
 fi
 
