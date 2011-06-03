@@ -140,8 +140,7 @@ if crossystem hwid >/dev/null; then
     log " - Firmware write protection is not disabled."
   else
     if ! clear_tpm; then
-      log "ERROR: Failed to clear TPM. Installation is stopped."
-      exit 1
+      error_exit "Failed to clear TPM. Installation is stopped."
     else
       TPM_IS_CLEARED=True
     fi
@@ -213,8 +212,7 @@ elif [ $(uname -m ) = "x86_64" ]; then
 elif [ $(uname -m ) = "armv7l" ]; then
   ARCH="ARM"
 else
-  log "Error: Failed to auto detect architecture"
-  exit 1
+  error_exit "Failed to auto detect architecture."
 fi
 
 if [ "$ARCH" = "INTEL" ]; then
@@ -230,6 +228,7 @@ DST_STATE_PART=1
 
 DST_FIRMWARE_PART="$(mktemp --tmpdir "fw_XXXXXXXX")"
 DST_HWID_PART="$(mktemp --tmpdir "hwid_XXXXXXXX")"
+DST_COMPLETE_PART="$(mktemp --tmpdir "complete_XXXXXXXX")"
 
 # Light up screen in case you can't see our splash image.
 LIGHTUP_SCREEN="/usr/sbin/lightup_screen"
@@ -278,6 +277,7 @@ EFI_CHANNEL_ARG='--force_track=efipartitionimg-channel'
 STATE_CHANNEL_ARG='--force_track=stateimg-channel'
 FIRMWARE_CHANNEL_ARG='--force_track=firmware-channel'
 HWID_CHANNEL_ARG='--force_track=hwid-channel'
+COMPLETE_CHANNEL_ARG='--force_track=complete-channel'
 
 # Prompt the user if USER_SELECT is true.
 USER_SELECT=$(findLSBValue "USER_SELECT")
@@ -289,13 +289,12 @@ etc): " >/dev/tty1
 fi
 
 # Install the partitions
-for i in EFI OEM STATE RELEASE FACTORY FIRMWARE HWID; do
+for i in EFI OEM STATE RELEASE FACTORY FIRMWARE HWID COMPLETE; do
   # DST_*_PART can be a numeric partition number or plain file.
   PART=$(eval "echo \$DST_${i}_PART")
   DST_ARG=""
   if [ -z "$PART" ]; then
-    log "ERROR: INVALID CHANNEL: $i."
-    exit 1
+    error_exit "INVALID CHANNEL: $i."
   elif echo "$PART" | grep -qs "^[0-9]*$"; then
     DST="$(make_partition_dev ${DST_DRIVE} ${PART})"
   else
@@ -366,10 +365,17 @@ if ! cgpt add -i $((${DST_RELEASE_PART} - 1)) -P 0 -T 0 -S 0 ${DST_DRIVE}; then
   dd if=/dev/zero of=$DST_RELEASE
   dd if=/dev/zero of=$DST_FACTORY
   error_exit "Failed to lock release image. Destroy all kernels."
-  exit 1
 fi
 
 log "All done installing."
+
+if [ -s "$DST_COMPLETE_PART" ]; then
+  log execute complete script
+  if ! sh "$DST_COMPLETE_PART" "${DST_DRIVE}" >"$MEMENTO_AU_LOG" 2>&1; then
+    error_exit "Complete script running failed."
+  fi
+fi
+
 trap - EXIT
 
 sleep 3
