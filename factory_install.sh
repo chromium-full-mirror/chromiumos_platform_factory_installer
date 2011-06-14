@@ -94,9 +94,10 @@ set_time() {
       sed "s|/update||; s|http://||")
   log "Server $AUSERVER_URL."
   echo "Server $AUSERVER_URL."
-  RESULT=$(htpdate -s "${AUSERVER_URL}" 2>&1)
+  RESULT=$(htpdate -s -t "${AUSERVER_URL}" 2>&1)
   if ! echo "${RESULT}" | grep -Eq "(failed|unavailable)"; then
     log "Success, time set to $(date)"
+    hwclock -w 2> /dev/null
     return 0
   fi
 
