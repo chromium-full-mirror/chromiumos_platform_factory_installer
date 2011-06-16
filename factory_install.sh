@@ -350,7 +350,8 @@ if [ -s "$DST_FIRMWARE_PART" ]; then
 fi
 if [ -s "$DST_HWID_PART" ]; then
   log "execute HWID component list updater script"
-  if ! sh "$DST_HWID_PART" "${DST_DRIVE}" >"$MEMENTO_AU_LOG" 2>&1; then
+  DST_STATE="$(make_partition_dev ${DST_DRIVE} ${DST_STATE_PART})"
+  if ! sh "$DST_HWID_PART" "${DST_STATE}" >"$MEMENTO_AU_LOG" 2>&1; then
     error_exit "HWID component list updating failed."
   fi
 fi
