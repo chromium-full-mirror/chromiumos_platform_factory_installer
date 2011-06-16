@@ -221,6 +221,13 @@ if [ "$ARCH" = "INTEL" ]; then
 else
   DST_DRIVE=/dev/mmcblk0
 fi
+
+# Prevent writing to removable devices. (rootdev does not work here)
+DST_DRIVE_REMOVABLE="/sys/block/$(basename $DST_DRIVE)/removable"
+if [ -f "$DST_DRIVE_REMOVABLE" ] && [ "$(cat $DST_DRIVE_REMOVABLE)" = 1 ]; then
+  error_exit "Cannot install to a removable device ($DST_DRIVE)."
+fi
+
 DST_FACTORY_PART=3
 DST_RELEASE_PART=5
 DST_OEM_PART=8
