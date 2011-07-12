@@ -8,11 +8,26 @@
 . "/opt/google/memento_updater/memento_updater_logging.sh"
 . "/opt/google/memento_updater/find_omaha.sh"
 
-if [ $(id -u) -ne 0 ]; then
-  echo "You must run this as root."
-  exit 1
-fi
+# Definition of ChromeOS partition layout
+DST_FACTORY_PART=3
+DST_RELEASE_PART=5
+DST_OEM_PART=8
+DST_EFI_PART=12
+DST_STATE_PART=1
 
+# Override this if we need to perform additional commands
+COMPLETE_SCRIPT=""
+
+# Override this if we want to install with a board different from installer
+BOARD=""
+
+# Override this with console device for I/O
+TTY="/dev/tty1"
+
+# Global variables
+DST_DRIVE=""
+
+# Starting
 # Change color in tty1 by ANSI escape sequence code
 colorize() {
   local code="$1"
@@ -30,8 +45,8 @@ colorize() {
   printf "\033[%sm" "$code" >/dev/tty1
 }
 
-# Error message for any unexpected error exit.
-on_error_exit() {
+# Error message for any unexpected error.
+on_die() {
   set +x  # prevent extra log in console
   colorize "red"
   log "
@@ -39,10 +54,14 @@ on_error_exit() {
     Press Ctrl-Alt-F3 (Refresh) to get the detail information."
 }
 
-trap on_error_exit EXIT
-colorize "green"
+exit_success() {
+  trap - EXIT
+  exit 0
+}
 
-error_exit() {
+trap on_die EXIT
+
+die() {
   set +x  # prevent extra log in console
   colorize "red"
   log "ERROR: $*"
@@ -59,27 +78,26 @@ clear_fwwp() {
 clear_tpm() {
   log "Clearing TPM"
 
-  # Reset TPM
-  # tcsd needs to have not been run. It locks the TPM.
+  # Reset TPM. tcsd needs to have not been run because it locks the TPM.
   tpmc ppon
   tpmc clear
   tpmc enable
   tpmc activate
 
-  firmware_index="0x1007"
-  firmware_struct_version="1"
-  firmware_flags="0"
-  firmware_fw_versions="1 0 1 0"
-  firmware_reserved="0 0 0 0"
+  local firmware_index="0x1007"
+  local firmware_struct_version="1"
+  local firmware_flags="0"
+  local firmware_fw_versions="1 0 1 0"
+  local firmware_reserved="0 0 0 0"
 
   tpmc write $firmware_index $firmware_struct_version $firmware_flags \
       $firmware_fw_versions $firmware_reserved
 
-  kernel_index="0x1008"
-  kernel_struct_version="1"
-  kernel_uid="4c 57 52 47"
-  kernel_kernel_versions="1 0 1 0"
-  kernel_reserved="0 0 0 0"
+  local kernel_index="0x1008"
+  local kernel_struct_version="1"
+  local kernel_uid="4c 57 52 47"
+  local kernel_kernel_versions="1 0 1 0"
+  local kernel_reserved="0 0 0 0"
 
   tpmc write $kernel_index $kernel_struct_version $kernel_uid \
       $kernel_kernel_versions $kernel_reserved
@@ -90,36 +108,51 @@ clear_tpm() {
 set_time() {
   log "Setting time from:"
   # Extract only the server and port.
-  AUSERVER_URL=$(findLSBValue "CHROMEOS_AUSERVER" |
-      sed "s|/update||; s|http://||")
-  log "Server $AUSERVER_URL."
-  echo "Server $AUSERVER_URL."
-  RESULT=$(htpdate -s -t "${AUSERVER_URL}" 2>&1)
-  if ! echo "${RESULT}" | grep -Eq "(failed|unavailable)"; then
+  local server_url="$(findLSBValue "CHROMEOS_AUSERVER" |
+                      sed "s|/update||; s|http://||")"
+  log " Server $server_url."
+  local result="$(htpdate -s -t "$server_url" 2>&1)"
+  if ! echo "$result" | grep -Eq "(failed|unavailable)"; then
     log "Success, time set to $(date)"
-    hwclock -w 2> /dev/null
+    hwclock -w 2>/dev/null
     return 0
   fi
 
-  log $(echo "${RESULT}" | grep -E "(failed|unavailable)")
-  log "Failed to set time"
+  log "Failed to set time: $(echo "$result" | grep -E "(failed|unavailable)")"
   return 1
 }
 
 list_ethernet_interface() {
+  local candidate
   local candidates="$(ifconfig | grep 'Link encap:Ethernet' | cut -d ' ' -f 1)"
+
   for candidate in $candidates; do
     # output if it is not a wifi interface
     if ! iw $candidate info >/dev/null 2>&1; then
-      echo $candidate
+      echo "$candidate"
     fi
   done
 }
 
-log "Starting Factory Installer."
+check_ethernet_status() {
+  local ethernet_interface
 
-# Only ChromeOS machines have meaninful output here.
-if crossystem hwid >/dev/null; then
+  for ethernet_interface in $(list_ethernet_interface); do
+    if ifconfig $ethernet_interface | grep -q "inet addr"; then
+      log "$(ifconfig $ethernet_interface | grep 'inet addr')"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+reset_chromeos_device() {
+  # Only ChromeOS machines have meaninful output here.
+  if ! crossystem hwid >/dev/null 2>&1; then
+    return 0
+  fi
+
   log "Checking for Firmware Write Protect"
   # Check for physical firmware write protect. We'll only
   # clear this stuff if the case is open.
@@ -132,7 +165,7 @@ if crossystem hwid >/dev/null; then
   # To clear TPM, we need both software firmware write protect to be off, and
   # boot type as "recovery". Booting with USB in developer mode (Ctrl-U) does
   # not work.
-  TPM_IS_CLEARED=
+  local tpm_is_cleared=""
   if ! crossystem "mainfw_type?recovery"; then
     mainfw_type="$(crossystem mainfw_type)"
     log " - System was not booted in recovery mode (current: $mainfw_type)."
@@ -141,13 +174,13 @@ if crossystem hwid >/dev/null; then
     log " - Firmware write protection is not disabled."
   else
     if ! clear_tpm; then
-      error_exit "Failed to clear TPM. Installation is stopped."
+      die "Failed to clear TPM. Installation is stopped."
     else
-      TPM_IS_CLEARED=True
+      tpm_is_cleared=True
     fi
   fi
 
-  if [ -z "$TPM_IS_CLEARED" ]; then
+  if [ -z "$tpm_is_cleared" ]; then
     colorize "yellow"
     log "
 
@@ -155,7 +188,212 @@ if crossystem hwid >/dev/null; then
     protection is disabled, hold recovery button and reboot the system again.
     "
   fi
-fi
+}
+
+get_dst_drive() {
+  case "$(crossystem arch)" in
+    x86 )
+      DST_DRIVE=/dev/sda
+      ;;
+    arm )
+      DST_DRIVE=/dev/mmcblk0
+      ;;
+    * )
+      die "Failed to auto detect architecture."
+      ;;
+  esac
+
+  # Prevent writing to removable devices. (rootdev does not work here)
+  local removable="/sys/block/$(basename $DST_DRIVE)/removable"
+  if [ -f "$removable" ] && [ "$(cat $removable)" = 1 ]; then
+    die "Cannot install to a removable device ($DST_DRIVE)."
+  fi
+}
+
+lightup_screen() {
+  # Light up screen in case you can't see our splash image.
+  local script="/usr/sbin/lightup_screen"
+  if [ -x "$script" ]; then
+    $script
+  else
+    log "$script does not exist or not executable"
+  fi
+}
+
+prepare_disk() {
+  log "Factory Install: Setting partition table"
+
+  local gpt_layout="/root/.gpt_layout"
+  local pmbr_code="/root/.pmbr_code"
+  local inst_flags="--dst $DST_DRIVE --skip_rootfs --run_as_root --yes"
+
+  # In current design, we need both gpt layout and "pmbr code" always generated.
+  [ -s $gpt_layout ] || die "Missing $gpt_layout; please rebuild image."
+  [ -r $pmbr_code ] || die "Missing $pmbr_code; please rebuild image."
+  inst_flags="$inst_flags --gpt_layout $gpt_layout --pmbr_code $pmbr_code"
+
+  /usr/sbin/chromeos-install $inst_flags >>"$MEMENTO_AU_LOG" 2>&1
+
+  # Informs OS of partition table changes. The autoupdater has trouble with loop
+  # devices.
+  log "Reloading partition table changes..."
+  sync
+  echo 3 >/proc/sys/vm/drop_caches
+  # sfdisk works fine on x86, and partprobe works for ARM.
+  sfdisk -R "$DST_DRIVE"
+  partprobe "$DST_DRIVE"
+
+  log "Done preparing disk"
+}
+
+select_board() {
+  # Prompt the user if USER_SELECT is true.
+  local user_select="$(findLSBValue "USER_SELECT" | tr '[:upper:]' '[:lower:]')"
+  if [ "$user_select" = "true" ]; then
+    echo -n "Enter the board you want to install (ex: x86-mario): " >"$TTY"
+    read BOARD <"$TTY"
+  fi
+}
+
+disable_release_partition() {
+  # Release image is not allowed to boot unless the factory test is passed
+  # otherwise the wipe and final verification can be skipped.
+  # TODO(hungte) do this in memento_updater or postinst may be better
+  if ! cgpt add -i $(($DST_RELEASE_PART - 1)) -P 0 -T 0 -S 0 "$DST_DRIVE"
+  then
+    # Destroy kernels otherwise the system is still bootable.
+    dst="$(make_partition_dev $DST_DRIVE $(($DST_RELEASE_PART - 1)))"
+    dd if=/dev/zero of=$dst bs=1M count=1
+    dst="$(make_partition_dev $DST_DRIVE $(($DST_FACTORY_PART - 1)))"
+    dd if=/dev/zero of=$dst bs=1M count=1
+    die "Failed to lock release image. Destroy all kernels."
+  fi
+}
+
+factory_on_complete() {
+  if [ ! -s "$COMPLETE_SCRIPT" ]; then
+    return 0
+  fi
+
+  log "Executing completion script... ($COMPLETE_SCRIPT)"
+  if ! sh "$COMPLETE_SCRIPT" "$DST_DRIVE" >"$MEMENTO_AU_LOG" 2>&1; then
+    die "Failed running completion script $COMPLETE_SCRIPT."
+  fi
+  log "Completion script executed successfully."
+}
+
+
+factory_reset() {
+  log "Performing factory reset"
+  if ! /usr/sbin/factory_reset.sh; then
+    die "Factory reset failed."
+  fi
+
+  log "Done."
+  # TODO(hungte) shutdown or reboot once we decide the default behavior.
+  exit_success
+}
+
+factory_omaha_install() {
+  local i=""
+  local result=""
+  local return_code=""
+  local dst=""
+  local dst_arg=""
+
+  # Channels defined by memento updater
+  FACTORY_CHANNEL_ARG='--force_track=factory-channel'
+  RELEASE_CHANNEL_ARG='--force_track=release-channel'
+  OEM_CHANNEL_ARG='--force_track=oempartitionimg-channel'
+  EFI_CHANNEL_ARG='--force_track=efipartitionimg-channel'
+  STATE_CHANNEL_ARG='--force_track=stateimg-channel'
+  FIRMWARE_CHANNEL_ARG='--force_track=firmware-channel'
+  HWID_CHANNEL_ARG='--force_track=hwid-channel'
+  COMPLETE_CHANNEL_ARG='--force_track=complete-channel'
+
+  # Special channels for execution
+  DST_FIRMWARE_PART="$(mktemp --tmpdir "fw_XXXXXXXX")"
+  DST_HWID_PART="$(mktemp --tmpdir "hwid_XXXXXXXX")"
+  DST_COMPLETE_PART="$(mktemp --tmpdir "complete_XXXXXXXX")"
+
+  # Install the partitions
+  for i in EFI OEM STATE RELEASE FACTORY FIRMWARE HWID COMPLETE; do
+    # DST_*_PART can be a numeric partition number or plain file.
+    local part="$(eval 'echo $DST_'${i}'_PART')"
+
+    if [ -z "$part" ]; then
+      die "INVALID CHANNEL: $i."
+    elif echo "$part" | grep -qs "^[0-9]*$"; then
+      dst="$(make_partition_dev $DST_DRIVE $part)"
+      dst_arg=""
+    else
+      dst="$part"
+      dst_arg="--nocheck_block_device"
+    fi
+
+    log "Factory Install: Installing $i image to $dst"
+
+    local channel_arg="$(eval 'echo $'${i}'_CHANNEL_ARG')"
+    local kpart="none"
+    if [ "$i" = "FACTORY" -o "$i" = "RELEASE" ]; then
+      # Set up kernel partition
+      kpart=""
+    fi
+
+    local extra_arg="--skip_postinst"
+    if [ "$i" = "FACTORY" ]; then
+      # Do postinst after update
+      extra_arg=""
+    fi
+
+    if [ -n "$BOARD" ]; then
+      extra_arg="$extra_arg --board=$BOARD"
+    fi
+
+    return_code=0
+    result="$(IS_FACTORY_INSTALL=1 \
+      /opt/google/memento_updater/memento_updater.sh \
+      --dst_partition "$dst" --kernel_partition "$kpart" \
+      --allow_removable_boot $channel_arg $dst_arg $extra_arg)" ||
+      return_code="$?"
+
+    if [ "$i" = "RELEASE" ]; then
+      disable_release_partition
+    fi
+
+    # Check the result
+    if [ "$return_code" != "0" ]; then
+      # memento update has encountered a fatal error.
+      die "Factory install of target $dst has failed with error $return_code."
+    elif [ "$result" != "UPDATED" -a "$i" = "FACTORY" ]; then
+      # Only updating the primary root/kernel partition is strictly required.
+      # If the omahaserver is configured to not update others that's fine.
+      die "AU failed."
+    fi
+  done
+
+  # Post-processing channels in self-executable file.
+  if [ -s "$DST_FIRMWARE_PART" ]; then
+    log "Execute firmware-install script"
+    dst="$DST_FIRMWARE_PART"
+    dst_arg="--force --mode=factory_install"
+    if ! sh "$dst" $dst_arg >"$MEMENTO_AU_LOG" 2>&1; then
+      die "Firmware updating failed."
+    fi
+  fi
+  if [ -s "$DST_HWID_PART" ]; then
+    log "Execute HWID component list updater script"
+    dst="$DST_HWID_PART"
+    dst_arg="$(make_partition_dev $DST_DRIVE $DST_STATE_PART)"
+    if ! sh "$dst" "$dst_arg" >"$MEMENTO_AU_LOG" 2>&1; then
+      die "HWID component list updating failed."
+    fi
+  fi
+  if [ -s "$DST_COMPLETE_PART" ]; then
+    log "Found completion script."
+    COMPLETE_SCRIPT="$DST_COMPLETE_PART"
+  fi
+}
 
 #
 # factory_install.sh implements two operations for assembly line
@@ -171,222 +409,52 @@ fi
 # So we have to detect a possible ethernet connection here.
 #
 
-colorize "yellow"
-log "Waiting for ethernet connectivity to install"
-log "Or disable developer mode to factory reset."
-while true; do
-  connected=0
-  for ethernet_interface in $(list_ethernet_interface); do
-    if ifconfig $ethernet_interface | grep -q "inet addr"; then
-      log "$(ifconfig $ethernet_interface | grep 'inet addr')"
-      connected=1
+main() {
+  if [ "$(id -u)" -ne 0 ]; then
+    echo "You must run this as root."
+    exit 1
+  fi
+
+  log "Starting Factory Installer."
+  lightup_screen
+
+  colorize "green"
+  reset_chromeos_device
+
+  colorize "yellow"
+  log "Waiting for ethernet connectivity to install"
+  log "Or disable developer mode to factory reset."
+  while true; do
+    if check_ethernet_status; then
       break
+    elif [ "$(crossystem devsw_cur)" = "0" ]; then
+      factory_reset
+    else
+      sleep 1
     fi
   done
-  if [ $connected -eq 1 ]; then
-    break
-  fi
 
-  # If developer switch is flipped, go to "reset mode" instead of
-  # network install mode. Make sure gpio can be read (gpio_setup may
-  # fail if the device is not ready).
-  if [ "$(crossystem devsw_cur)" = "0" ]; then
-    log "Performing factory reset"
-    if ! /usr/sbin/factory_reset.sh; then
-      error_exit "Factory reset failed."
-    fi
+  # TODO(hungte) how to set time in RMA?
+  colorize "green"
+  set_time || die "Please check if the server is configured correctly."
 
-    log "Done"
-    exit 0
-  fi
-  sleep 1
-done
+  get_dst_drive
+  prepare_disk
+  select_board
 
-colorize "green"
-set_time || exit 1
+  # TODO(hungte) Support installing from USB
+  factory_omaha_install
 
-# TODO(crosbug:10680): replace arch detection with crossystem?
-if uname -m | grep -q "^i.86\$"; then
-  ARCH="INTEL"
-elif [ $(uname -m ) = "x86_64" ]; then
-  ARCH="INTEL"
-elif [ $(uname -m ) = "armv7l" ]; then
-  ARCH="ARM"
-else
-  error_exit "Failed to auto detect architecture."
-fi
+  log "Factory Installer Complete."
+  factory_on_complete
 
-if [ "$ARCH" = "INTEL" ]; then
-  DST_DRIVE=/dev/sda
-else
-  DST_DRIVE=/dev/mmcblk0
-fi
+  # Default action after installation: reboot.
+  trap - EXIT
+  sleep 3
+  shutdown -r now
 
-# Prevent writing to removable devices. (rootdev does not work here)
-DST_DRIVE_REMOVABLE="/sys/block/$(basename $DST_DRIVE)/removable"
-if [ -f "$DST_DRIVE_REMOVABLE" ] && [ "$(cat $DST_DRIVE_REMOVABLE)" = 1 ]; then
-  error_exit "Cannot install to a removable device ($DST_DRIVE)."
-fi
+  # sleep indefinitely to avoid re-spawning rather than shutting down
+  sleep 1d
+}
 
-DST_FACTORY_PART=3
-DST_RELEASE_PART=5
-DST_OEM_PART=8
-DST_EFI_PART=12
-DST_STATE_PART=1
-
-DST_FIRMWARE_PART="$(mktemp --tmpdir "fw_XXXXXXXX")"
-DST_HWID_PART="$(mktemp --tmpdir "hwid_XXXXXXXX")"
-DST_COMPLETE_PART="$(mktemp --tmpdir "complete_XXXXXXXX")"
-
-# Light up screen in case you can't see our splash image.
-LIGHTUP_SCREEN="/usr/sbin/lightup_screen"
-if [ -x "${LIGHTUP_SCREEN}" ]; then
-  ${LIGHTUP_SCREEN}
-else
-  log "${LIGHTUP_SCREEN} does not exist or not executable"
-fi
-
-log "Factory Install: Setting partition table"
-
-INST_FLAGS="--dst ${DST_DRIVE} --skip_rootfs --run_as_root --yes"
-
-# in factory mode, we need both GPT_LAYOUT and PMBR_CODE always generated.
-FACTORY_GPT_LAYOUT=/root/.gpt_layout
-FACTORY_PMBR_CODE=/root/.pmbr_code
-if [ -s $FACTORY_GPT_LAYOUT ]; then
-  INST_FLAGS="${INST_FLAGS} --gpt_layout $FACTORY_GPT_LAYOUT"
-else
-  log "ERROR: MISSING $FACTORY_GPT_LAYOUT ; PLEASE REBUILD FACTORY IMAGE."
-  log "FACTORY INSTALLER STOPPED."
-  exit 1
-fi
-if [ -r $FACTORY_PMBR_CODE ]; then
-  INST_FLAGS="${INST_FLAGS} --pmbr_code $FACTORY_PMBR_CODE"
-else
-  log "ERROR: MISSING $FACTORY_PMBR_CODE ; PLEASE REBUILD FACTORY IMAGE."
-  log "FACTORY INSTALLER STOPPED."
-  exit 1
-fi
-
-/usr/sbin/chromeos-install $INST_FLAGS 2>&1 | cat >> "$MEMENTO_AU_LOG"
-
-# Load the new partition table. The autoupdater has trouble with loop devices.
-sync
-echo 3 > /proc/sys/vm/drop_caches
-/sbin/sfdisk -R "$DST_DRIVE"
-partprobe "$DST_DRIVE" # inform the OS of partition table changes
-
-log "Done preparing disk"
-
-FACTORY_CHANNEL_ARG='--force_track=factory-channel'
-RELEASE_CHANNEL_ARG='--force_track=release-channel'
-OEM_CHANNEL_ARG='--force_track=oempartitionimg-channel'
-EFI_CHANNEL_ARG='--force_track=efipartitionimg-channel'
-STATE_CHANNEL_ARG='--force_track=stateimg-channel'
-FIRMWARE_CHANNEL_ARG='--force_track=firmware-channel'
-HWID_CHANNEL_ARG='--force_track=hwid-channel'
-COMPLETE_CHANNEL_ARG='--force_track=complete-channel'
-
-# Prompt the user if USER_SELECT is true.
-USER_SELECT=$(findLSBValue "USER_SELECT")
-USER_SELECT=`echo $USER_SELECT | tr '[:upper:]' '[:lower:]'`
-if [ "$USER_SELECT" = "true" ]; then
-  echo -n "Enter the board you want to install (x86-mario, x86-alex, x86-zgb, \
-etc): " >/dev/tty1
-  read BOARD </dev/tty1
-fi
-
-# Install the partitions
-for i in EFI OEM STATE RELEASE FACTORY FIRMWARE HWID COMPLETE; do
-  # DST_*_PART can be a numeric partition number or plain file.
-  PART=$(eval "echo \$DST_${i}_PART")
-  DST_ARG=""
-  if [ -z "$PART" ]; then
-    error_exit "INVALID CHANNEL: $i."
-  elif echo "$PART" | grep -qs "^[0-9]*$"; then
-    DST="$(make_partition_dev ${DST_DRIVE} ${PART})"
-  else
-    DST="$PART"
-    DST_ARG="--nocheck_block_device"
-  fi
-
-  log "Factory Install: Installing $i image to $DST"
-
-  CHANNEL_ARG=$(eval "echo \$${i}_CHANNEL_ARG")
-  KPART="none"
-  if [ "$i" = "FACTORY" -o "$i" = "RELEASE" ]; then
-    # Set up kernel partition
-    KPART=""
-  fi
-
-  EXTRA_ARG="--skip_postinst"
-  if [ "$i" = "FACTORY" ]; then
-    # Do postinst after update
-    EXTRA_ARG=""
-  fi
-
-  if [ "$USER_SELECT" = "true" ]; then
-    EXTRA_ARG="${EXTRA_ARG} --board=${BOARD}"
-  fi
-
-  RESULT="$(IS_FACTORY_INSTALL=1 \
-    /opt/google/memento_updater/memento_updater.sh \
-    --dst_partition "${DST}" --kernel_partition "${KPART}" \
-    --allow_removable_boot $CHANNEL_ARG $DST_ARG $EXTRA_ARG)"
-  RETURNCODE="$?"
-
-  # memento update has encountered a fatal error.
-  if [ "${RETURNCODE}" != "0" ]; then
-    error_exit "Factory install of target ${DST} has failed."
-  fi
-
-  # Only updating the primary root/kernel partition is strictly required.
-  # If the omahaserver is configured to not update others that's fine.
-  if [ "${RESULT}" != "UPDATED" -a "$i" = "FACTORY" ]; then
-    error_exit "AU failed."
-  fi
-done
-
-# Post-processing channels in self-executable file.
-if [ -s "$DST_FIRMWARE_PART" ]; then
-  log "execute firmware-install script"
-  if ! sh "$DST_FIRMWARE_PART" --force --mode=factory_install \
-     >"$MEMENTO_AU_LOG" 2>&1; then
-    error_exit "Firmware updating failed."
-  fi
-fi
-if [ -s "$DST_HWID_PART" ]; then
-  log "execute HWID component list updater script"
-  DST_STATE="$(make_partition_dev ${DST_DRIVE} ${DST_STATE_PART})"
-  if ! sh "$DST_HWID_PART" "${DST_STATE}" >"$MEMENTO_AU_LOG" 2>&1; then
-    error_exit "HWID component list updating failed."
-  fi
-fi
-
-# Release image is not allowed to boot unless the factory test is passed
-# otherwise the wipe and final verification can be skipped.
-# TODO(hungte) do this in memento_updater or postinst may be better
-# TODO(hungte) make a better way to find location of cgpt
-if ! cgpt add -i $((${DST_RELEASE_PART} - 1)) -P 0 -T 0 -S 0 ${DST_DRIVE}; then
-  # Destroy kernels otherwise the system is still bootable.
-  DST_RELEASE=$(make_partition_dev ${DST_DRIVE} $((${DST_RELEASE_PART} - 1)))
-  DST_FACTORY=$(make_partition_dev ${DST_DRIVE} $((${DST_FACTORY_PART} - 1)))
-  dd if=/dev/zero of=$DST_RELEASE
-  dd if=/dev/zero of=$DST_FACTORY
-  error_exit "Failed to lock release image. Destroy all kernels."
-fi
-
-log "All done installing."
-
-if [ -s "$DST_COMPLETE_PART" ]; then
-  log execute complete script
-  if ! sh "$DST_COMPLETE_PART" "${DST_DRIVE}" >"$MEMENTO_AU_LOG" 2>&1; then
-    error_exit "Complete script running failed."
-  fi
-fi
-
-trap - EXIT
-
-sleep 3
-shutdown -r now
-sleep 1d  # sleep indefinitely to avoid respawning rather than shutting down
+main "$@"
