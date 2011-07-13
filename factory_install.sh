@@ -9,7 +9,9 @@
 . "/opt/google/memento_updater/find_omaha.sh"
 
 # Definition of ChromeOS partition layout
+DST_FACTORY_KERNEL_PART=2
 DST_FACTORY_PART=3
+DST_RELEASE_KERNEL_PART=4
 DST_RELEASE_PART=5
 DST_OEM_PART=8
 DST_EFI_PART=12
@@ -75,6 +77,11 @@ clear_fwwp() {
   log "WP registers should be cleared now"
 }
 
+check_fwwp() {
+  flashrom -p internal:bus=spi --wp-status 2>/dev/null |
+    grep -q "write protect is enabled"
+}
+
 clear_tpm() {
   log "Clearing TPM"
 
@@ -108,7 +115,7 @@ clear_tpm() {
 set_time() {
   log "Setting time from:"
   # Extract only the server and port.
-  local server_url="$(findLSBValue "CHROMEOS_AUSERVER" |
+  local server_url="$(findLSBValue CHROMEOS_AUSERVER |
                       sed "s|/update||; s|http://||")"
   log " Server $server_url."
   local result="$(htpdate -s -t "$server_url" 2>&1)"
@@ -169,8 +176,7 @@ reset_chromeos_device() {
   if ! crossystem "mainfw_type?recovery"; then
     mainfw_type="$(crossystem mainfw_type)"
     log " - System was not booted in recovery mode (current: $mainfw_type)."
-  elif flashrom -p internal:bus=spi --wp-status 2>/dev/null |
-       grep -q "write protect is enabled"; then
+  elif check_fwwp; then
     log " - Firmware write protection is not disabled."
   else
     if ! clear_tpm; then
@@ -187,6 +193,9 @@ reset_chromeos_device() {
     WARNING: TPM won't be cleared. To force clearing TPM, ensure firmware write
     protection is disabled, hold recovery button and reboot the system again.
     "
+
+    # Alert for a while
+    sleep 3
   fi
 }
 
@@ -248,7 +257,7 @@ prepare_disk() {
 
 select_board() {
   # Prompt the user if USER_SELECT is true.
-  local user_select="$(findLSBValue "USER_SELECT" | tr '[:upper:]' '[:lower:]')"
+  local user_select="$(findLSBValue USER_SELECT | tr '[:upper:]' '[:lower:]')"
   if [ "$user_select" = "true" ]; then
     echo -n "Enter the board you want to install (ex: x86-mario): " >"$TTY"
     read BOARD <"$TTY"
@@ -259,15 +268,52 @@ disable_release_partition() {
   # Release image is not allowed to boot unless the factory test is passed
   # otherwise the wipe and final verification can be skipped.
   # TODO(hungte) do this in memento_updater or postinst may be better
-  if ! cgpt add -i $(($DST_RELEASE_PART - 1)) -P 0 -T 0 -S 0 "$DST_DRIVE"
+  if ! cgpt add -i "$DST_RELEASE_KERNEL_PART" -P 0 -T 0 -S 0 "$DST_DRIVE"
   then
     # Destroy kernels otherwise the system is still bootable.
-    dst="$(make_partition_dev $DST_DRIVE $(($DST_RELEASE_PART - 1)))"
+    dst="$(make_partition_dev $DST_DRIVE $DST_RELEASE_KERNEL_PART)"
     dd if=/dev/zero of=$dst bs=1M count=1
-    dst="$(make_partition_dev $DST_DRIVE $(($DST_FACTORY_PART - 1)))"
+    dst="$(make_partition_dev $DST_DRIVE $DST_FACTORY_KERNEL_PART)"
     dd if=/dev/zero of=$dst bs=1M count=1
     die "Failed to lock release image. Destroy all kernels."
   fi
+}
+
+run_postinst() {
+  local install_dev="$1"
+  local mount_point="$(mktemp -d)"
+  local result=0
+
+  mount -o ro "$install_dev" "$mount_point"
+  IS_FACTORY_INSTALL=1 "$mount_point"/postinst \
+    "$install_dev" >>"$MEMENTO_AU_LOG" 2>&1 || result="$?"
+
+  umount "$install_dev" || true
+  rmdir "$mount_point" || true
+  return $result
+}
+
+run_firmware_update() {
+  local install_dev="$1"
+  local mount_point="$(mktemp -d)"
+  local result=0
+
+  mount -o ro "$install_dev" "$mount_point"
+  # If write protection is disabled, perform factory (RO+RW) firmware setup;
+  # otherwise run updater in recovery (RW only) mode.
+  if ! check_fwwp; then
+    "$mount_point"/usr/sbin/chromeos-firmwareupdate \
+      --force --mode=factory_install >>"$MEMENTO_AU_LOG" 2>&1 ||
+      result="$?"
+  else
+    "$mount_point"/usr/sbin/chromeos-firmwareupdate \
+      --force --mode=recovery >>"$MEMENTO_AU_LOG" 2>&1 ||
+      result="$?"
+  fi
+
+  umount "$install_dev" || true
+  rmdir "$mount_point" || true
+  return $result
 }
 
 factory_on_complete() {
@@ -282,7 +328,6 @@ factory_on_complete() {
   log "Completion script executed successfully."
 }
 
-
 factory_reset() {
   log "Performing factory reset"
   if ! /usr/sbin/factory_reset.sh; then
@@ -294,7 +339,68 @@ factory_reset() {
   exit_success
 }
 
-factory_omaha_install() {
+factory_install_usb() {
+  local i=""
+  local src_offset="$(findLSBValue FACTORY_INSTALL_USB_OFFSET)"
+  local src_drive="$(findLSBValue REAL_USB_DEV)"
+  [ -n "$src_drive" ] || die "Unknown media source. Please define REAL_USB_DEV."
+
+  # Finds the real drive from sd[a-z][0-9]* or mmcblk[0-9]*p[0-9]*
+  src_drive="${src_drive%%[0-9]*}"
+  src_drive="$(echo $src_drive | sed 's/\(mmcblk[0-9]*\)p/\1/')"
+
+  colorize "yellow"
+  for i in EFI OEM STATE FACTORY FACTORY_KERNEL RELEASE RELEASE_KERNEL; do
+    # The source media must have exactly the same layout.
+    local part="$(eval 'echo $DST_'${i}'_PART')"
+    local src="$(make_partition_dev $src_drive $part)"
+    local dst="$(make_partition_dev $DST_DRIVE $part)"
+
+    # Factory/Release may be shifted on source media.
+    if [ -n "$src_offset" ]; then
+      case "$i" in
+        FACTORY* | RELEASE* )
+          src="$(make_partition_dev $src_drive $((part + src_offset)) )"
+          true
+          ;;
+      esac
+    fi
+
+    # Detect file system size
+    local dd_param="bs=1M"
+    local count="$(dumpe2fs -h "$src" 2>/dev/null |
+                   grep "^Block count" |
+                   sed 's/.*: *//')"
+
+    if [ -n "$count" ]; then
+      local bs="$(dumpe2fs -h "$src" 2>/dev/null |
+            grep "^Block size" |
+            sed 's/.*: *//')"
+
+      # Optimize copy speed, with restriction: bs<10M
+      while [ "$(( (count > 0) &&
+                   (count % 2 == 0) &&
+                   (bs / 1048576 < 10) ))" = "1" ]; do
+        count="$((count / 2))"
+        bs="$((bs * 2))"
+      done
+      dd_param="bs=$bs count=$count"
+    fi
+
+    log "Copying: [$i] $src -> $dst ($dd_param)"
+    # TODO(hungte) Detect copy failure
+    pv -B 1M "$src" 2>"$TTY" |
+      dd $dd_param of="$dst" iflag=fullblock oflag=dsync
+  done
+  colorize "green"
+
+  # Disable release partition and activate factory partition
+  disable_release_partition
+  run_postinst "$(make_partition_dev "$DST_DRIVE" "$DST_FACTORY_PART")"
+  run_firmware_update "$(make_partition_dev "$DST_DRIVE" "$DST_RELEASE_PART")"
+}
+
+factory_install_omaha() {
   local i=""
   local result=""
   local return_code=""
@@ -421,29 +527,40 @@ main() {
   colorize "green"
   reset_chromeos_device
 
-  colorize "yellow"
-  log "Waiting for ethernet connectivity to install"
-  log "Or disable developer mode to factory reset."
-  while true; do
-    if check_ethernet_status; then
-      break
-    elif [ "$(crossystem devsw_cur)" = "0" ]; then
-      factory_reset
-    else
-      sleep 1
-    fi
-  done
+  local install_from_omaha="1"
+  if [ "$(findLSBValue FACTORY_INSTALL_FROM_USB)" = "1" ]; then
+    install_from_omaha=""
+  fi
 
-  # TODO(hungte) how to set time in RMA?
+
+  if [ -n "$install_from_omaha" ]; then
+    colorize "yellow"
+    log "Waiting for ethernet connectivity to install"
+    log "Or disable developer mode to factory reset."
+    while true; do
+      if check_ethernet_status; then
+        break
+      elif [ "$(crossystem devsw_cur)" = "0" ]; then
+        factory_reset
+      else
+        sleep 1
+      fi
+    done
+
+    # TODO(hungte) how to set time in RMA?
+    set_time || die "Please check if the server is configured correctly."
+  fi
+
   colorize "green"
-  set_time || die "Please check if the server is configured correctly."
-
   get_dst_drive
   prepare_disk
   select_board
 
-  # TODO(hungte) Support installing from USB
-  factory_omaha_install
+  if [ -n "$install_from_omaha" ]; then
+    factory_install_omaha
+  else
+    factory_install_usb
+  fi
 
   log "Factory Installer Complete."
   factory_on_complete
