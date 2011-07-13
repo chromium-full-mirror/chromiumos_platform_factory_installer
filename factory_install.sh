@@ -23,6 +23,9 @@ COMPLETE_SCRIPT=""
 # Override this if we want to install with a board different from installer
 BOARD=""
 
+# Override this if we want to install with a different omaha server.
+OMAHA=""
+
 # Override this with console device for I/O
 TTY="/dev/tty1"
 
@@ -264,6 +267,39 @@ select_board() {
   fi
 }
 
+find_var() {
+  # Check kernel commandline for a specific key value pair.
+  # Unsage: omaha=$(find_var omahaserverip)
+  # Assume values are space separated, keys are unique within the commandline,
+  # and that keys and values do not contain spaces.
+  local key="$1"
+
+  for item in $(cat /proc/cmdline); do
+    if echo "$item" | grep -q "$key"; then
+      echo "$item" | cut -d'=' -f2
+      return 0
+    fi
+  done
+  return 1
+}
+
+override_from_firmware() {
+  # Check for Omaha URL or Board type from kernel commandline.
+  # OMAHA and BOARD are override env variables used when calling
+  # memento_updater.
+  local omaha=""
+  if omaha="$(find_var omahaserverip)"; then
+    log " Kernel cmdline OMAHA override to $omaha"
+    OMAHA="$omaha"
+  fi
+
+  local board=""
+  if board="$(find_var cros_board)"; then
+    log " Kernel cmdline BOARD override to $board"
+    BOARD="$board"
+  fi
+}
+
 disable_release_partition() {
   # Release image is not allowed to boot unless the factory test is passed
   # otherwise the wipe and final verification can be skipped.
@@ -456,6 +492,10 @@ factory_install_omaha() {
       extra_arg="$extra_arg --board=$BOARD"
     fi
 
+    if [ -n "$OMAHA" ]; then
+      extra_arg="$extra_arg --omaha_url=$OMAHA"
+    fi
+
     return_code=0
     result="$(IS_FACTORY_INSTALL=1 \
       /opt/google/memento_updater/memento_updater.sh \
@@ -554,6 +594,7 @@ main() {
   colorize "green"
   get_dst_drive
   prepare_disk
+  override_from_firmware
   select_board
 
   if [ -n "$install_from_omaha" ]; then
