@@ -346,7 +346,7 @@ factory_install_usb() {
   [ -n "$src_drive" ] || die "Unknown media source. Please define REAL_USB_DEV."
 
   # Finds the real drive from sd[a-z][0-9]* or mmcblk[0-9]*p[0-9]*
-  src_drive="${src_drive%%[0-9]*}"
+  src_drive="${src_drive%[0-9]*}"
   src_drive="$(echo $src_drive | sed 's/\(mmcblk[0-9]*\)p/\1/')"
 
   colorize "yellow"
