@@ -335,21 +335,40 @@ run_postinst() {
 }
 
 run_firmware_update() {
-  local install_dev="$1"
+  local install_drive="$1"
+  local install_dev=""
   local mount_point="$(mktemp -d)"
   local result=0
+  local updater="$(findLSBValue FACTORY_INSTALL_FIRMWARE)"
+  local stateful_updater="${updater#/mnt/stateful_partition/}"
 
+  # If there's nothing assigned, we should load firmware from release rootfs;
+  # otherwise follow the assigned location (currently only stateful partition is
+  # supported).
+  if [ -z "$updater" ]; then
+    updater="$mount_point/usr/sbin/chromeos-firmwareupdate"
+    install_dev="$(make_partition_dev "$install_drive" "$DST_RELEASE_PART")"
+  elif [ "$updater" != "$stateful_updater" ]; then
+    updater="$mount_point/$stateful_updater"
+    install_dev="$(make_partition_dev "$install_drive" "$DST_STATE_PART")"
+  else
+    die "Unknown firmware updater location: $updater"
+  fi
+
+  log "Running firmware updater from $install_dev ($updater)..."
   mount -o ro "$install_dev" "$mount_point"
   # If write protection is disabled, perform factory (RO+RW) firmware setup;
   # otherwise run updater in recovery (RW only) mode.
   if ! check_fwwp; then
-    "$mount_point"/usr/sbin/chromeos-firmwareupdate \
-      --force --mode=factory_install >>"$MEMENTO_AU_LOG" 2>&1 ||
+    "$updater" --force --mode=factory_install >>"$MEMENTO_AU_LOG" 2>&1 ||
       result="$?"
   else
-    "$mount_point"/usr/sbin/chromeos-firmwareupdate \
-      --force --mode=recovery >>"$MEMENTO_AU_LOG" 2>&1 ||
-      result="$?"
+    # We need to recover the firmware and then enable developer firmware.
+    "$updater" --force --mode=recovery >>"$MEMENTO_AU_LOG" 2>&1 || result="$?"
+    # For two-stop firmware, todev is a simple crossystem call; but for other
+    # old firmware (alex/zgb), todev will perform flashrom and then reboot.
+    # So this must be the very end command.
+    "$updater" --force --mode=todev >>"$MEMENTO_AU_LOG" 2>&1 || result="$?"
   fi
 
   umount "$install_dev" || true
@@ -438,7 +457,7 @@ factory_install_usb() {
   # Disable release partition and activate factory partition
   disable_release_partition
   run_postinst "$(make_partition_dev "$DST_DRIVE" "$DST_FACTORY_PART")"
-  run_firmware_update "$(make_partition_dev "$DST_DRIVE" "$DST_RELEASE_PART")"
+  run_firmware_update "$DST_DRIVE"
 }
 
 factory_install_omaha() {
