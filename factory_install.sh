@@ -25,6 +25,7 @@ BOARD=""
 
 # Override this if we want to install with a different omaha server.
 OMAHA=""
+DEFAULT_OMAHA_PORT="8080"
 
 # Override this with console device for I/O
 TTY="/dev/tty1"
@@ -120,6 +121,10 @@ set_time() {
   # Extract only the server and port.
   local server_url="$(findLSBValue CHROMEOS_AUSERVER |
                       sed "s|/update||; s|http://||")"
+  if omaha="$(find_var omahaserverip)"; then
+    log " Kernel cmdline overrides omaha server ip"
+    server_url="$omaha:$DEFAULT_OMAHA_PORT"
+  fi
   log " Server $server_url."
   local result="$(htpdate -s -t "$server_url" 2>&1)"
   if ! echo "$result" | grep -Eq "(failed|unavailable)"; then
@@ -290,7 +295,7 @@ override_from_firmware() {
   local omaha=""
   if omaha="$(find_var omahaserverip)"; then
     log " Kernel cmdline OMAHA override to $omaha"
-    OMAHA="$omaha"
+    OMAHA="http://$omaha:$DEFAULT_OMAHA_PORT/update"
   fi
 
   local board=""
