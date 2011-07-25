@@ -25,7 +25,6 @@ BOARD=""
 
 # Override this if we want to install with a different omaha server.
 OMAHA=""
-DEFAULT_OMAHA_PORT="8080"
 
 # Override this with console device for I/O
 TTY="/dev/tty1"
@@ -119,14 +118,17 @@ clear_tpm() {
 set_time() {
   log "Setting time from:"
   # Extract only the server and port.
-  local server_url="$(findLSBValue CHROMEOS_AUSERVER |
-                      sed "s|/update||; s|http://||")"
-  if omaha="$(find_var omahaserverip)"; then
-    log " Kernel cmdline overrides omaha server ip"
-    server_url="$omaha:$DEFAULT_OMAHA_PORT"
+  local omaha_server_url="$(findLSBValue CHROMEOS_AUSERVER)"
+  # Check for server override"
+  if [ -n "$OMAHA" ]; then
+    log " Kernel cmdline overrides omaha server to $OMAHA"
+    omaha_server_url="$OMAHA"
   fi
-  log " Server $server_url."
-  local result="$(htpdate -s -t "$server_url" 2>&1)"
+  local time_server_url="$(echo "$omaha_server_url" |
+                      sed "s|/update||; s|http://||")"
+
+  log " Server $time_server_url."
+  local result="$(htpdate -s -t "$time_server_url" 2>&1)"
   if ! echo "$result" | grep -Eq "(failed|unavailable)"; then
     log "Success, time set to $(date)"
     hwclock -w 2>/dev/null
@@ -274,7 +276,7 @@ select_board() {
 
 find_var() {
   # Check kernel commandline for a specific key value pair.
-  # Unsage: omaha=$(find_var omahaserverip)
+  # Usage: omaha=$(find_var omahaserver)
   # Assume values are space separated, keys are unique within the commandline,
   # and that keys and values do not contain spaces.
   local key="$1"
@@ -293,9 +295,9 @@ override_from_firmware() {
   # OMAHA and BOARD are override env variables used when calling
   # memento_updater.
   local omaha=""
-  if omaha="$(find_var omahaserverip)"; then
+  if omaha="$(find_var omahaserver)"; then
     log " Kernel cmdline OMAHA override to $omaha"
-    OMAHA="http://$omaha:$DEFAULT_OMAHA_PORT/update"
+    OMAHA="$omaha"
   fi
 
   local board=""
@@ -596,6 +598,8 @@ main() {
     install_from_omaha=""
   fi
 
+  # Check kernel commandline for overrides from firmware.
+  override_from_firmware
 
   if [ -n "$install_from_omaha" ]; then
     colorize "yellow"
@@ -618,7 +622,6 @@ main() {
   colorize "green"
   get_dst_drive
   prepare_disk
-  override_from_firmware
   select_board
 
   if [ -n "$install_from_omaha" ]; then
