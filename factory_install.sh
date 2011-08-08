@@ -405,6 +405,8 @@ factory_install_usb() {
   local i=""
   local src_offset="$(findLSBValue FACTORY_INSTALL_USB_OFFSET)"
   local src_drive="$(findLSBValue REAL_USB_DEV)"
+  # REAL_USB_DEV is optional on systems without initramfs (ex, ARM).
+  [ -n "$src_drive" ] || src_drive="$(rootdev -s 2>/dev/null)"
   [ -n "$src_drive" ] || die "Unknown media source. Please define REAL_USB_DEV."
 
   # Finds the real drive from sd[a-z][0-9]* or mmcblk[0-9]*p[0-9]*
