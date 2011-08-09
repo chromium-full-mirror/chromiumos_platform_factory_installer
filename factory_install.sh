@@ -327,7 +327,7 @@ run_postinst() {
   local mount_point="$(mktemp -d)"
   local result=0
 
-  mount -o ro "$install_dev" "$mount_point"
+  mount -t ext2 -o ro "$install_dev" "$mount_point"
   IS_FACTORY_INSTALL=1 "$mount_point"/postinst \
     "$install_dev" >>"$MEMENTO_AU_LOG" 2>&1 || result="$?"
 
@@ -358,7 +358,7 @@ run_firmware_update() {
   fi
 
   log "Running firmware updater from $install_dev ($updater)..."
-  mount -o ro "$install_dev" "$mount_point"
+  mount -t ext2 -o ro "$install_dev" "$mount_point"
   # If write protection is disabled, perform factory (RO+RW) firmware setup;
   # otherwise run updater in recovery (RW only) mode.
   if ! check_fwwp; then
