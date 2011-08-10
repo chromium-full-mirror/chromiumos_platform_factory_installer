@@ -307,6 +307,19 @@ override_from_firmware() {
   fi
 }
 
+override_from_board() {
+  # Call into any board specific configuration settings we may need.
+  # These will be provided by chromeos-bsp-[board] build in the private overlay.
+  if [ -f "/usr/sbin/board_customize_install.sh" ]; then
+    . /usr/sbin/board_customize_install.sh
+  fi
+}
+
+overrides() {
+  override_from_firmware
+  override_from_board
+}
+
 disable_release_partition() {
   # Release image is not allowed to boot unless the factory test is passed
   # otherwise the wipe and final verification can be skipped.
@@ -600,8 +613,8 @@ main() {
     install_from_omaha=""
   fi
 
-  # Check kernel commandline for overrides from firmware.
-  override_from_firmware
+  # Check for any configuration overrides.
+  overrides
 
   if [ -n "$install_from_omaha" ]; then
     colorize "yellow"
