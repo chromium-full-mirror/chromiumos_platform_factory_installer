@@ -310,8 +310,16 @@ override_from_firmware() {
 override_from_board() {
   # Call into any board specific configuration settings we may need.
   # These will be provided by chromeos-bsp-[board] build in the private overlay.
+  local lastboard="$BOARD"
   if [ -f "/usr/sbin/board_customize_install.sh" ]; then
     . /usr/sbin/board_customize_install.sh
+  fi
+
+  # Let's notice if BOARD has changed and print a message.
+  if [ "$lastboard" != "$BOARD" ]; then
+    colorize "red"
+    log " Private overlay customization BOARD override to $BOARD"
+    sleep 1
   fi
 }
 
