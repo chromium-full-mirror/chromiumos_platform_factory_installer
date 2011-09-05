@@ -80,6 +80,18 @@ clear_fwwp() {
   log "WP registers should be cleared now"
 }
 
+ensure_fwwp_consistency() {
+  local ec_wp main_wp
+  ec_wp="$(flashrom -p internal:bus=lpc --wp-status 2>/dev/null)" || return
+  main_wp="$(flashrom -p internal:bus=spi --wp-status 2>/dev/null)"
+  ec_wp="$(echo "$ec_wp" | sed -nr 's/WP.*(disabled|enabled).$/\1/pg')"
+  main_wp="$(echo "$main_wp" | sed -nr 's/WP.*(disabled|enabled).$/\1/pg')"
+  if [ "$ec_wp" != "$main_wp" ]; then
+    die "Inconsist firmware write protection status: main=$main_wp, ec=$ec_wp."\
+        "Please disable Hardware Write Protection and restart again."
+  fi
+}
+
 check_fwwp() {
   flashrom -p internal:bus=spi --wp-status 2>/dev/null |
     grep -q "write protect is enabled"
@@ -177,6 +189,7 @@ reset_chromeos_device() {
     # Clear software firmware write protect.
     clear_fwwp
   fi
+  ensure_fwwp_consistency
 
   log "Checking if TPM should be cleared"
   # To clear TPM, we need both software firmware write protect to be off, and
