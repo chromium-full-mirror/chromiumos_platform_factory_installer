@@ -257,7 +257,7 @@ prepare_disk() {
 
   local gpt_layout="/root/.gpt_layout"
   local pmbr_code="/root/.pmbr_code"
-  local inst_flags="--dst $DST_DRIVE --skip_rootfs --run_as_root --yes"
+  local inst_flags="--dst $DST_DRIVE --skip_rootfs --yes"
 
   # In current design, we need both gpt layout and "pmbr code" always generated.
   [ -s $gpt_layout ] || die "Missing $gpt_layout; please rebuild image."
