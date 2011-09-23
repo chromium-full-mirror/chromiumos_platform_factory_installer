@@ -189,7 +189,6 @@ reset_chromeos_device() {
     # Clear software firmware write protect.
     clear_fwwp
   fi
-  ensure_fwwp_consistency
 
   log "Checking if TPM should be cleared"
   # To clear TPM, we need both software firmware write protect to be off, and
@@ -220,6 +219,7 @@ reset_chromeos_device() {
     # Alert for a while
     sleep 3
   fi
+  ensure_fwwp_consistency
 }
 
 get_dst_drive() {
