@@ -40,7 +40,7 @@ start tcsd
 # Just wipe the start of the partition and remake the fs on
 # the stateful partition.
 dd bs=4M count=1 if=/dev/zero of=${STATE_DEV}
-/sbin/mkfs.ext3 "$STATE_DEV"
+/sbin/mkfs.ext4 "$STATE_DEV"
 
 # Do any board specific resetting here.
 # board_factory_reset.sh will be installed by the board overlay if necessary.
