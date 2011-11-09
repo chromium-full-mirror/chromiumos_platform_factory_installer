@@ -31,6 +31,7 @@ TTY="/dev/tty1"
 
 # Global variables
 DST_DRIVE=""
+EC_PRESENT=0
 
 # Starting
 # Change color in tty1 by ANSI escape sequence code
@@ -75,13 +76,20 @@ die() {
 
 clear_fwwp() {
   log "Firmware Write Protect disabled, clearing status registers."
-  flashrom -p internal:bus=lpc --wp-disable
+  if [ $EC_PRESENT -eq 1 ]; then
+    flashrom -p internal:bus=lpc --wp-disable
+  fi
   flashrom -p internal:bus=spi --wp-disable
   log "WP registers should be cleared now"
 }
 
 ensure_fwwp_consistency() {
   local ec_wp main_wp
+
+  if [ $EC_PRESENT -eq 0 ]; then
+    return
+  fi
+
   ec_wp="$(flashrom -p internal:bus=lpc --wp-status 2>/dev/null)" || return
   main_wp="$(flashrom -p internal:bus=spi --wp-status 2>/dev/null)"
   ec_wp="$(echo "$ec_wp" | sed -nr 's/WP.*(disabled|enabled).$/\1/pg')"
@@ -603,6 +611,23 @@ factory_install_omaha() {
   fi
 }
 
+test_ec_presence() {
+  set +e  # Failure is an option here.
+
+  # If "mosys ec info" command succeeds (returns 0), then EC is present
+  # in system. Otherwise, assume EC is not present or supported.
+  mosys ec info >/dev/null
+  if [ $? -eq 0 ]; then
+    log "EC is present"
+    EC_PRESENT=1
+  else
+    log "EC is not present or supported"
+    EC_PRESENT=0
+  fi
+
+  set -e
+}
+
 #
 # factory_install.sh implements two operations for assembly line
 # operators: install (obviously) and reset.
@@ -627,6 +652,9 @@ main() {
   lightup_screen
 
   colorize "green"
+
+  test_ec_presence
+
   reset_chromeos_device
 
   local install_from_omaha="1"
