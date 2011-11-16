@@ -611,21 +611,16 @@ factory_install_omaha() {
   fi
 }
 
-test_ec_presence() {
-  set +e  # Failure is an option here.
-
-  # If "mosys ec info" command succeeds (returns 0), then EC is present
-  # in system. Otherwise, assume EC is not present or supported.
-  mosys ec info >/dev/null
-  if [ $? -eq 0 ]; then
-    log "EC is present"
+test_ec_flash_presence() {
+  # If "flashrom -p internal:bus=lpc --get-size" command succeeds (returns 0),
+  # then EC flash chip is present in system. Otherwise, assume EC flash is not
+  # present or supported.
+  if flashrom -p internal:bus=lpc --get-size 1>&2; then
     EC_PRESENT=1
+    log "EC flash is present"
   else
-    log "EC is not present or supported"
-    EC_PRESENT=0
+    log "EC flash is not present or supported"
   fi
-
-  set -e
 }
 
 #
@@ -653,7 +648,7 @@ main() {
 
   colorize "green"
 
-  test_ec_presence
+  test_ec_flash_presence
 
   reset_chromeos_device
 
