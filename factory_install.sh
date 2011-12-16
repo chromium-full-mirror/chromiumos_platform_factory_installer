@@ -185,9 +185,16 @@ check_ethernet_status() {
 }
 
 reset_chromeos_device() {
-  # Only ChromeOS machines have meaninful output here.
-  if ! crossystem hwid >/dev/null 2>&1; then
-    return 0
+  log "Clearing NVData."
+  if ! mosys nvram clear; then
+    # Not every platforms really need this - OK if nvram is not cleared.
+    log "Warning: NVData not cleared."
+  fi
+
+  if crossystem "mainfw_type?nonchrome"; then
+    # Non-ChromeOS firmware devices can stop now.
+    log "Device running Non-ChromeOS firmware."
+    return
   fi
 
   log "Checking for Firmware Write Protect"
