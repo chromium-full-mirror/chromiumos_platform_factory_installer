@@ -24,7 +24,7 @@ COMPLETE_SCRIPT=""
 BOARD=""
 
 # Override this if we want to install with a different omaha server.
-OMAHA=""
+OMAHA="$(findLSBValue CHROMEOS_AUSERVER)"
 
 # Override this with console device for I/O
 TTY="/dev/tty1"
@@ -138,14 +138,7 @@ clear_tpm() {
 set_time() {
   log "Setting time from:"
   # Extract only the server and port.
-  local omaha_server_url="$(findLSBValue CHROMEOS_AUSERVER)"
-  # Check for server override"
-  if [ -n "$OMAHA" ]; then
-    log " Kernel cmdline overrides omaha server to $OMAHA"
-    omaha_server_url="$OMAHA"
-  fi
-  local time_server_url="$(echo "$omaha_server_url" |
-                      sed "s|/update||; s|http://||")"
+  local time_server_url="$(echo "$OMAHA" | sed "s|/update||; s|http://||")"
 
   log " Server $time_server_url."
   local result="$(htpdate -s -t "$time_server_url" 2>&1)"
@@ -422,9 +415,23 @@ run_firmware_update() {
     "$updater" --force --mode=todev >>"$MEMENTO_AU_LOG" 2>&1 || result="$?"
   fi
 
-  umount "$install_dev" || true
+  umount "$mount_point" || true
   rmdir "$mount_point" || true
   return $result
+}
+
+save_omaha_url() {
+  log "Save active Omaha server URL to stateful partition"
+  local stateful_dev="$1"
+  local mount_point="$(mktemp -d)"
+  local output_file="$mount_point/dev_image/etc/lsb-factory"
+
+  mount "$stateful_dev" "$mount_point"
+  mkdir -p "$(dirname "$output_file")"
+  echo "FACTORY_OMAHA_URL=$OMAHA" >> "$output_file"
+
+  umount "$mount_point" || true
+  rmdir "$mount_point" || true
 }
 
 factory_on_complete() {
@@ -612,6 +619,11 @@ factory_install_omaha() {
       die "HWID component list updating failed."
     fi
   fi
+
+  # Update omaha information into stateful partition.
+  save_omaha_url "$(make_partition_dev $DST_DRIVE $DST_STATE_PART)" \
+    >"$MEMENTO_AU_LOG" 2>&1 || die "Failed to save OMAHA server information."
+
   if [ -s "$DST_COMPLETE_PART" ]; then
     log "Found completion script."
     COMPLETE_SCRIPT="$DST_COMPLETE_PART"
