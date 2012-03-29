@@ -77,9 +77,11 @@ die() {
 clear_fwwp() {
   log "Firmware Write Protect disabled, clearing status registers."
   if [ $EC_PRESENT -eq 1 ]; then
-    flashrom -p internal:bus=lpc --wp-disable
+    flashrom -p internal:bus=lpc --wp-disable || \
+        echo wp-disable failed: ignoring
   fi
-  flashrom -p internal:bus=spi --wp-disable
+  flashrom -p internal:bus=spi --wp-disable || \
+      echo wp-disable failed: ignoring
   log "WP registers should be cleared now"
 }
 
@@ -95,7 +97,8 @@ ensure_fwwp_consistency() {
   ec_wp="$(echo "$ec_wp" | sed -nr 's/WP.*(disabled|enabled).$/\1/pg')"
   main_wp="$(echo "$main_wp" | sed -nr 's/WP.*(disabled|enabled).$/\1/pg')"
   if [ "$ec_wp" != "$main_wp" ]; then
-    die "Inconsist firmware write protection status: main=$main_wp, ec=$ec_wp."\
+    echo "Inconsistent firmware write protection status: "\
+        "main=$main_wp, ec=$ec_wp."\
         "Please disable Hardware Write Protection and restart again."
   fi
 }
@@ -667,7 +670,7 @@ main() {
 
   colorize "green"
 
-  test_ec_flash_presence
+  # test_ec_flash_presence
 
   reset_chromeos_device
 
