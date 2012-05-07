@@ -190,6 +190,11 @@ reset_chromeos_device() {
     return
   fi
 
+  if crossystem "mainfw_type?netboot"; then
+    log "Device network booted."
+    return
+  fi
+
   log "Checking for Firmware Write Protect"
   # Check for physical firmware write protect. We'll only
   # clear this stuff if the case is open.
