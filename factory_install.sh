@@ -283,9 +283,7 @@ prepare_disk() {
   # devices.
   log "Reloading partition table changes..."
   sync
-  echo 3 >/proc/sys/vm/drop_caches
-  # sfdisk works fine on x86, and partprobe works for ARM.
-  sfdisk -R "$DST_DRIVE"
+  sleep 3  # Wait for sync to take place.
   partprobe "$DST_DRIVE"
 
   log "Done preparing disk"
