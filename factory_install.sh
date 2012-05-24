@@ -388,6 +388,7 @@ run_firmware_update() {
   local result=0
   local updater="$(findLSBValue FACTORY_INSTALL_FIRMWARE)"
   local stateful_updater="${updater#/mnt/stateful_partition/}"
+  local mount_opt=""
 
   # If there's nothing assigned, we should load firmware from release rootfs;
   # otherwise follow the assigned location (currently only stateful partition is
@@ -395,15 +396,18 @@ run_firmware_update() {
   if [ -z "$updater" ]; then
     updater="$mount_point/usr/sbin/chromeos-firmwareupdate"
     install_dev="$(make_partition_dev "$install_drive" "$DST_RELEASE_PART")"
+    mount_opt="-t ext2 -o ro"
   elif [ "$updater" != "$stateful_updater" ]; then
     updater="$mount_point/$stateful_updater"
     install_dev="$(make_partition_dev "$install_drive" "$DST_STATE_PART")"
+    # Stateful partition may be ext4 and turned off ext2 compatibility mode.
+    mount_opt="-o ro"
   else
     die "Unknown firmware updater location: $updater"
   fi
 
   log "Running firmware updater from $install_dev ($updater)..."
-  mount -t ext2 -o ro "$install_dev" "$mount_point"
+  mount $mount_opt "$install_dev" "$mount_point"
   # If write protection is disabled, perform factory (RO+RW) firmware setup;
   # otherwise run updater in recovery (RW only) mode.
   if ! check_fwwp; then
