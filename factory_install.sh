@@ -1,6 +1,6 @@
 #!/bin/sh -ex
 
-# Copyright (c) 2011 The Chromium OS Authors. All rights reserved.
+# Copyright (c) 2012 The Chromium OS Authors. All rights reserved.
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -649,6 +649,43 @@ test_ec_flash_presence() {
   fi
 }
 
+# Prints the two byte hex code of the matched char or
+# exists non-zero on timeout.  It reads from the current tty.
+# To override, call it as follows,
+#   match_char_timeout args < "$STDOUT"
+#
+# Arguments: time_in_seconds two_byte_hex_match_1 two_byte_hex_match_2 ...
+match_char_timeout() {
+  local delay_secs="$1"
+  shift
+
+  local input=''
+  local match=''
+  local start_time=$(date +%s)
+  local stop_time=$((start_time + delay_secs))
+  local tty_config=$(stty -g)
+  stty raw -echo
+  while [ $delay_secs -gt 0 ]; do
+    input=$(timeout -s KILL ${delay_secs}s head -c 1)
+    [ $? -eq 137 ] && break  # Timed out.
+    input=$(printf "%02x" "'$input")
+    for char in "$@"; do
+      if [ "$input" = "$char" ]; then
+        match="$input"
+        break
+      fi
+    done
+    [ -n "$match" ] && break
+    delay_secs=$((stop_time - $(date +%s) ))
+  done
+  # Restores the tty's settings.
+  stty $tty_config
+
+  [ -z "$match" ] && return 1
+  printf "$match"
+  return 0
+}
+
 #
 # factory_install.sh implements two operations for assembly line
 # operators: install (obviously) and reset.
@@ -689,12 +726,21 @@ main() {
   if [ -n "$install_from_omaha" ]; then
     colorize "yellow"
     log "Waiting for ethernet connectivity to install"
-    log "Or disable developer mode to factory reset."
+    log "Or press Ctrl-R to factory reset."
+
     while true; do
       if check_ethernet_status; then
         break
-      elif [ "$(crossystem devsw_cur)" = "0" ]; then
-        factory_reset
+      # devsw_cur doesn't work on Parrot now, and if it boots from recovery,
+      # the devsw_* are all reset.
+      # TODO(yongjaek): When the virtual switches are fixed in crossystem, it
+      # should be reverted.
+      elif [ "$(crossystem devsw_boot)" = "1" \
+             -o "$(crossystem recoverysw_boot)" = "1" ]; then
+        local input=$(match_char_timeout 1 12 < "$TTY")
+        if [ "$input" = "12" ]; then
+          factory_reset
+        fi
       else
         sleep 1
       fi

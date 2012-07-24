@@ -42,6 +42,9 @@ start tcsd
 dd bs=4M count=1 if=/dev/zero of=${STATE_DEV}
 /sbin/mkfs.ext4 "$STATE_DEV"
 
+# This should be executed only for keyboard-controlled recovery/developer mode.
+crossystem disable_dev_request=1
+
 # Do any board specific resetting here.
 # board_factory_reset.sh will be installed by the board overlay if necessary.
 BOARD_RESET=/usr/sbin/board_factory_reset.sh
