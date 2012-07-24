@@ -1,6 +1,6 @@
 #!/bin/sh -ex
 
-# Copyright (c) 2011 The Chromium OS Authors. All rights reserved.
+# Copyright (c) 2012 The Chromium OS Authors. All rights reserved.
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -32,6 +32,7 @@ TTY="/dev/tty1"
 # Global variables
 DST_DRIVE=""
 EC_PRESENT=0
+DEVSW_PRESENT=1
 
 # Starting
 # Change color in tty1 by ANSI escape sequence code
@@ -454,6 +455,11 @@ factory_on_complete() {
 }
 
 factory_reset() {
+  # Turn off developer mode on devices without physical developer switch.
+  if [ $DEVSW_PRESENT -eq 0 ]; then
+    crossystem disable_dev_request=1
+  fi
+
   log "Performing factory reset"
   if ! /usr/sbin/factory_reset.sh; then
     die "Factory reset failed."
@@ -649,6 +655,52 @@ test_ec_flash_presence() {
   fi
 }
 
+test_devsw_presence() {
+  if crossystem devsw_cur 1>&2; then
+    log "Physical developer switch is present"
+  else
+    DEVSW_PRESENT=0
+    log "Physical developer switch is not present"
+  fi
+}
+
+# Prints the two byte hex code of the matched char or
+# exists non-zero on timeout.  It reads from the current tty.
+# To override, call it as follows,
+#   match_char_timeout args < "$STDOUT"
+#
+# Arguments: time_in_seconds two_byte_hex_match_1 two_byte_hex_match_2 ...
+match_char_timeout() {
+  local delay_secs="$1"
+  shift
+
+  local input=''
+  local match=''
+  local start_time=$(date +%s)
+  local stop_time=$((start_time + delay_secs))
+  local tty_config=$(stty -g)
+  stty raw -echo
+  while [ $delay_secs -gt 0 ]; do
+    input=$(timeout -s KILL ${delay_secs}s head -c 1)
+    [ $? -eq 137 ] && break  # Timed out.
+    input=$(printf "%02x" "'$input")
+    for char in "$@"; do
+      if [ "$input" = "$char" ]; then
+        match="$input"
+        break
+      fi
+    done
+    [ -n "$match" ] && break
+    delay_secs=$((stop_time - $(date +%s) ))
+  done
+  # Restores the tty's settings.
+  stty $tty_config
+
+  [ -z "$match" ] && return 1
+  printf "$match"
+  return 0
+}
+
 #
 # factory_install.sh implements two operations for assembly line
 # operators: install (obviously) and reset.
@@ -687,14 +739,26 @@ main() {
   overrides
 
   if [ -n "$install_from_omaha" ]; then
+    test_devsw_presence
+
     colorize "yellow"
     log "Waiting for ethernet connectivity to install"
-    log "Or disable developer mode to factory reset."
+    if [ $DEVSW_PRESENT -eq 1 ]; then
+      log "Or disable developer mode to factory reset."
+    elif [ $DEVSW_PRESENT -eq 0 ]; then
+      log "Or press Ctrl-R to factory reset."
+    fi
+
     while true; do
       if check_ethernet_status; then
         break
-      elif [ "$(crossystem devsw_cur)" = "0" ]; then
+      elif [ $DEVSW_PRESENT -eq 1 -a "$(crossystem devsw_cur)" = "0" ]; then
         factory_reset
+      elif [ $DEVSW_PRESENT -eq 0 ]; then
+        local input=$(match_char_timeout 1 12 < "$TTY")
+        if [ "$input" = "12" ]; then
+          factory_reset
+        fi
       else
         sleep 1
       fi
