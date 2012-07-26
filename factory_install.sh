@@ -651,16 +651,21 @@ test_ec_flash_presence() {
     EC_PRESENT=1
     log "EC flash is present"
   else
+    EC_PRESENT=0
     log "EC flash is not present or supported"
   fi
 }
 
 test_devsw_presence() {
-  if crossystem devsw_cur 1>&2; then
+  local VBSD_HONOR_VIRT_DEV_SWITCH="0x400"
+  local vdat_flags="$(crossystem vdat_flags || echo 0)"
+
+  if [ "$((vdat_flags & VBSD_HONOR_VIRT_DEV_SWITCH))" = "0" ]; then
+    DEVSW_PRESENT=1
     log "Physical developer switch is present"
   else
     DEVSW_PRESENT=0
-    log "Physical developer switch is not present"
+    log "Using virtual developer switch (no physical switch)"
   fi
 }
 
@@ -727,6 +732,7 @@ main() {
   colorize "green"
 
   test_ec_flash_presence
+  test_devsw_presence
 
   reset_chromeos_device
 
@@ -739,7 +745,6 @@ main() {
   overrides
 
   if [ -n "$install_from_omaha" ]; then
-    test_devsw_presence
 
     colorize "yellow"
     log "Waiting for ethernet connectivity to install"
