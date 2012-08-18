@@ -647,13 +647,8 @@ test_ec_flash_presence() {
   # If "flashrom -p internal:bus=lpc --get-size" command succeeds (returns 0),
   # then EC flash chip is present in system. Otherwise, assume EC flash is not
   # present or supported.
-  if flashrom -p internal:bus=lpc --get-size 1>&2; then
-    EC_PRESENT=1
-    log "EC flash is present"
-  else
-    EC_PRESENT=0
-    log "EC flash is not present or supported"
-  fi
+  EC_PRESENT=0
+  log "Hack: leave EC alone to work around the wp-disable issue"
 }
 
 test_devsw_presence() {
