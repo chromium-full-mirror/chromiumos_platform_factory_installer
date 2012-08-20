@@ -701,8 +701,6 @@ match_char_timeout() {
 #
 
 main() {
-  local tty_config=$(stty -g)
-
   if [ "$(id -u)" -ne 0 ]; then
     echo "You must run this as root."
     exit 1
@@ -731,9 +729,6 @@ main() {
     log "Or press Ctrl-R to factory reset."
 
     while true; do
-      # Ensure to restore the tty's settings.
-      stty $tty_config
-
       if check_ethernet_status; then
         break
       # devsw_cur doesn't work on Parrot now, and if it boots from recovery,
