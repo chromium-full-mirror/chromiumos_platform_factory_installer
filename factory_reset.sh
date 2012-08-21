@@ -22,7 +22,27 @@ else
 fi
 
 if [ "$ARCH" = "INTEL" ]; then
-  STATE_DEV="/dev/sda1"
+  # This is a Parrot specific issue and applied on Parrot factory branch only.
+  # On Parrot, the internal storage(HDD) is recognized as sdb instead of sda
+  # when it boots from USB memory like factory install or recovery. So before
+  # wiping the stateful partition, we should check if it is removable or not.
+  # If HDD is recognized first, then it will be sda, but if USB memory first,
+  # then HDD will be sdb.
+  #
+  # Prevent writing to removable devices. Try sda and then try sdb.
+  STATE_DEV="/dev/sda"
+  REMOVABLE="/sys/block/$(basename $STATE_DEV)/removable"
+  if [ -f "$REMOVABLE" ] && [ "$(cat $REMOVABLE)" = 1 ]; then
+    echo "Cannot install to a removable device ($STATE_DEV)."
+    STATE_DEV="/dev/sdb"
+    REMOVABLE="/sys/block/$(basename $STATE_DEV)/removable"
+    if [ -f "$REMOVABLE" ] && [ "$(cat $REMOVABLE)" = 1 ]; then
+      echo "Cannot install to a removable device ($STATE_DEV)."
+      echo "Cannot find internal storage."
+      exit 1
+    fi
+  fi
+  STATE_DEV="$STATE_DEV"1
 elif [ "$ARCH" = "ARM" ]; then
   STATE_DEV="/dev/mmcblk0p1"
 else
