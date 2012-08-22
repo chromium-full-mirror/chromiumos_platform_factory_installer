@@ -62,11 +62,6 @@ start tcsd
 dd bs=4M count=1 if=/dev/zero of=${STATE_DEV}
 /sbin/mkfs.ext4 "$STATE_DEV"
 
-# For factory BIOS update it should return and complete the process.
-if [ "$1" = "--bios_update" ]; then
-  exit 0
-fi
-
 # This should be executed only for keyboard-controlled recovery/developer mode.
 crossystem disable_dev_request=1
 

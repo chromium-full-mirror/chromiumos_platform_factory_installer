@@ -29,9 +29,6 @@ OMAHA="$(findLSBValue CHROMEOS_AUSERVER)"
 # Override this with console device for I/O
 TTY="/dev/tty1"
 
-# Factory PC BIOS at rootfs
-FACTORY_BIOS_PATH="/lib/firmware/factory_bios.bin"
-
 # Global variables
 DST_DRIVE=""
 EC_PRESENT=0
@@ -467,27 +464,6 @@ factory_reset() {
   exit_success
 }
 
-factory_bios_update() {
-  log "Updating to factory BIOS"
-
-  if [ ! -s "$FACTORY_BIOS_PATH" ]; then
-    die "No factory BIOS file exists."
-  fi
-
-  if ! /usr/sbin/factory_reset.sh --bios_update; then
-    die "Factory reset failed."
-  fi
-
-  log "Disabling write-protect"
-  clear_fwwp
-
-  log "Writing factory BIOS ROM to SPI flash"
-  flashrom -p internal:bus=spi -w $FACTORY_BIOS_PATH
-
-  log "Done."
-  exit_success
-}
-
 factory_install_usb() {
   local i=""
   local src_offset="$(findLSBValue FACTORY_INSTALL_USB_OFFSET)"
@@ -746,10 +722,7 @@ main() {
   if [ -n "$install_from_omaha" ]; then
     colorize "yellow"
     log "Waiting for ethernet connectivity to install"
-    log "Or press Ctrl-R to factory reset"
-    if [ "$(crossystem wpsw_cur)" = "0" ]; then
-      log "Or press Ctrl-U to update to factory BIOS"
-    fi
+    log "Or press Ctrl-R to factory reset."
 
     while true; do
       if check_ethernet_status; then
@@ -760,11 +733,9 @@ main() {
       # should be reverted.
       elif [ "$(crossystem devsw_boot)" = "1" \
              -o "$(crossystem recoverysw_boot)" = "1" ]; then
-        local input=$(match_char_timeout 1 12 15 < "$TTY")
+        local input=$(match_char_timeout 1 12 < "$TTY")
         if [ "$input" = "12" ]; then
           factory_reset
-        elif [ "$input" = "15" ] && [ "$(crossystem wpsw_cur)" = "0" ]; then
-          factory_bios_update
         fi
       else
         sleep 1
