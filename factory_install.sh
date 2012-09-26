@@ -269,16 +269,11 @@ lightup_screen() {
 prepare_disk() {
   log "Factory Install: Setting partition table"
 
-  local gpt_layout="/root/.gpt_layout"
   local pmbr_code="/root/.pmbr_code"
-  local inst_flags="--dst $DST_DRIVE --skip_rootfs --yes"
-
-  # In current design, we need both gpt layout and "pmbr code" always generated.
-  [ -s $gpt_layout ] || die "Missing $gpt_layout; please rebuild image."
   [ -r $pmbr_code ] || die "Missing $pmbr_code; please rebuild image."
-  inst_flags="$inst_flags --gpt_layout $gpt_layout --pmbr_code $pmbr_code"
 
-  /usr/sbin/chromeos-install $inst_flags >>"$MEMENTO_AU_LOG" 2>&1
+  . "/usr/sbin/write_gpt.sh"
+  write_base_table "${DST_DRIVE}" "${pmbr_code}" >>"$MEMENTO_AU_LOG" 2>&1
 
   # Informs OS of partition table changes. The autoupdater has trouble with loop
   # devices.
