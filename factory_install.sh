@@ -185,11 +185,6 @@ reset_chromeos_device() {
     log "Warning: NVData not cleared."
   fi
 
-  if grep cros_netboot /proc/cmdline; then
-    log "Device network booted."
-    return
-  fi
-
   if crossystem "mainfw_type?nonchrome"; then
     # Non-ChromeOS firmware devices can stop now.
     log "Device running Non-ChromeOS firmware."
