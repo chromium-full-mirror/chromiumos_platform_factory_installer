@@ -33,6 +33,7 @@ TTY="/dev/tty1"
 DST_DRIVE=""
 EC_PRESENT=0
 DEVSW_PRESENT=1
+VERIFY_RELEASE_PARTITION=0
 
 # Starting
 # Change color in tty1 by ANSI escape sequence code
@@ -470,6 +471,23 @@ factory_reset() {
   exit_success
 }
 
+check_verify_release_partition() {
+  local mount_point=$(mktemp -d)
+  # Check if there is the flag in stateful partition
+  local src_partition="$(make_partition_dev $src_drive $DST_STATE_PART)"
+  mount "$src_partition" "$mount_point"
+  local flag="$mount_point/.verify_release_partition"
+  if [ -e "$flag" ]; then
+    VERIFY_RELEASE_PARTITION=1
+    log "Verify release partition"
+  else
+    VERIFY_RELEASE_PARTITION=0
+    log "No need to verify release partition"
+  fi
+  umount "$mount_point" || true
+  rmdir "$mount_point" || true
+}
+
 factory_install_usb() {
   local i=""
   local src_offset="$(findLSBValue FACTORY_INSTALL_USB_OFFSET)"
@@ -526,6 +544,11 @@ factory_install_usb() {
       dd $dd_param of="$dst" iflag=fullblock oflag=dsync
   done
   colorize "green"
+
+  check_verify_release_partition
+  if [ "$VERIFY_RELEASE_PARTITION" -ne 0 ]; then
+    run_postinst "$(make_partition_dev "$DST_DRIVE" "$DST_RELEASE_PART")"
+  fi
 
   # Disable release partition and activate factory partition
   disable_release_partition
