@@ -265,6 +265,11 @@ lightup_screen() {
   fi
 }
 
+load_modules() {
+  # Required kernel modules might not be loaded. Load them now.
+  modprobe i2c-dev || true
+}
+
 prepare_disk() {
   log "Factory Install: Setting partition table"
 
@@ -722,6 +727,8 @@ main() {
 
   log "Starting Factory Installer."
   lightup_screen
+
+  load_modules
 
   colorize "green"
 
