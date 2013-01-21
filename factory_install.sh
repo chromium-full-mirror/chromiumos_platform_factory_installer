@@ -592,12 +592,14 @@ factory_install_omaha() {
       extra_arg="$extra_arg --omaha_url=$OMAHA"
     fi
 
+    stop udev
     return_code=0
     result="$(IS_FACTORY_INSTALL=1 \
       /opt/google/memento_updater/memento_updater.sh \
       --dst_partition "$dst" --kernel_partition "$kpart" \
       --allow_removable_boot $channel_arg $dst_arg $extra_arg)" ||
       return_code="$?"
+    start udev
 
     if [ "$i" = "RELEASE" ]; then
       disable_release_partition
