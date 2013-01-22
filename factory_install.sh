@@ -550,9 +550,9 @@ factory_install_omaha() {
   COMPLETE_CHANNEL_ARG='--force_track=complete-channel'
 
   # Special channels for execution
-  DST_FIRMWARE_PART="$(mktemp --tmpdir "fw_XXXXXXXX")"
-  DST_HWID_PART="$(mktemp --tmpdir "hwid_XXXXXXXX")"
-  DST_COMPLETE_PART="$(mktemp --tmpdir "complete_XXXXXXXX")"
+  DST_FIRMWARE_PART="$(mktemp "/tmp/fw_XXXXXXXX")"
+  DST_HWID_PART="$(mktemp "/tmp/hwid_XXXXXXXX")"
+  DST_COMPLETE_PART="$(mktemp "/tmp/complete_XXXXXXXX")"
 
   # Install the partitions
   for i in EFI OEM STATE RELEASE FACTORY FIRMWARE HWID COMPLETE; do
@@ -742,6 +742,11 @@ main() {
     install_from_omaha=""
   fi
 
+  local netboot_ramfs=""
+  if [ "$(findLSBValue NETBOOT_RAMFS)" = "1" ]; then
+    netboot_ramfs="1"
+  fi
+
   # Check for any configuration overrides.
   overrides
 
@@ -756,6 +761,13 @@ main() {
     fi
 
     while true; do
+      if [ -n "$netboot_ramfs" ]; then
+        # For initramfs network boot, there is no upstart job. We have to
+        # bring up network interface and get IP address from DHCP on our own.
+        # Since network may not be ready, ignore error if any.
+        ifconfig eth0 up || true
+        udhcpc -t 5 -f -q -s /etc/udhcpc.script || true
+      fi
       if check_ethernet_status; then
         break
       elif [ $DEVSW_PRESENT -eq 1 -a "$(crossystem devsw_cur)" = "0" ]; then
