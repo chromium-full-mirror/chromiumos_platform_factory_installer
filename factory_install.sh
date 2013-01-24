@@ -33,6 +33,7 @@ TTY="/dev/tty1"
 DST_DRIVE=""
 EC_PRESENT=0
 DEVSW_PRESENT=1
+NETBOOT_RAMFS=""
 
 # Starting
 # Change color in tty1 by ANSI escape sequence code
@@ -381,6 +382,34 @@ run_postinst() {
   return $result
 }
 
+run_netboot_postinst()
+{
+  # For netboot, handle post-processing channels in chroot in installed
+  # environment.
+  INSTALLED_ROOT="$1"
+  INSTALLED_STATEFUL="$2"
+  HWID_SCRIPT="$3"
+  FIRMWARE_SCRIPT="$4"
+
+  CHROOT_PATH="$(mktemp -d /tmp/chroot_XXXXXXXX)"
+  POST_PROCESS_SCRIPT=/mnt/stateful_partition/netboot_postinst.sh
+  HWID_COPIED_PATH=/mnt/stateful_partition/hwid_bundle.sh
+  FIRMWARE_COPIED_PATH=/mnt/stateful_partition/firmware_install
+  mount -o ro -t ext2 "$INSTALLED_ROOT" "$CHROOT_PATH"
+  mount "$INSTALLED_STATEFUL" "$CHROOT_PATH"/mnt/stateful_partition
+  if [ -s "$HWID_SCRIPT" ]; then
+    cp "$HWID_SCRIPT" "${CHROOT_PATH}${HWID_COPIED_PATH}"
+  fi
+  if [ -s "$FIRMWARE_SCRIPT" ]; then
+    cp "$FIRMWARE_SCRIPT" "${CHROOT_PATH}${FIRMWARE_COPIED_PATH}"
+  fi
+  cp -p /bin/netboot_postinst.sh "${CHROOT_PATH}${POST_PROCESS_SCRIPT}"
+  chroot "$CHROOT_PATH" "$POST_PROCESS_SCRIPT"
+  umount "$CHROOT_PATH"/mnt/stateful_partition || true
+  umount "$CHROOT_PATH" || true
+  sync
+}
+
 run_firmware_update() {
   local install_drive="$1"
   local install_dev=""
@@ -615,20 +644,28 @@ factory_install_omaha() {
   done
 
   # Post-processing channels in self-executable file.
-  if [ -s "$DST_FIRMWARE_PART" ]; then
-    log "Execute firmware-install script"
-    dst="$DST_FIRMWARE_PART"
-    dst_arg="--force --mode=factory_install"
-    if ! sh "$dst" $dst_arg >"$MEMENTO_AU_LOG" 2>&1; then
-      die "Firmware updating failed."
+  if [ -n "$NETBOOT_RAMFS" ]; then
+    run_netboot_postinst \
+      "$(make_partition_dev $DST_DRIVE 3)" \
+      "$(make_partition_dev $DST_DRIVE 1)" \
+      "${DST_HWID_PART}" \
+      "${DST_FIRMWARE_PART}"
+  else
+    if [ -s "$DST_FIRMWARE_PART" ]; then
+      log "Execute firmware-install script"
+      dst="$DST_FIRMWARE_PART"
+      dst_arg="--force --mode=factory_install"
+      if ! sh "$dst" $dst_arg >"$MEMENTO_AU_LOG" 2>&1; then
+        die "Firmware updating failed."
+      fi
     fi
-  fi
-  if [ -s "$DST_HWID_PART" ]; then
-    log "Execute HWID component list updater script"
-    dst="$DST_HWID_PART"
-    dst_arg="$(make_partition_dev $DST_DRIVE $DST_STATE_PART)"
-    if ! sh "$dst" "$dst_arg" >"$MEMENTO_AU_LOG" 2>&1; then
-      die "HWID component list updating failed."
+    if [ -s "$DST_HWID_PART" ]; then
+      log "Execute HWID component list updater script"
+      dst="$DST_HWID_PART"
+      dst_arg="$(make_partition_dev $DST_DRIVE $DST_STATE_PART)"
+      if ! sh "$dst" "$dst_arg" >"$MEMENTO_AU_LOG" 2>&1; then
+        die "HWID component list updating failed."
+      fi
     fi
   fi
 
@@ -742,9 +779,8 @@ main() {
     install_from_omaha=""
   fi
 
-  local netboot_ramfs=""
   if [ "$(findLSBValue NETBOOT_RAMFS)" = "1" ]; then
-    netboot_ramfs="1"
+    NETBOOT_RAMFS="1"
   fi
 
   # Check for any configuration overrides.
@@ -761,7 +797,7 @@ main() {
     fi
 
     while true; do
-      if [ -n "$netboot_ramfs" ]; then
+      if [ -n "$NETBOOT_RAMFS" ]; then
         # For initramfs network boot, there is no upstart job. We have to
         # bring up network interface and get IP address from DHCP on our own.
         # Since network may not be ready, ignore error if any.
@@ -803,7 +839,12 @@ main() {
   # Default action after installation: reboot.
   trap - EXIT
   sleep 3
-  shutdown -r now
+  if [ -n "$NETBOOT_RAMFS" ]; then
+    # There is no 'shutdown' and 'init' in initramfs.
+    busybox reboot -f
+  else
+    shutdown -r now
+  fi
 
   # sleep indefinitely to avoid re-spawning rather than shutting down
   sleep 1d
