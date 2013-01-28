@@ -353,6 +353,20 @@ overrides() {
   override_from_board
 }
 
+bringup_network() {
+  # Probe USB Ethernet devices.
+  local module
+  local module_name
+  for module in $(find /lib/modules/ -name "*.ko"); do
+    module_name="$(basename ${module%.ko})"
+    modprobe ${module_name}
+  done
+
+  # Try to bring up network and get an IP address.
+  ifconfig eth0 up
+  udhcpc -t 5 -f -q -s /etc/udhcpc.script
+}
+
 disable_release_partition() {
   # Release image is not allowed to boot unless the factory test is passed
   # otherwise the wipe and final verification can be skipped.
@@ -800,9 +814,9 @@ main() {
       if [ -n "$NETBOOT_RAMFS" ]; then
         # For initramfs network boot, there is no upstart job. We have to
         # bring up network interface and get IP address from DHCP on our own.
-        # Since network may not be ready, ignore error if any.
-        ifconfig eth0 up || true
-        udhcpc -t 5 -f -q -s /etc/udhcpc.script || true
+        # The network interface may not be ready, so let's ignore any
+        # error here.
+        bringup_network || true
       fi
       if check_ethernet_status; then
         break
