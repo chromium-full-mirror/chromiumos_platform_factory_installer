@@ -759,6 +759,19 @@ match_char_timeout() {
   return 0
 }
 
+init_tsu6721() {
+  ectool i2cwrite 8 0 0x4a 0x20 0x5
+  ectool i2cwrite 8 0 0x4a 0x5 0xfc
+  ectool i2cwrite 8 0 0x4a 0x6 0x7b
+  ectool i2cwrite 8 0 0x4a 0x2 0x1e
+  log "============================================="
+  log "========== Re-plug AC adapter now. =========="
+  log "============================================="
+  while (ectool powerinfo | grep Device | grep -v -q 0x20010) ; do
+    sleep 0.5;
+  done
+}
+
 #
 # factory_install.sh implements two operations for assembly line
 # operators: install (obviously) and reset.
@@ -781,6 +794,9 @@ main() {
 
   log "Starting Factory Installer."
   lightup_screen
+
+  log "Initializing TSU6721."
+  init_tsu6721
 
   load_modules
 
