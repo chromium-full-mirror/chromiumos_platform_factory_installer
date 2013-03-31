@@ -480,6 +480,9 @@ save_omaha_url() {
   mkdir -p "$(dirname "$output_file")"
   echo "FACTORY_OMAHA_URL=$OMAHA" >> "$output_file"
 
+  # Sometimes lsb-factory is not written yet before umount.
+  sync;sync;sync;
+
   umount "$mount_point" || true
   rmdir "$mount_point" || true
 }
