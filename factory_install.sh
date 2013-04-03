@@ -208,28 +208,18 @@ reset_chromeos_device() {
   log "Checking if TPM should be cleared (for version and owner)"
   # To clear TPM, we need it unlocked (only in recovery boot).
   # Booting with USB in developer mode (Ctrl-U) does not work.
-  local tpm_is_cleared=""
-  if ! crossystem "mainfw_type?recovery"; then
-    mainfw_type="$(crossystem mainfw_type)"
-    log " - System was not booted in recovery mode (current: $mainfw_type)."
+  if crossystem "mainfw_type?recovery"; then
+    clear_tpm
   else
-    if ! clear_tpm; then
-      die "Failed to clear TPM. Installation is stopped."
-    else
-      tpm_is_cleared=True
-    fi
-  fi
-
-  if [ -z "$tpm_is_cleared" ]; then
+    mainfw_type="$(crossystem mainfw_type)"
     colorize "yellow"
-    log "
+    log " - System was not booted in recovery mode (current: $mainfw_type).
 
     WARNING: TPM won't be cleared. To enforce clearing TPM, make sure you are
     using correct image signed with same key (MP, Pre-MP, or DEV), turn on
     developer switch if you haven't, then hold recovery button and reboot the
     system again.  Ctrl-U won't clear TPM.
     "
-
     # Alert for a while
     sleep 3
   fi
