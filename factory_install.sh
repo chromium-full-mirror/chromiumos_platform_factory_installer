@@ -76,6 +76,10 @@ die() {
   exit 1
 }
 
+config_tty() {
+  stty -F "$TTY" opost
+}
+
 clear_fwwp() {
   log "Firmware Write Protect disabled, clearing status registers."
   if [ $EC_PRESENT -eq 1 ]; then
@@ -726,8 +730,9 @@ match_char_timeout() {
   local tty_config=$(stty -g)
   stty raw -echo
   while [ $delay_secs -gt 0 ]; do
-    input=$(timeout -s KILL ${delay_secs}s head -c 1)
-    [ $? -eq 137 ] && break  # Timed out.
+    local ret_code=0
+    input=$(timeout -s KILL ${delay_secs}s head -c 1) || ret_code="$?"
+    [ $ret_code -eq 137 ] && break  # Timed out.
     input=$(printf "%02x" "'$input")
     for char in "$@"; do
       if [ "$input" = "$char" ]; then
@@ -739,7 +744,7 @@ match_char_timeout() {
     delay_secs=$((stop_time - $(date +%s) ))
   done
   # Restores the tty's settings.
-  stty $tty_config
+  stty "$tty_config"
 
   [ -z "$match" ] && return 1
   printf "$match"
@@ -765,6 +770,8 @@ main() {
     echo "You must run this as root."
     exit 1
   fi
+
+  config_tty
 
   log "Starting Factory Installer."
   lightup_screen
