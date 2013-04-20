@@ -5,6 +5,7 @@
 # found in the LICENSE file.
 
 . "$(dirname "$0")/chromeos-common.sh"
+. "$(dirname "$0")/ping_shopfloor.sh"
 . "/opt/google/memento_updater/memento_updater_logging.sh"
 . "/opt/google/memento_updater/find_omaha.sh"
 
@@ -575,6 +576,9 @@ factory_install_omaha() {
   local return_code=""
   local dst=""
   local dst_arg=""
+  local src_url=""
+  local src_checksum=""
+  local ping_result=""
 
   # Channels defined by memento updater
   FACTORY_CHANNEL_ARG='--force_track=factory-channel'
@@ -590,6 +594,12 @@ factory_install_omaha() {
   DST_FIRMWARE_PART="$(mktemp "/tmp/fw_XXXXXXXX")"
   DST_HWID_PART="$(mktemp "/tmp/hwid_XXXXXXXX")"
   DST_COMPLETE_PART="$(mktemp "/tmp/complete_XXXXXXXX")"
+
+  # Ping shopfloor server
+  ping_result=$(ping_shopfloor 2>/dev/null) || return_code="$?"
+  if [ "$return_code" = "" ]; then
+    eval "$ping_result"
+  fi
 
   # Install the partitions
   for i in EFI OEM STATE RELEASE FACTORY FIRMWARE HWID COMPLETE; do
@@ -627,6 +637,13 @@ factory_install_omaha() {
 
     if [ -n "$OMAHA" ]; then
       extra_arg="$extra_arg --omaha_url=$OMAHA"
+    fi
+
+    if [ "$SHOPFLOOR_INSTALL" = "1" ]; then
+      src_url="$(eval 'echo $SRC_'${i}'_URL')"
+      src_checksum="$(eval 'echo $SRC_'${i}'_CHECKSUM')"
+      extra_arg="$extra_arg --install_url=$src_url"
+      extra_arg="$extra_arg --install_url_checksum=$src_checksum"
     fi
 
     return_code=0
