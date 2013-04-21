@@ -606,7 +606,7 @@ factory_install_omaha() {
 
   # Ping shopfloor server
   ping_result=$(ping_shopfloor 2>/dev/null) || return_code="$?"
-  if [ "$return_code" = "0" ]; then
+  if [ "$return_code" = "" ]; then
     eval "$ping_result"
   fi
 
@@ -650,9 +650,9 @@ factory_install_omaha() {
 
     if [ "$SHOPFLOOR_INSTALL" = "1" ]; then
       src_url="$(eval 'echo $SRC_'${i}'_URL')"
-      src_checksum="$(eval 'echo $_SRC_'${i}'_CHECKSUM')"
-      extra_arg="$extra_arg --install_url $src_url " \
-                "--install_url_checksum $src_checksum"
+      src_checksum="$(eval 'echo $SRC_'${i}'_CHECKSUM')"
+      extra_arg="$extra_arg --install_url=$src_url"
+      extra_arg="$extra_arg --install_url_checksum=$src_checksum"
     fi
 
     return_code=0
