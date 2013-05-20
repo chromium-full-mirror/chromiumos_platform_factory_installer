@@ -85,7 +85,7 @@ ping_shopfloor() {
     # Remove leading whitespaces
     line=$(echo $line | sed -e 's/^[ \t]*//')
     # Skip comment and empty lines
-    [ -n "$(echo $line | grep -E $'^#')" -o -z "$line" ] && continue
+    [ -n "$(echo $line | grep -E '^#')" -o -z "$line" ] && continue
     # Split channel, file, and hash
     channel_name=$(echo $line | cut -d':' -f1)
     channel_file=$(echo $line | cut -d':' -f2)
