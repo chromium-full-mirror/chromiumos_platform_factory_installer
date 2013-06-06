@@ -771,23 +771,6 @@ match_char_timeout() {
   return 0
 }
 
-init_tps65090() {
-  ectool i2cwrite 8 0 0x90 0x5 0x3e
-  ectool i2cwrite 8 0 0x90 0x6 0x5e
-  ectool i2cwrite 8 0 0x90 0x7 0xbe
-  ectool i2cwrite 8 0 0x90 0x8 0xfe
-  ectool i2cwrite 8 0 0x90 0x9 0xff
-  # log "============================================="
-  # log "========== Re-plug AC adapter now. =========="
-  # log "============================================="
-  # while (ectool powerinfo | grep Device | grep -v -q 0x0) ; do
-  #   sleep 0.5;
-  # done
-  # while (ectool powerinfo | grep Device | grep -v -q 0x20010) ; do
-  #   sleep 0.5;
-  # done
-}
-
 #
 # factory_install.sh implements two operations for assembly line
 # operators: install (obviously) and reset.
@@ -812,9 +795,6 @@ main() {
 
   log "Starting Factory Installer."
   lightup_screen
-
-  log "Initializing TPS65090."
-  init_tps65090
 
   load_modules
 
