@@ -510,6 +510,15 @@ factory_reset() {
   exit_success
 }
 
+factory_disk_wipe() {
+  log "Performing factory disk wipe"
+  if ! /usr/sbin/factory_reset.sh wipe; then
+    die "Factory disk wipe failed."
+  fi
+  log "Done."
+  exit_success
+}
+
 factory_install_usb() {
   local i=""
   local src_offset="$(findLSBValue FACTORY_INSTALL_USB_OFFSET)"
@@ -840,9 +849,26 @@ main() {
       elif [ $DEVSW_PRESENT -eq 1 -a "$(crossystem devsw_cur)" = "0" ]; then
         factory_reset
       elif [ $DEVSW_PRESENT -eq 0 ]; then
-        local input=$(match_char_timeout 1 12 < "$TTY")
+        local input=$(match_char_timeout 1 12 17 < "$TTY")
         if [ "$input" = "12" ]; then
           factory_reset
+        elif [ "$input" = "17" ]; then
+          log "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+          log "!! You are about to wipe the entire internal disk.       !!"
+          log "!! After this, the device will not boot anymore, and you !!"
+          log "!! need a recovery USB disk to bring it back to life.    !!"
+          log "!!                                                       !!"
+          log "!! If you don't know what this is, STOP here. Wait for   !!"
+          log "!! 10 seconds and disk wipe will be cancelled.           !!"
+          log "!!                                                       !!"
+          log "!! If you DO want to wipe the disk, press Ctrl-Y now.    !!"
+          log "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+          local input=$(match_char_timeout 10 19 < "$TTY")
+          if [ "$input" = "19" ]; then
+            factory_disk_wipe
+          else
+            log "...Disk wipe cancelled."
+          fi
         fi
       else
         sleep 1

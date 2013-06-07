@@ -22,10 +22,13 @@ else
 fi
 
 if [ "$ARCH" = "INTEL" ]; then
+  DEV="/dev/sda"
   STATE_DEV="/dev/sda1"
 elif [ "$ARCH" = "ARM" ]; then
+  DEV="/dev/mmcblk0"
   STATE_DEV="/dev/mmcblk0p1"
 else
+  DEV=""
   STATE_DEV=""
 fi
 if [ ! -b "$STATE_DEV" ]; then
@@ -37,10 +40,15 @@ fi
 # as we are in developer/recovery mode.
 start tcsd
 
-# Just wipe the start of the partition and remake the fs on
-# the stateful partition.
-dd bs=4M count=1 if=/dev/zero of=${STATE_DEV}
-/sbin/mkfs.ext4 "$STATE_DEV"
+if [ "$#" = "1" -a "$1" = "wipe" ]; then
+  # Nuke the disk
+  pv -tpr -B 4M /dev/zero 2>/dev/tty1 | dd bs=4M of=${DEV}
+else
+  # Just wipe the start of the partition and remake the fs on
+  # the stateful partition.
+  dd bs=4M count=1 if=/dev/zero of=${STATE_DEV}
+  /sbin/mkfs.ext4 "$STATE_DEV"
+fi
 
 # Do any board specific resetting here.
 # board_factory_reset.sh will be installed by the board overlay if necessary.
