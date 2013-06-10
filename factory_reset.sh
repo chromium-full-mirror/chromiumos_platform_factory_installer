@@ -31,19 +31,25 @@ else
   DEV=""
   STATE_DEV=""
 fi
-if [ ! -b "$STATE_DEV" ]; then
-  echo "Failed to find root SSD."
-  exit 1
-fi
 
 # Tcsd will bring up the tpm and de-own it,
 # as we are in developer/recovery mode.
 start tcsd
 
 if [ "$#" = "1" -a "$1" = "wipe" ]; then
+  if [ ! -b "$DEV" ]; then
+    echo "Failed to find root disk."
+    exit 1
+  fi
   # Nuke the disk
-  pv -tpr -B 4M /dev/zero 2>/dev/tty1 | dd bs=4M of=${DEV}
+  DEV_SIZE=$(blockdev --getsize64 ${DEV})
+  pv -etpr -s ${DEV_SIZE} -B 8M /dev/zero 2>/dev/tty1 | \
+      dd bs=8M of=${DEV} oflag=dsync iflag=fullblock
 else
+  if [ ! -b "$STATE_DEV" ]; then
+    echo "Failed to find stateful partition."
+    exit 1
+  fi
   # Just wipe the start of the partition and remake the fs on
   # the stateful partition.
   dd bs=4M count=1 if=/dev/zero of=${STATE_DEV}
