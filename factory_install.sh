@@ -30,9 +30,6 @@ OMAHA="$(findLSBValue CHROMEOS_AUSERVER)"
 # Override this with console device for I/O
 TTY="/dev/tty1"
 
-# Set to 1 to skip installing release image
-SKIP_RELEASE_IMAGE=1
-
 # Global variables
 DST_DRIVE=""
 EC_PRESENT=0
@@ -610,12 +607,6 @@ factory_install_omaha() {
   DST_HWID_PART="$(mktemp "/tmp/hwid_XXXXXXXX")"
   DST_COMPLETE_PART="$(mktemp "/tmp/complete_XXXXXXXX")"
 
-  if [ "$SKIP_RELEASE_IMAGE" = "1" ]; then
-    PART_TO_INSTALL="EFI OEM STATE FACTORY FIRMWARE HWID COMPLETE"
-  else
-    PART_TO_INSTALL="EFI OEM STATE RELEASE FACTORY FIRMWARE HWID COMPLETE"
-  fi
-
   # Ping shopfloor server
   ping_result=$(ping_shopfloor 2>/dev/null) || return_code="$?"
   if [ "$return_code" = "" ]; then
@@ -623,7 +614,7 @@ factory_install_omaha() {
   fi
 
   # Install the partitions
-  for i in $PART_TO_INSTALL; do
+  for i in EFI OEM STATE RELEASE FACTORY FIRMWARE HWID COMPLETE; do
     # DST_*_PART can be a numeric partition number or plain file.
     local part="$(eval 'echo $DST_'${i}'_PART')"
 
@@ -674,6 +665,9 @@ factory_install_omaha() {
       --allow_removable_boot $channel_arg $dst_arg $extra_arg)" ||
       return_code="$?"
 
+    if [ "$i" = "RELEASE" ]; then
+      disable_release_partition
+    fi
 
     # Check the result
     if [ "$return_code" != "0" ]; then
@@ -685,7 +679,6 @@ factory_install_omaha() {
       die "AU failed."
     fi
   done
-  disable_release_partition
 
   # Post-processing channels in self-executable file.
   if [ -n "$NETBOOT_RAMFS" ]; then
