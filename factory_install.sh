@@ -26,6 +26,7 @@ BOARD=""
 
 # Override this if we want to install with a different omaha server.
 OMAHA="$(findLSBValue CHROMEOS_AUSERVER)"
+RELEASE_ONLY="$(findLSBValue RELEASE_ONLY)"
 
 # Override this with console device for I/O
 TTY="/dev/tty1"
@@ -615,6 +616,11 @@ factory_install_omaha() {
 
   # Install the partitions
   for i in EFI OEM STATE RELEASE FACTORY FIRMWARE HWID COMPLETE; do
+    if [ "$i" = "FACTORY" -a -n "$RELEASE_ONLY" ]; then
+        # Ignore factory image in release only mode
+        continue
+    fi
+
     # DST_*_PART can be a numeric partition number or plain file.
     local part="$(eval 'echo $DST_'${i}'_PART')"
 
@@ -642,7 +648,10 @@ factory_install_omaha() {
       # Do postinst after update
       extra_arg=""
     fi
-
+    if [ "$i" = "RELEASE" -a -n "$RELEASE_ONLY" ]; then
+      # Do postinst after update in release only mode
+      extra_arg=""
+    fi
     if [ -n "$BOARD" ]; then
       extra_arg="$extra_arg --board=$BOARD"
     fi
@@ -665,7 +674,8 @@ factory_install_omaha() {
       --allow_removable_boot $channel_arg $dst_arg $extra_arg)" ||
       return_code="$?"
 
-    if [ "$i" = "RELEASE" ]; then
+    if [ "$i" = "RELEASE" -a -z "$RELEASE_ONLY" ]; then
+      # Disable release partition when we are not in release only mode.
       disable_release_partition
     fi
 
@@ -673,10 +683,16 @@ factory_install_omaha() {
     if [ "$return_code" != "0" ]; then
       # memento update has encountered a fatal error.
       die "Factory install of target $dst has failed with error $return_code."
-    elif [ "$result" != "UPDATED" -a "$i" = "FACTORY" ]; then
-      # Only updating the primary root/kernel partition is strictly required.
-      # If the omahaserver is configured to not update others that's fine.
-      die "AU failed."
+    elif [ "$result" != "UPDATED" ]; then
+      if [ "$i" = "RELEASE" -a -n "$RELEASE_ONLY"]; then
+        # Only updating the primary root/kernel partition is strictly required.
+        # If the omahaserver is configured to not update others that's fine.
+        # In release only mode, release image is required.
+        die "AU failed."
+      elif [ "$i" = "FACTORY" -a -z "$RELEASE_ONLY"]; then
+        # Otherwise, factory image is required.
+        die "AU failed."
+      fi
     fi
   done
 
@@ -799,7 +815,11 @@ main() {
     echo "You must run this as root."
     exit 1
   fi
-
+  if [ -n "$RELEASE_ONLY" ]; then
+    # Change the partition in release only mode
+    DST_RELEASE_KERNEL_PART=2
+    DST_RELEASE_PART=3
+  fi
   config_tty
 
   log "Starting Factory Installer."
