@@ -483,6 +483,16 @@ save_omaha_url() {
   rmdir "$mount_point" || true
 }
 
+omaha_greetings() {
+  local message="$1"
+  local uuid="$2"
+  if [ -n "$OMAHA" ]; then
+    wget -q "${OMAHA%/update}/greetings/${message}/${uuid}" \
+         -O /dev/null 2>/dev/null
+  fi
+
+}
+
 factory_on_complete() {
   if [ ! -s "$COMPLETE_SCRIPT" ]; then
     return 0
@@ -614,6 +624,12 @@ factory_install_omaha() {
     eval "$ping_result"
   fi
 
+  # Generate the uuid for current install session
+  uuid="$(uuidgen)"
+
+  # Say hello to miniomaha server
+  omaha_greetings "hello" "${uuid}"
+
   # Install the partitions
   for i in EFI OEM STATE RELEASE FACTORY FIRMWARE HWID COMPLETE; do
     if [ "$i" = "FACTORY" -a -n "$RELEASE_ONLY" ]; then
@@ -696,6 +712,9 @@ factory_install_omaha() {
     fi
   done
 
+  # Notify miniomaha server all downloads (including postinst) are completed.
+  omaha_greetings "download_complete" "${uuid}"
+
   # Post-processing channels in self-executable file.
   if [ -n "$NETBOOT_RAMFS" ]; then
     run_netboot_postinst \
@@ -725,6 +744,10 @@ factory_install_omaha() {
   # Update omaha information into stateful partition.
   save_omaha_url "$(make_partition_dev $DST_DRIVE $DST_STATE_PART)" \
     >"$MEMENTO_AU_LOG" 2>&1 || die "Failed to save OMAHA server information."
+
+  # After post processing, notify miniomaha server a installation session
+  # has been successfully completed.
+  omaha_greetings "goodbye" "${uuid}"
 
   if [ -s "$DST_COMPLETE_PART" ]; then
     log "Found completion script."
