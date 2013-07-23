@@ -413,9 +413,9 @@ run_firmware_update() {
   if ! check_fwwp; then
     # CPU check is needed only when flashing the RO portion of firmware
     local firmware_version=`cat $updater | grep -m 1 "TARGET_FWID" | sed -e 's/.*2685.\([0-9][0-9]\).0.*/\1/'`
-    local cpu_type=`dmidecode | grep -m 1 "Intel(R)" | sed -e 's/.* CPU \([0-9]*.*\) @ .*/\1/'`
+    local cpu_type=$(crossystem platform_family)
     case "$cpu_type" in
-      "847")
+      "SandyBridge")
         if [ "$firmware_version" -ne "37" ]; then
           log "This is a SandyBridge device."
           log "Please use firmware version Google_Parrot.2685.37.0."
@@ -423,7 +423,7 @@ run_firmware_update() {
           die "Killing the firmware updater"
         fi
         ;;
-      "1007U")
+      "IvyBridge")
         if [ "$firmware_version" -lt "54" ]; then
           log "This is an IvyBridge device."
           log "Please use firmware version >= Google_Parrot.2685.54.0."
@@ -638,10 +638,10 @@ factory_install_omaha() {
   if [ -s "$DST_FIRMWARE_PART" ]; then
     log "Execute firmware-install script"
     local firmware_version=`cat $DST_FIRMWARE_PART | grep -m 1 "TARGET_FWID" | sed -e 's/.*2685.\([0-9][0-9]\).0.*/\1/'`
-    local cpu_type=`dmidecode | grep -m 1 "Intel(R)" | sed -e 's/.* CPU \([0-9]*.*\) @ .*/\1/'`
+    local cpu_type=$(crossystem platform_family)
     # Checking that the correct RO firmware is being flashed based on CPU
     case "$cpu_type" in
-      "847")
+      "SandyBridge")
         if [ "$firmware_version" -ne "37" ]; then
           log "This is a SandyBridge device."
           log "Please use firmware version Google_Parrot.2685.37.0."
@@ -649,7 +649,7 @@ factory_install_omaha() {
           die "Killing the firmware updater"
         fi
         ;;
-      "1007U")
+      "IvyBridge")
         if [ "$firmware_version" -lt "54" ]; then
           log "This is an IvyBridge device."
           log "Please use firmware version >= Google_Parrot.2685.54.0."
