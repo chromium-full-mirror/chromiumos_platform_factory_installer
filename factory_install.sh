@@ -625,7 +625,7 @@ factory_install_omaha() {
   fi
 
   # Generate the uuid for current install session
-  uuid="$(uuidgen)"
+  uuid="$(uuidgen)" || uuid="Not_Applicable"
 
   # Say hello to miniomaha server
   omaha_greetings "hello" "${uuid}"
