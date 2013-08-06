@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 
 #include <fstream>
 #include <iostream>
@@ -47,9 +48,15 @@ string get_output_device(int partition)
   stringstream device_buffer;
   string arch_string(arch);
   if (arch_string.find("x86") != string::npos) {
-    device_buffer << "/dev/sda" << partition;
+    device_buffer << "/dev/sda";
+    if (partition >= 0) {
+      device_buffer << partition;
+    }
   } else if (arch_string.find("arm") != string::npos) {
-    device_buffer << "/dev/mmcblk0p" << partition;
+    device_buffer << "/dev/mmcblk0";
+    if (partition >= 0) {
+      device_buffer << "p" << partition;
+    }
   } else {
     // Fail to detect architecture
     error_exit("Failed to auto detect architecture.");
@@ -100,6 +107,33 @@ bool find_key_value(const string& line, const string& key, string& value)
   return false;
 }
 
+void initialize_partition()
+{
+  // Initialize partition table
+  string pmbr = "/root/.pmbr_code";
+  // Check if pmbr exists
+  if (access(pmbr.c_str(), R_OK) != 0) {
+    error_exit("Missing " + pmbr +", please rebuild image.");
+  }
+
+  string device_name = get_output_device(-1);
+  if (system((". /usr/sbin/write_gpt.sh &&"
+              " write_base_table " + device_name + " " + pmbr).c_str()) != 0) {
+    error_exit("Cannot write partition table.");
+  }
+  cerr << "Reloading partition table changes..."  << endl;
+  sync();
+  if (system(("partprobe " + device_name).c_str()) != 0) {
+    error_exit("Cannot reload partition table.");
+  }
+  cerr << "Make a new stateful partition." << endl;
+  string stateful_partition = get_output_device(kStatefulPartition);
+  if (system(("mkfs.ext4 " + stateful_partition).c_str()) != 0) {
+    error_exit("Cannot make stateful partition.");
+  }
+  cerr << "Done preparing disk." << endl;
+}
+
 string find_board()
 {
   const string kLsbRelease = "/etc/lsb-release";
@@ -120,13 +154,23 @@ string find_board()
   return board;
 }
 
+// The network interface may not be ready, so let's try multiple times here
 void download_config(const string& stateful_mount)
 {
-  if (system(("wget " + kConfigUrl +
-              " -O " + stateful_mount + kConfigPath +
-              " --no-check-certificate").c_str()) != 0) {
-    error_exit("Fail downloading recovery image configuration.");
+  int retry = 10;
+  while (retry-- > 0) {
+    if (system(("wget " + kConfigUrl +
+                " -O " + stateful_mount + kConfigPath +
+                " --no-check-certificate").c_str()) == 0) {
+      // Succeed and retrun
+      return;
+    }
+    cerr << "Connection failed, wait 3 seconds and retry(" << retry <<
+            "times left).";
+    sleep(3);
   }
+  // After 10 tries, return fail
+  error_exit("Fail downloading recovery image configuration.");
 }
 
 void download_image(const string& stateful_mount, const string& board)
@@ -319,6 +363,7 @@ int main()
 {
   string board, stateful_mount;
 
+  initialize_partition();
   stateful_mount = mount_partition(kStatefulPartition);
   board = find_board();
   download_config(stateful_mount);

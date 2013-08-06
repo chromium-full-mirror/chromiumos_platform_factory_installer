@@ -8,7 +8,6 @@ SRC ?= .
 CXXFLAGS ?= -O2
 CXXFLAGS += -Wall
 
-
 all: $(OUT)/recover_from_server
 
 $(OUT)/recover_from_server: $(SRC)/recover_from_server.cc
