@@ -488,7 +488,7 @@ omaha_greetings() {
   local uuid="$2"
   if [ -n "$OMAHA" ]; then
     wget -q "${OMAHA%/update}/greetings/${message}/${uuid}" \
-         -O /dev/null 2>/dev/null
+         -O /dev/null 2>/dev/null || true
   fi
 
 }
