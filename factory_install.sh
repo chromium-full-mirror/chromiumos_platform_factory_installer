@@ -739,6 +739,10 @@ factory_install_omaha() {
       log "Execute firmware-install script"
       dst="$DST_FIRMWARE_PART"
       dst_arg="--force --mode=factory_install"
+      # In release only mode, we want to run firmware updater in recovery mode.
+      if [ -n "$RELEASE_ONLY" ]; then
+        dst_arg="--force --mode=recovery"
+      fi
       if ! sh "$dst" $dst_arg >"$MEMENTO_AU_LOG" 2>&1; then
         die "Firmware updating failed."
       fi
