@@ -505,6 +505,18 @@ factory_on_complete() {
   log "Completion script executed successfully."
 }
 
+disable_dev_switch() {
+  # Turn off developer mode on devices without physical developer switch.
+  if [ $DEVSW_PRESENT -eq 0 ]; then
+    crossystem disable_dev_request=1
+  # When physical switch exists, force user to turn it off.
+  elif [ $DEVSW_PRESENT -eq 1 -a "$(crossystem devsw_cur)" = "1" ]; then
+    while [ "$(crossystem devsw_cur)" = "1" ]; do
+      log "Please turn off developer switch to continue"
+      sleep 5
+    done
+  fi
+}
 factory_reset() {
   # Turn off developer mode on devices without physical developer switch.
   if [ $DEVSW_PRESENT -eq 0 ]; then
@@ -752,6 +764,12 @@ factory_install_omaha() {
   if [ -s "$DST_COMPLETE_PART" ]; then
     log "Found completion script."
     COMPLETE_SCRIPT="$DST_COMPLETE_PART"
+  fi
+
+  # In release only mode, disable developer switch in the end to avoid
+  # entering developer mode after restart.
+  if [ -n "$RELEASE_ONLY" ]; then
+    disable_dev_switch
   fi
 }
 
