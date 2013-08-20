@@ -85,9 +85,9 @@ config_tty() {
 clear_fwwp() {
   log "Firmware Write Protect disabled, clearing status registers."
   if [ $EC_PRESENT -eq 1 ]; then
-    flashrom -p internal:bus=lpc --wp-disable
+    flashrom -p ec --wp-disable
   fi
-  flashrom -p internal:bus=spi --wp-disable
+  flashrom -p host --wp-disable
   log "WP registers should be cleared now"
 }
 
@@ -98,8 +98,8 @@ ensure_fwwp_consistency() {
     return
   fi
 
-  ec_wp="$(flashrom -p internal:bus=lpc --wp-status 2>/dev/null)" || return
-  main_wp="$(flashrom -p internal:bus=spi --wp-status 2>/dev/null)"
+  ec_wp="$(flashrom -p ec --wp-status 2>/dev/null)" || return
+  main_wp="$(flashrom -p host --wp-status 2>/dev/null)"
   ec_wp="$(echo "$ec_wp" | sed -nr 's/WP.*(disabled|enabled).$/\1/pg')"
   main_wp="$(echo "$main_wp" | sed -nr 's/WP.*(disabled|enabled).$/\1/pg')"
   if [ "$ec_wp" != "$main_wp" ]; then
@@ -109,7 +109,7 @@ ensure_fwwp_consistency() {
 }
 
 check_fwwp() {
-  flashrom -p internal:bus=spi --wp-status 2>/dev/null |
+  flashrom -p host --wp-status 2>/dev/null |
     grep -q "write protect is enabled"
 }
 
@@ -778,10 +778,10 @@ factory_install_omaha() {
 }
 
 test_ec_flash_presence() {
-  # If "flashrom -p internal:bus=lpc --get-size" command succeeds (returns 0),
+  # If "flashrom -p ec --get-size" command succeeds (returns 0),
   # then EC flash chip is present in system. Otherwise, assume EC flash is not
   # present or supported.
-  if flashrom -p internal:bus=lpc --get-size 1>&2; then
+  if flashrom -p ec --get-size 1>&2; then
     EC_PRESENT=1
     log "EC flash is present"
   else
