@@ -830,12 +830,14 @@ main() {
 
     colorize "yellow"
     log "Waiting for ethernet connectivity to install"
+    log "For usb install shim, press Ctrl-I to install from mini-Omaha server."
     if [ $DEVSW_PRESENT -eq 1 ]; then
       log "Or disable developer mode to factory reset."
     elif [ $DEVSW_PRESENT -eq 0 ]; then
       log "Or press Ctrl-R to factory reset."
     fi
 
+    input_select_install=""
     while true; do
       if [ -n "$NETBOOT_RAMFS" ]; then
         # For initramfs network boot, there is no upstart job. We have to
@@ -844,13 +846,22 @@ main() {
         # error here.
         bringup_network || true
       fi
-      if check_ethernet_status; then
-        break
-      elif [ $DEVSW_PRESENT -eq 1 -a "$(crossystem devsw_cur)" = "0" ]; then
+      if [ -n "$input_select_install" -o -n "$NETBOOT_RAMFS" ]; then
+        log "Checking network..."
+        if check_ethernet_status; then
+          log "Connected to network."
+          break
+        fi
+      fi
+      if [ $DEVSW_PRESENT -eq 1 -a "$(crossystem devsw_cur)" = "0" ]; then
         factory_reset
       elif [ $DEVSW_PRESENT -eq 0 ]; then
-        local input=$(match_char_timeout 1 12 17 < "$TTY")
-        if [ "$input" = "12" ]; then
+        local input=$(match_char_timeout 1 09 12 17 < "$TTY")
+        # Press Ctrl-I while connected to network to start installation.
+        if [ "$input" = "09" ]; then
+          log "Select to install from mini-Omaha server."
+          input_select_install="1"
+        elif [ "$input" = "12" ]; then
           factory_reset
         elif [ "$input" = "17" ]; then
           log "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
