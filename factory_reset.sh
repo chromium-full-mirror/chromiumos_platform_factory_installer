@@ -9,6 +9,15 @@
 # put the system back into factory fresh/shippable state.
 echo "Factory reset"
 
+# Do any board specific resetting setup here.
+# board_pre_factory_reset.sh will be installed by the board overlay if
+# necessary.
+BOARD_PRE_RESET=/usr/sbin/board_pre_factory_reset.sh
+if [ -x "${BOARD_PRE_RESET}" ]; then
+  echo "Running board specific pre-factory reset: ${BOARD_PRE_RESET}"
+  ${BOARD_PRE_RESET} || exit 1
+fi
+
 # TODO(crosbug:10680): replace arch detection with crossystem?
 if uname -m | grep -q "^i.86\$"; then
   ARCH="INTEL"
