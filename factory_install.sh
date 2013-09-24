@@ -58,7 +58,8 @@ on_die() {
   colorize "red"
   log "
     ERROR: Factory installation has been stopped.
-    Press Ctrl-Alt-F3 (Refresh) to get the detail information."
+    Press Ctrl-Alt-F3 (From USB keyboard) to get the detail information.
+    Other Possible causes: Bad USB drive, Defective SSD, Defective mainboard."
 }
 
 exit_success() {
