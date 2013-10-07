@@ -343,6 +343,31 @@ override_from_board() {
   fi
 }
 
+override_from_tftp() {
+  # Check for Omaha URL from tftp server.
+  # OMAHA is override env variables used when calling memento_updater.
+  local omaha=""
+  local tftp=""
+  local omahaserver_config="omahaserver.conf"
+  local tftp_output=""
+  # Use board specific config if $BOARD is not null.
+  [ -z $BOARD ] || omahaserver_config="omahaserver_$BOARD.conf"
+  tftp_output="/tmp/${omahaserver_config}"
+
+  if tftp="$(find_var tftpserverip)"; then
+    log "override_from_tftp: kernel cmdline tftpserverip $tftp"
+    # Get omahaserver_config from tftp server.
+    # Use busybox tftp command with options: "-g: Get file",
+    # "-r FILE: Remote FILE" and "-l FILE: local FILE".
+    rm -rf "$tftp_output"
+    tftp -g -r $omahaserver_config -l $tftp_output $tftp || true
+    if [ -f $tftp_output ]; then
+      OMAHA="$(cat $tftp_output)"
+      log "override_from_tftp: OMAHA override to $OMAHA"
+    fi
+  fi
+}
+
 overrides() {
   override_from_firmware
   override_from_board
@@ -888,6 +913,9 @@ main() {
         sleep 1
       fi
     done
+
+    # Check for OMAHA override from tftp server.
+    override_from_tftp
 
     # TODO(hungte) how to set time in RMA?
     set_time || die "Please check if the server is configured correctly."
