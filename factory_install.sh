@@ -878,6 +878,22 @@ match_char_timeout() {
   return 0
 }
 
+board_pre_install() {
+  BOARD_PRE_INSTALL=/usr/sbin/board_factory_pre_install.sh
+  if [ -x "${BOARD_PRE_INSTALL}" ]; then
+    echo "Running board specific pre-install: ${BOARD_PRE_INSTALL}"
+    ${BOARD_PRE_INSTALL} || exit 1
+  fi
+}
+
+board_post_install() {
+  BOARD_POST_INSTALL=/usr/sbin/board_factory_post_install.sh
+  if [ -x "${BOARD_POST_INSTALL}" ]; then
+    echo "Running board specific post-install: ${BOARD_POST_INSTALL}"
+    ${BOARD_POST_INSTALL} || exit 1
+  fi
+}
+
 #
 # factory_install.sh implements two operations for assembly line
 # operators: install (obviously) and reset.
@@ -910,6 +926,8 @@ main() {
   load_modules
 
   colorize "green"
+
+  board_pre_install
 
   test_ec_flash_presence
   test_devsw_presence
@@ -997,6 +1015,8 @@ main() {
 
   log "Factory Installer Complete."
   factory_on_complete
+
+  board_post_install
 
   # Default action after installation: reboot.
   trap - EXIT
