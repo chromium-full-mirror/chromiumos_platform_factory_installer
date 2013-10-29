@@ -680,6 +680,9 @@ factory_install_usb() {
       dd $dd_param of="$dst" iflag=fullblock oflag=dsync
   done
 
+  # Run postinst on release partition to validate rootfs and create
+  # verity table.
+  run_postinst "$(make_partition_dev "$DST_DRIVE" "$DST_RELEASE_PART")"
   # Disable release partition and activate factory partition
   disable_release_partition
   run_postinst "$(make_partition_dev "$DST_DRIVE" "$DST_FACTORY_PART")"
