@@ -232,24 +232,42 @@ reset_chromeos_device() {
   ensure_fwwp_consistency
 }
 
+is_fixed_drive() {
+  # Check if a device node is a fixed drive.
+  local dev="$1"
+  [ -b "$dev" ] &&
+    [ "$(cat /sys/block/$(basename $dev)/removable 2>/dev/null)" = "0" ]
+}
+
 get_dst_drive() {
+  # x86 can use either MMC or SSD as boot disk.  If we have internal SD card
+  # slot without USB bridge (/dev/mmcblk0) and SSD drive (/dev/sda) at the same
+  # time, it has to check removable attribute for picking the correct
+  # destination drive.
+  local dev
+  local match_list
+
+  DST_DRIVE=""
   case "$(crossystem arch)" in
     x86 )
-      DST_DRIVE=/dev/sda
+      match_list="/dev/mmcblk0 /dev/sda"
       ;;
     arm )
-      DST_DRIVE=/dev/mmcblk0
+      match_list="/dev/mmcblk0"
       ;;
     * )
       die "Failed to auto detect architecture."
       ;;
   esac
 
-  # Prevent writing to removable devices. (rootdev does not work here)
-  local removable="/sys/block/$(basename $DST_DRIVE)/removable"
-  if [ -f "$removable" ] && [ "$(cat $removable)" = 1 ]; then
-    die "Cannot install to a removable device ($DST_DRIVE)."
-  fi
+  for dev in $match_list; do
+    if is_fixed_drive "$dev"; then
+      DST_DRIVE=$dev
+      break
+    fi
+  done
+
+  [ -n "$DST_DRIVE" ] || die "Cannot find fixed drive from $match_list."
 }
 
 lightup_screen() {
