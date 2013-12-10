@@ -160,30 +160,22 @@ set_time() {
   return 1
 }
 
-list_ethernet_interface() {
-  local candidate
-  local candidates="$(ifconfig | grep 'flags=' | cut -d ':' -f 1)"
-
-  for candidate in $candidates; do
-    # output if it is not a wifi interface
-    if ifconfig $candidate | grep -q 'Ethernet'; then
-      if ! iw $candidate info >/dev/null 2>&1; then
-        echo "$candidate"
-      fi
-    fi
-  done
-}
-
 check_ethernet_status() {
-  local ethernet_interface
-
-  for ethernet_interface in $(list_ethernet_interface); do
-    if ifconfig $ethernet_interface | grep -q "inet "; then
-      log "$(ifconfig $ethernet_interface | grep 'inet ')"
-      return 0
-    fi
+  local link
+  local inet
+  link=$(ip -f link addr | sed 'N;s/\n/ /' | grep -w 'ether' |
+      cut -d ' ' -f 2 | sed 's/://')
+  inet=$(ip -f inet addr | sed 'N;s/\n/ /' | cut -d ' ' -f 2 | sed 's/://')
+  for i in $link; do
+    for j in $inet; do
+      if [ "$i" = "$j" ]; then
+        if ! iw $i info >/dev/null 2>&1; then
+          log "$(ifconfig $i| grep 'inet ')"
+          return 0
+        fi
+      fi
+    done
   done
-
   return 1
 }
 
