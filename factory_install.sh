@@ -162,14 +162,12 @@ set_time() {
 
 list_ethernet_interface() {
   local candidate
-  local candidates="$(ifconfig | grep 'flags=' | cut -d ':' -f 1)"
+  local candidates="$(ifconfig | grep 'Link encap:Ethernet' | cut -d ' ' -f 1)"
 
   for candidate in $candidates; do
     # output if it is not a wifi interface
-    if ifconfig $candidate | grep -q 'Ethernet'; then
-      if ! iw $candidate info >/dev/null 2>&1; then
-        echo "$candidate"
-      fi
+    if ! iw $candidate info >/dev/null 2>&1; then
+      echo "$candidate"
     fi
   done
 }
@@ -178,8 +176,8 @@ check_ethernet_status() {
   local ethernet_interface
 
   for ethernet_interface in $(list_ethernet_interface); do
-    if ifconfig $ethernet_interface | grep -q "inet "; then
-      log "$(ifconfig $ethernet_interface | grep 'inet ')"
+    if ifconfig $ethernet_interface | grep -q "inet addr"; then
+      log "$(ifconfig $ethernet_interface | grep 'inet addr')"
       return 0
     fi
   done
