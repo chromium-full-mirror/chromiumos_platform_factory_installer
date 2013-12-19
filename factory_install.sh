@@ -1,13 +1,30 @@
-#!/bin/sh -ex
+#!/bin/bash
 
-# Copyright (c) 2012 The Chromium OS Authors. All rights reserved.
+# Copyright (c) 2014 The Chromium OS Authors. All rights reserved.
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
+
+set -e
+
+# TTY which will get a copy of bash traces, and at the end a pager to
+# look through the trace if things fail.
+TRACE_TTY=4
+
+# Dump bash trace to /var/log/factory_install.log.
+LOG_FILE=/var/log/factory_install.log
+exec {LOG_FD}>"$LOG_FILE"
+tail -f "$LOG_FILE" > /dev/tty"$TRACE_TTY" &
+export BASH_XTRACEFD="$LOG_FD"
 
 . "$(dirname "$0")/chromeos-common.sh"
 . "$(dirname "$0")/ping_shopfloor.sh"
 . "/opt/google/memento_updater/memento_updater_logging.sh"
 . "/opt/google/memento_updater/find_omaha.sh"
+
+# Tail memento output to both our stdout and the log file, since
+# there's no better way to display of download/install for individual
+# partitions.
+tail -F "$MEMENTO_AU_LOG" 2>/dev/null | tee -a "$LOG_FILE" &
 
 # Definition of ChromeOS partition layout
 DST_FACTORY_KERNEL_PART=2
@@ -28,18 +45,28 @@ BOARD=""
 OMAHA="$(findLSBValue CHROMEOS_AUSERVER)"
 RELEASE_ONLY="$(findLSBValue RELEASE_ONLY)"
 
-# Override this with console device for I/O
-TTY="/dev/tty1"
-
 # Global variables
 DST_DRIVE=""
 EC_PRESENT=0
 DEVSW_PRESENT=1
 NETBOOT_RAMFS=""
 
-# Starting
+# Supported actions (a set of lowercase characters)
+SUPPORTED_ACTIONS=irsvz
+
+# Each action x is implemented in an action_$x handler (e.g.,
+# action_i); see the handlers for more information about what
+# each option is.
+
+# Define our own logging function.  The one from memento_updater writes to
+# a file, which may cause a race condition if we tail it.
+log() {
+  echo "$*"
+}
+
 # Change color in tty1 by ANSI escape sequence code
 colorize() {
+  set +x
   local code="$1"
   case "$code" in
     "red" )
@@ -51,35 +78,56 @@ colorize() {
     "yellow" )
       code="1;33"
       ;;
+    "white" )
+      code="0;37"
+      ;;
+    "boldwhite" )
+      code="1;37"
+      ;;
   esac
-  printf "\033[%sm" "$code" >/dev/tty1
+  printf "\033[%sm" "$code"
+  set -x
 }
 
 # Error message for any unexpected error.
 on_die() {
-  set +x  # prevent extra log in console
-  colorize "red"
-  log "
-    ERROR: Factory installation has been stopped.
-    Press Ctrl-Alt-F3 (Refresh) to get the detail information."
+  set +x
+  kill_bg_jobs
+  colorize red
+  echo
+  log "ERROR: Factory installation has been stopped."
+  log "See tty$TRACE_TTY (Ctrl-Alt-F$TRACE_TTY) for detailed information."
+  log "(The F$TRACE_TTY key is $TRACE_TTY keys to the right of the 'esc' key.)"
+  busybox openvt -c "$TRACE_TTY" sh -c "clear; exec secure_less.sh < $LOG_FILE"
+}
+
+kill_bg_jobs() {
+  pids=$(jobs -p)
+  # Disown all background jobs to avoid terminated messages
+  disown -a
+  # Kill the jobs
+  echo "$pids" | xargs -r kill -9 2>/dev/null || true
 }
 
 exit_success() {
   trap - EXIT
+  kill_bg_jobs
   exit 0
 }
 
 trap on_die EXIT
 
 die() {
-  set +x  # prevent extra log in console
-  colorize "red"
+  set +x
+  colorize red
+  set +x
   log "ERROR: $*"
+  kill_bg_jobs
   exit 1
 }
 
 config_tty() {
-  stty -F "$TTY" opost
+  stty opost
 }
 
 clear_fwwp() {
@@ -208,7 +256,7 @@ reset_chromeos_device() {
     clear_tpm
   else
     mainfw_type="$(crossystem mainfw_type)"
-    colorize "yellow"
+    colorize yellow
     log " - System was not booted in recovery mode (current: $mainfw_type).
 
     WARNING: TPM won't be cleared. To enforce clearing TPM, make sure you are
@@ -282,7 +330,7 @@ prepare_disk() {
   [ -r $pmbr_code ] || die "Missing $pmbr_code; please rebuild image."
 
   . "/usr/sbin/write_gpt.sh"
-  write_base_table "${DST_DRIVE}" "${pmbr_code}" >>"$MEMENTO_AU_LOG" 2>&1
+  write_base_table "${DST_DRIVE}" "${pmbr_code}" 2>&1
 
   # Informs OS of partition table changes. The autoupdater has trouble with loop
   # devices.
@@ -298,8 +346,8 @@ select_board() {
   # Prompt the user if USER_SELECT is true.
   local user_select="$(findLSBValue USER_SELECT | tr '[:upper:]' '[:lower:]')"
   if [ "$user_select" = "true" ]; then
-    echo -n "Enter the board you want to install (ex: x86-mario): " >"$TTY"
-    read BOARD <"$TTY"
+    echo -n "Enter the board you want to install (ex: x86-mario): "
+    read BOARD
   fi
 }
 
@@ -346,7 +394,7 @@ override_from_board() {
 
   # Let's notice if BOARD has changed and print a message.
   if [ "$lastboard" != "$BOARD" ]; then
-    colorize "red"
+    colorize red
     log " Private overlay customization BOARD override to $BOARD"
     sleep 1
   fi
@@ -418,7 +466,7 @@ run_postinst() {
 
   mount -t ext2 -o ro "$install_dev" "$mount_point"
   IS_FACTORY_INSTALL=1 "$mount_point"/postinst \
-    "$install_dev" >>"$MEMENTO_AU_LOG" 2>&1 || result="$?"
+    "$install_dev" 2>&1 || result="$?"
 
   umount "$install_dev" || true
   rmdir "$mount_point" || true
@@ -483,15 +531,15 @@ run_firmware_update() {
   # If write protection is disabled, perform factory (RO+RW) firmware setup;
   # otherwise run updater in recovery (RW only) mode.
   if ! check_fwwp; then
-    "$updater" --force --mode=factory_install >>"$MEMENTO_AU_LOG" 2>&1 ||
+    "$updater" --force --mode=factory_install 2>&1 ||
       result="$?"
   else
     # We need to recover the firmware and then enable developer firmware.
-    "$updater" --force --mode=recovery >>"$MEMENTO_AU_LOG" 2>&1 || result="$?"
+    "$updater" --force --mode=recovery 2>&1 || result="$?"
     # For two-stop firmware, todev is a simple crossystem call; but for other
     # old firmware (alex/zgb), todev will perform flashrom and then reboot.
     # So this must be the very end command.
-    "$updater" --force --mode=todev >>"$MEMENTO_AU_LOG" 2>&1 || result="$?"
+    "$updater" --force --mode=todev 2>&1 || result="$?"
   fi
 
   umount "$mount_point" || true
@@ -532,7 +580,7 @@ factory_on_complete() {
   fi
 
   log "Executing completion script... ($COMPLETE_SCRIPT)"
-  if ! sh "$COMPLETE_SCRIPT" "$DST_DRIVE" >"$MEMENTO_AU_LOG" 2>&1; then
+  if ! sh "$COMPLETE_SCRIPT" "$DST_DRIVE" 2>&1; then
     die "Failed running completion script $COMPLETE_SCRIPT."
   fi
   log "Completion script executed successfully."
@@ -587,7 +635,7 @@ factory_install_usb() {
   src_drive="${src_drive%[0-9]*}"
   src_drive="$(echo $src_drive | sed 's/\(mmcblk[0-9]*\)p/\1/')"
 
-  colorize "yellow"
+  colorize yellow
   for i in EFI OEM STATE FACTORY FACTORY_KERNEL RELEASE RELEASE_KERNEL; do
     # The source media must have exactly the same layout.
     local part="$(eval 'echo $DST_'${i}'_PART')"
@@ -627,10 +675,9 @@ factory_install_usb() {
 
     log "Copying: [$i] $src -> $dst ($dd_param)"
     # TODO(hungte) Detect copy failure
-    pv -B 1M "$src" 2>"$TTY" |
+    pv -B 1M "$src" |
       dd $dd_param of="$dst" iflag=fullblock oflag=dsync
   done
-  colorize "green"
 
   # Disable release partition and activate factory partition
   disable_release_partition
@@ -670,7 +717,7 @@ factory_install_omaha() {
   fi
 
   # Generate the uuid for current install session
-  uuid="$(uuidgen)" || uuid="Not_Applicable"
+  uuid="$(uuidgen 2>/dev/null)" || uuid="Not_Applicable"
 
   # Say hello to miniomaha server
   omaha_greetings "hello" "${uuid}"
@@ -776,7 +823,7 @@ factory_install_omaha() {
       if [ -n "$RELEASE_ONLY" ]; then
         dst_arg="--force --mode=recovery"
       fi
-      if ! sh "$dst" $dst_arg >"$MEMENTO_AU_LOG" 2>&1; then
+      if ! sh "$dst" $dst_arg 2>&1; then
         die "Firmware updating failed."
       fi
     fi
@@ -784,7 +831,7 @@ factory_install_omaha() {
       log "Execute HWID component list updater script"
       dst="$DST_HWID_PART"
       dst_arg="$(make_partition_dev $DST_DRIVE $DST_STATE_PART)"
-      if ! sh "$dst" "$dst_arg" >"$MEMENTO_AU_LOG" 2>&1; then
+      if ! sh "$dst" "$dst_arg" 2>&1; then
         die "HWID component list updating failed."
       fi
     fi
@@ -792,7 +839,7 @@ factory_install_omaha() {
 
   # Update omaha information into stateful partition.
   save_omaha_url "$(make_partition_dev $DST_DRIVE $DST_STATE_PART)" \
-    >"$MEMENTO_AU_LOG" 2>&1 || die "Failed to save OMAHA server information."
+    2>&1 || die "Failed to save OMAHA server information."
 
   # After post processing, notify miniomaha server a installation session
   # has been successfully completed.
@@ -814,12 +861,10 @@ test_ec_flash_presence() {
   # If "flashrom -p ec --get-size" command succeeds (returns 0),
   # then EC flash chip is present in system. Otherwise, assume EC flash is not
   # present or supported.
-  if flashrom -p ec --get-size 1>&2; then
+  if flashrom -p ec --get-size >/dev/null 2>&1; then
     EC_PRESENT=1
-    log "EC flash is present"
   else
     EC_PRESENT=0
-    log "EC flash is not present or supported"
   fi
 }
 
@@ -829,49 +874,9 @@ test_devsw_presence() {
 
   if [ "$((vdat_flags & VBSD_HONOR_VIRT_DEV_SWITCH))" = "0" ]; then
     DEVSW_PRESENT=1
-    log "Physical developer switch is present"
   else
     DEVSW_PRESENT=0
-    log "Using virtual developer switch (no physical switch)"
   fi
-}
-
-# Prints the two byte hex code of the matched char or
-# exists non-zero on timeout.  It reads from the current tty.
-# To override, call it as follows,
-#   match_char_timeout args < "$STDOUT"
-#
-# Arguments: time_in_seconds two_byte_hex_match_1 two_byte_hex_match_2 ...
-match_char_timeout() {
-  local delay_secs="$1"
-  shift
-
-  local input=''
-  local match=''
-  local start_time=$(date +%s)
-  local stop_time=$((start_time + delay_secs))
-  local tty_config=$(stty -g)
-  stty raw -echo
-  while [ $delay_secs -gt 0 ]; do
-    local ret_code=0
-    input=$(timeout -s KILL ${delay_secs}s head -c 1) || ret_code="$?"
-    [ $ret_code -eq 137 ] && break  # Timed out.
-    input=$(printf "%02x" "'$input")
-    for char in "$@"; do
-      if [ "$input" = "$char" ]; then
-        match="$input"
-        break
-      fi
-    done
-    [ -n "$match" ] && break
-    delay_secs=$((stop_time - $(date +%s) ))
-  done
-  # Restores the tty's settings.
-  stty "$tty_config"
-
-  [ -z "$match" ] && return 1
-  printf "$match"
-  return 0
 }
 
 board_pre_install() {
@@ -890,19 +895,107 @@ board_post_install() {
   fi
 }
 
+# Echoes "on" or "off" based on the value of a crossystem Boolean flag.
+crossystem_on_or_off() {
+  local value
+  if value="$(crossystem "$1" 2>/dev/null)"; then
+    case "$value" in
+    "0")
+      echo off
+      ;;
+    "1")
+      echo on
+      ;;
+    *)
+      echo "$value"
+      ;;
+    esac
+  else
+    echo "(unknown)"
+  fi
+}
+
+# Echoes "yes" or "no" based on a Boolean argument (0 or 1).
+bool_to_yes_or_no() {
+  [ "$1" = 1 ] && echo yes || echo no
+}
+
+# Prints a header (a title, plus all the info in print_device_info)
+print_header() {
+    colorize boldwhite
+    echo CrOS Factory Shim
+    colorize white
+    echo -----------------
+    print_device_info
+}
+
+# Prints various information about the device.
+print_device_info() {
+    echo "Factory shim version: $(findLSBValue CHROMEOS_RELEASE_DESCRIPTION)"
+    local bios_version="$(crossystem ro_fwid 2>/dev/null)"
+    echo "BIOS version: ${bios_version:-(unknown)}"
+    for type in RO RW; do
+      echo -n "EC $type version: "
+      ectool version | grep "^$type version" | sed -e 's/[^:]*: *//'
+    done
+    echo
+    echo System time: "$(date)"
+    local hwid="$(crossystem hwid 2>/dev/null)"
+    echo "HWID: ${hwid:-(not set)}"
+    echo -n "Dev mode: $(crossystem_on_or_off devsw_boot); "
+    echo -n "Recovery mode: $(crossystem_on_or_off recoverysw_boot); "
+    echo -n "HW write protect: $(crossystem_on_or_off wpsw_boot); "
+    echo "SW write protect: $(crossystem_on_or_off sw_wpsw_boot)"
+    echo -n "EC present: $(bool_to_yes_or_no "$EC_PRESENT"); "
+    echo "Dev switch present: $(bool_to_yes_or_no "$DEVSW_PRESENT")"
+    echo
+}
+
+# Displays a line in the menu.  Used in the menu function.
 #
-# factory_install.sh implements two operations for assembly line
-# operators: install (obviously) and reset.
-#
-# Somehow the way that operators switch between the two operations
-# is by plugging in a Ethernet cable.
-#
-# The operation is:
-# * Install if it is connected to Ethernet;
-# * Reset if developer switch is toggled to consumer mode.
-#
-# So we have to detect a possible ethernet connection here.
-#
+# Args:
+#   $1: Single-character option name ("I" for install)
+#   $2: Brief description
+#   $3: Further explanation
+menu_line() {
+  echo -n "  "
+  colorize boldwhite
+  echo -n "$1  "
+  colorize white
+  printf "%-22s%s\n" "$2" "$3"
+}
+
+# Displays a menu, saving the action (one of $SUPPORTED_ACTIONS, always
+# lowercase) in the "ACTION" variable.  If no valid action is chosen,
+# ACTION will be empty.
+menu() {
+  # Clear up terminal
+  stty sane echo
+  # Enable cursor (if tput is available)
+  tput cnorm 2>/dev/null || true
+
+  echo
+  echo
+  echo Please select an action and press Enter.
+  echo
+
+  menu_line I "Install" "Performs a network or USB install"
+  menu_line R "Reset" "Performs a factory reset; finalized devices only"
+  menu_line S "Shell" "Opens bash; available only with developer firmware"
+  menu_line V "View configuration" "Shows crossystem, VPD, etc."
+  menu_line Z "Zero (wipe) storage" "Makes device completely unusable"
+
+  echo
+  read -p 'action> ' ACTION
+  echo
+  ACTION="$(echo "$ACTION" | tr A-Z a-z)"
+
+  if echo "$ACTION" | grep -q "^[$SUPPORTED_ACTIONS]$"; then
+      return
+  fi
+  echo "Invalid action; please select an action from the menu."
+  ACTION=
+}
 
 main() {
   if [ "$(id -u)" -ne 0 ]; then
@@ -921,14 +1014,13 @@ main() {
 
   load_modules
 
-  colorize "green"
+  colorize white
+  clear
 
   board_pre_install
 
   test_ec_flash_presence
   test_devsw_presence
-
-  reset_chromeos_device
 
   local install_from_omaha="1"
   if [ "$(findLSBValue FACTORY_INSTALL_FROM_USB)" = "1" ]; then
@@ -942,15 +1034,60 @@ main() {
   # Check for any configuration overrides.
   overrides
 
+  # In netboot, automatically perform the I action; but first give the
+  # user the chance to press any key to display the menu.
+  if [ "$NETBOOT_RAMFS" = 1 ]; then
+    clear
+    print_header
+    log "Netbooting.  Will automatically perform 'install' action."
+    log "Or press any key to show menu instead..."
+    local prevent_install=false
+    local timeout_secs=3
+    for i in $(seq $timeout_secs -1 1); do
+      # Read with timeout doesn't reliably work multiple times without
+      # a subshell.
+      if ( read -N 1 -p "Press any key within $i sec> " -t 1 ); then
+        echo
+        prevent_install=true
+        break
+      fi
+      echo
+    done
+    if ! $prevent_install; then
+      # No key pressed: perform the install action (which should
+      # never return)
+      action_i
+    fi
+  fi
+
+  while true; do
+    # Display the header and UI.
+    clear
+    print_header
+    menu
+
+    if [ -n "$ACTION" ]; then
+      # Perform the selected action.
+      action_${ACTION}
+    fi
+
+    colorize white
+    read -N 1 -p "Press any key to continue> "
+  done
+}
+
+#
+# Action handlers
+#
+
+# I = Install.
+action_i() {
+  reset_chromeos_device
+
   if [ -n "$install_from_omaha" ]; then
 
-    colorize "yellow"
+    colorize yellow
     log "Waiting for ethernet connectivity to install"
-    if [ $DEVSW_PRESENT -eq 1 ]; then
-      log "Or disable developer mode to factory reset."
-    elif [ $DEVSW_PRESENT -eq 0 ]; then
-      log "Or press Ctrl-R to factory reset."
-    fi
 
     while true; do
       if [ -n "$NETBOOT_RAMFS" ]; then
@@ -962,30 +1099,6 @@ main() {
       fi
       if check_ethernet_status; then
         break
-      elif [ $DEVSW_PRESENT -eq 1 -a "$(crossystem devsw_cur)" = "0" ]; then
-        factory_reset
-      elif [ $DEVSW_PRESENT -eq 0 ]; then
-        local input=$(match_char_timeout 1 12 17 < "$TTY")
-        if [ "$input" = "12" ]; then
-          factory_reset
-        elif [ "$input" = "17" ]; then
-          log "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
-          log "!! You are about to wipe the entire internal disk.       !!"
-          log "!! After this, the device will not boot anymore, and you !!"
-          log "!! need a recovery USB disk to bring it back to life.    !!"
-          log "!!                                                       !!"
-          log "!! If you don't know what this is, STOP here. Wait for   !!"
-          log "!! 10 seconds and disk wipe will be cancelled.           !!"
-          log "!!                                                       !!"
-          log "!! If you DO want to wipe the disk, press Ctrl-Y now.    !!"
-          log "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
-          local input=$(match_char_timeout 10 19 < "$TTY")
-          if [ "$input" = "19" ]; then
-            factory_disk_wipe
-          else
-            log "...Disk wipe cancelled."
-          fi
-        fi
       else
         sleep 1
       fi
@@ -998,7 +1111,7 @@ main() {
     set_time || die "Please check if the server is configured correctly."
   fi
 
-  colorize "green"
+  colorize green
   get_dst_drive
   prepare_disk
   select_board
@@ -1026,6 +1139,107 @@ main() {
 
   # sleep indefinitely to avoid re-spawning rather than shutting down
   sleep 1d
+}
+
+# R = Factory reset.
+action_r() {
+  if [ -n "$NETBOOT_RAMFS" ]; then
+    # factory_reset.sh script is not available in netboot mode.
+    colorize red
+    log "Not available in netboot."
+    return
+  fi
+
+  # First check to make sure that the factory software has been wiped.
+  MOUNT_POINT=/tmp/stateful
+  mkdir -p /tmp/stateful
+  get_dst_drive
+  mount -o ro "$(make_partition_dev $DST_DRIVE $DST_STATE_PART)" "$MOUNT_POINT"
+
+  local factory_exists=false
+  [ -e $MOUNT_POINT/dev_image/factory ] && factory_exists=true
+  umount "$MOUNT_POINT"
+
+  if $factory_exists; then
+    colorize red
+    log "Factory software is still installed (device has not been finalized)."
+    log "Unable to perform factory reset."
+    return
+  fi
+
+  reset_chromeos_device
+  factory_reset
+}
+
+# S = Shell.
+action_s() {
+  if ! crossystem "mainfw_type?developer" 2>/dev/null; then
+    colorize red
+    echo "Developer firmware is not enabled; unable to open a shell."
+    return
+  fi
+
+  log "Trying to bring up network..."
+  if bringup_network 2>/dev/null; then
+    colorize green
+    log "Network enabled."
+    colorize white
+  else
+    colorize yellow
+    log "Unable to bring up network (or it's already up).  Proceeding anyway."
+    colorize white
+  fi
+
+  echo Entering shell.
+  bash
+}
+
+# V = View configuration.
+action_v() {
+  (
+    print_device_info
+
+    for partition in RO_VPD RW_VPD; do
+      echo
+      echo "$partition contents:"
+      vpd -i "$partition" -l || true
+    done
+
+    echo
+    echo "crossystem:"
+    crossystem || true
+
+    echo
+    echo "lsb-factory:"
+    cat /mnt/stateful_partition/dev_image/etc/lsb-factory || true
+  ) 2>&1 | secure_less.sh
+}
+
+# Z = Zero
+action_z() {
+  if [ -n "$NETBOOT_RAMFS" ]; then
+    # factory_reset.sh script is not available in netboot mode.
+    colorize red
+    log "Not available in netboot."
+    return
+  fi
+
+  colorize red
+  echo "!!"
+  echo "!! You are about to wipe the entire internal disk."
+  echo "!! After this, the device will not boot anymore, and you"
+  echo "!! need a recovery USB disk to bring it back to life."
+  echo "!!"
+  echo "!! Type 'yes' to do this, or anything else to cancel."
+  echo "!!"
+  colorize white
+  local yes_or_no
+  read -p "Wipe the internal disk? (yes/no)> " yes_or_no
+  if [ "$yes_or_no" = yes ]; then
+    factory_disk_wipe
+  else
+    echo "You did not type 'yes'. Cancelled."
+  fi
 }
 
 main "$@"
