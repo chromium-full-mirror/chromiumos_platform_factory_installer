@@ -161,20 +161,16 @@ set_time() {
 }
 
 check_ethernet_status() {
-  local link inet
-  local i j
+  local link i
   link=$(ip -f link addr | sed 'N;s/\n/ /' | grep -w 'ether' |
     cut -d ' ' -f 2 | sed 's/://')
-  inet=$(ip -f inet addr | sed 'N;s/\n/ /' | cut -d ' ' -f 2 | sed 's/://')
   for i in $link; do
-    for j in $inet; do
-      if [ "$i" = "$j" ]; then
-        if ! iw $i info >/dev/null 2>&1; then
-          log "$(ip -f inet addr show $i | grep inet)"
-          return 0
-        fi
+    if ip -f inet addr show $i | grep -q inet; then
+      if ! iw $i info >/dev/null 2>&1; then
+        log "$(ip -f inet addr show $i | grep inet)"
+        return 0
       fi
-    done
+    fi
   done
   return 1
 }
