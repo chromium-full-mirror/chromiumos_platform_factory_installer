@@ -792,12 +792,12 @@ factory_install_omaha() {
       # memento update has encountered a fatal error.
       die "Factory install of target $dst has failed with error $return_code."
     elif [ "$result" != "UPDATED" ]; then
-      if [ "$i" = "RELEASE" -a -n "$RELEASE_ONLY"]; then
+      if [ "$i" = "RELEASE" -a -n "$RELEASE_ONLY" ]; then
         # Only updating the primary root/kernel partition is strictly required.
         # If the omahaserver is configured to not update others that's fine.
         # In release only mode, release image is required.
         die "AU failed."
-      elif [ "$i" = "FACTORY" -a -z "$RELEASE_ONLY"]; then
+      elif [ "$i" = "FACTORY" -a -z "$RELEASE_ONLY" ]; then
         # Otherwise, factory image is required.
         die "AU failed."
       fi
