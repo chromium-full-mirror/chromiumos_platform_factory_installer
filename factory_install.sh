@@ -12,6 +12,7 @@ TRACE_TTY=4
 
 # Dump bash trace to /var/log/factory_install.log.
 LOG_FILE=/var/log/factory_install.log
+mkdir -p $(dirname "$LOG_FILE")
 exec {LOG_FD}>"$LOG_FILE"
 tail -f "$LOG_FILE" > /dev/tty"$TRACE_TTY" &
 export BASH_XTRACEFD="$LOG_FD"
