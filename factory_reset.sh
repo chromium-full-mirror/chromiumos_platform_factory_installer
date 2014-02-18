@@ -75,34 +75,26 @@ restore_crx_cache() {
 
 echo "Factory reset"
 
-# TODO(crosbug:10680): replace arch detection with crossystem?
-if uname -m | grep -q "^i.86\$"; then
-  ARCH="INTEL"
-elif [ $(uname -m ) = "x86_64" ]; then
-  ARCH="INTEL"
-elif [ $(uname -m ) = "armv7l" ]; then
-  ARCH="ARM"
-else
-  echo "Failed to auto detect architecture"
+if [ "$#" -lt 1 ]; then
+  echo "Usage: $0 disk [wipe]."
+  echo "ex, $0 /dev/sda."
   exit 1
 fi
 
-if [ "$ARCH" = "INTEL" ]; then
-  DEV="/dev/sda"
-  STATE_DEV="/dev/sda1"
-elif [ "$ARCH" = "ARM" ]; then
-  DEV="/dev/mmcblk0"
-  STATE_DEV="/dev/mmcblk0p1"
+DEV="$1"
+if [ "${DEV%[0-9]}" = "${DEV}" ]; then
+  # ex, sda => sda1
+  STATE_DEV="${DEV}1"
 else
-  DEV=""
-  STATE_DEV=""
+  # ex, mmcblk0 => mmcblk0p1
+  STATE_DEV="${DEV}p1"
 fi
 
 # Tcsd will bring up the tpm and de-own it,
 # as we are in developer/recovery mode.
 start tcsd
 
-if [ "$#" = "1" -a "$1" = "wipe" ]; then
+if [ "$#" = "2" -a "$2" = "wipe" ]; then
   if [ ! -b "$DEV" ]; then
     echo "Failed to find root disk."
     exit 1

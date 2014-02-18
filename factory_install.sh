@@ -271,42 +271,49 @@ reset_chromeos_device() {
   ensure_fwwp_consistency
 }
 
-is_fixed_drive() {
-  # Check if a device node is a fixed drive.
-  local dev="$1"
-  [ -b "$dev" ] &&
-    [ "$(cat /sys/block/$(basename $dev)/removable 2>/dev/null)" = "0" ]
-}
-
+# Find a non-removable /dev/sd* or /dev/mmcblk* device to install to.
+# Largely copied from recovery_init.sh. See http://crbug.com/336654.
 get_dst_drive() {
-  # x86 can use either MMC or SSD as boot disk.  If we have internal SD card
-  # slot without USB bridge (/dev/mmcblk0) and SSD drive (/dev/sda) at the same
-  # time, it has to check removable attribute for picking the correct
-  # destination drive.
+  local num_dev=0
   local dev
-  local match_list
 
   DST_DRIVE=""
-  case "$(crossystem arch)" in
-    x86 )
-      match_list="/dev/mmcblk0 /dev/sda"
-      ;;
-    arm )
-      match_list="/dev/mmcblk0"
-      ;;
-    * )
-      die "Failed to auto detect architecture."
-      ;;
-  esac
-
-  for dev in $match_list; do
-    if is_fixed_drive "$dev"; then
-      DST_DRIVE=$dev
-      break
+  for dev in /sys/block/sd* /sys/block/mmcblk*; do
+    if [ ! -d "${dev}" ]; then
+      continue
     fi
+    # Do not install to removable devices.
+    if [ "$(cat "${dev}/removable")" = 1 ]; then
+      continue
+    fi
+    # Do not install to devices of size < 1 GiB (2097152 blocks of size 512
+    # bytes). Devices of such size are too small for Chromium OS, and may in
+    # fact be special partitions of large drives.
+    if [ "$(cat "${dev}/size")" -lt 2097152 ]; then
+      continue
+    fi
+    # The mmcblk driver may identify media cards as non-removable, so exclude
+    # SD cards, which are inherently removable. BUG: We may still identify
+    # external MMC cards as non-removable.
+    if [ -f "${dev}/device/type" ]; then
+      case "$(cat "${dev}/device/type")" in
+      SD*)
+        continue;
+        ;;
+      esac
+    fi
+
+    DST_DRIVE="/dev/$(basename "${dev}")"
+    : $(( num_dev += 1 ))
   done
 
-  [ -n "$DST_DRIVE" ] || die "Cannot find fixed drive from $match_list."
+  # Check that there is only 1 internal device. This will fail on non-ChromeOS
+  # devices with more than 1 internal drive, but the user is very unlikely
+  # to want to take that approach since it is uncertain which drive this
+  # will install to.
+  if [ ${num_dev} -ne 1 ]; then
+    die "There are more than one ($num_dev) internal devices to install to."
+  fi
 }
 
 lightup_screen() {
@@ -599,6 +606,7 @@ disable_dev_switch() {
     done
   fi
 }
+
 factory_reset() {
   # Turn off developer mode on devices without physical developer switch.
   if [ $DEVSW_PRESENT -eq 0 ]; then
@@ -606,7 +614,7 @@ factory_reset() {
   fi
 
   log "Performing factory reset"
-  if ! /usr/sbin/factory_reset.sh; then
+  if ! /usr/sbin/factory_reset.sh "$DST_DRIVE"; then
     die "Factory reset failed."
   fi
 
@@ -617,7 +625,7 @@ factory_reset() {
 
 factory_disk_wipe() {
   log "Performing factory disk wipe"
-  if ! /usr/sbin/factory_reset.sh wipe; then
+  if ! /usr/sbin/factory_reset.sh "$DST_DRIVE" wipe; then
     die "Factory disk wipe failed."
   fi
   log "Done."
@@ -1229,6 +1237,7 @@ action_z() {
   fi
 
   colorize red
+  get_dst_drive
   echo "!!"
   echo "!! You are about to wipe the entire internal disk."
   echo "!! After this, the device will not boot anymore, and you"
