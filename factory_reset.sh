@@ -11,6 +11,9 @@
 # Preserve files in the CRX cache.  Largely copied from clobber-state.
 # TODO(dgarrett,jsalz): Consolidate.
 #
+
+. /usr/share/misc/chromeos-common.sh
+
 # Note that some variables are shared with restore_crx_cache.
 preserve_crx_cache() {
   PRESERVED_TAR="/tmp/preserve.tar"
@@ -82,23 +85,18 @@ if [ "$#" -lt 1 ]; then
 fi
 
 DEV="$1"
-if [ "${DEV%[0-9]}" = "${DEV}" ]; then
-  # ex, sda => sda1
-  STATE_DEV="${DEV}1"
-else
-  # ex, mmcblk0 => mmcblk0p1
-  STATE_DEV="${DEV}p1"
+if [ ! -b "${DEV}" ]; then
+  echo "Invalid root disk ${DEV}."
+  exit 1
 fi
+STATE_DEV=$(make_partition_dev "${DEV}" "1")
+shift
 
 # Tcsd will bring up the tpm and de-own it,
 # as we are in developer/recovery mode.
 start tcsd
 
-if [ "$#" = "2" -a "$2" = "wipe" ]; then
-  if [ ! -b "$DEV" ]; then
-    echo "Failed to find root disk."
-    exit 1
-  fi
+if [ $# -eq 1 -a "$1" = "wipe" ]; then
   # Nuke the disk
   DEV_SIZE=$(blockdev --getsize64 ${DEV})
   pv -etpr -s ${DEV_SIZE} -B 8M /dev/zero 2>/dev/tty1 | \
