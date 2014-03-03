@@ -318,12 +318,7 @@ get_dst_drive() {
 
 lightup_screen() {
   # Light up screen in case you can't see our splash image.
-  local script="/usr/sbin/lightup_screen"
-  if [ -x "$script" ]; then
-    $script
-  else
-    log "$script does not exist or not executable"
-  fi
+  backlight_tool --set_brightness_percent 100 || true
 }
 
 load_modules() {
@@ -1022,6 +1017,8 @@ main() {
   config_tty
 
   log "Starting Factory Installer."
+  # TODO: do we still need this call now that the kernel was tweaked to
+  # provide a good light level by default?
   lightup_screen
 
   load_modules
