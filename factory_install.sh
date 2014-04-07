@@ -17,7 +17,7 @@ exec {LOG_FD}>"$LOG_FILE"
 tail -f "$LOG_FILE" > /dev/tty"$TRACE_TTY" &
 export BASH_XTRACEFD="$LOG_FD"
 
-. "$(dirname "$0")/chromeos-common.sh"
+. "/usr/sbin/write_gpt.sh"
 . "$(dirname "$0")/ping_shopfloor.sh"
 . "/opt/google/memento_updater/memento_updater_logging.sh"
 . "/opt/google/memento_updater/find_omaha.sh"
@@ -271,48 +271,11 @@ reset_chromeos_device() {
   ensure_fwwp_consistency
 }
 
-# Find a non-removable /dev/sd* or /dev/mmcblk* device to install to.
-# Largely copied from recovery_init.sh. See http://crbug.com/336654.
 get_dst_drive() {
-  local num_dev=0
-  local dev
-
-  DST_DRIVE=""
-  for dev in /sys/block/sd* /sys/block/mmcblk*; do
-    if [ ! -d "${dev}" ]; then
-      continue
-    fi
-    # Do not install to removable devices.
-    if [ "$(cat "${dev}/removable")" = 1 ]; then
-      continue
-    fi
-    # Do not install to devices of size < 1 GiB (2097152 blocks of size 512
-    # bytes). Devices of such size are too small for Chromium OS, and may in
-    # fact be special partitions of large drives.
-    if [ "$(cat "${dev}/size")" -lt 2097152 ]; then
-      continue
-    fi
-    # The mmcblk driver may identify media cards as non-removable, so exclude
-    # SD cards, which are inherently removable. BUG: We may still identify
-    # external MMC cards as non-removable.
-    if [ -f "${dev}/device/type" ]; then
-      case "$(cat "${dev}/device/type")" in
-      SD*)
-        continue;
-        ;;
-      esac
-    fi
-
-    DST_DRIVE="/dev/$(basename "${dev}")"
-    : $(( num_dev += 1 ))
-  done
-
-  # Check that there is only 1 internal device. This will fail on non-ChromeOS
-  # devices with more than 1 internal drive, but the user is very unlikely
-  # to want to take that approach since it is uncertain which drive this
-  # will install to.
-  if [ ${num_dev} -ne 1 ]; then
-    die "There are more than one ($num_dev) internal devices to install to."
+  load_base_vars
+  DST_DRIVE="$(get_fixed_dst_drive)"
+  if [ -z "${DST_DRIVE}" ]; then
+    die "Cannot find fixed drive."
   fi
 }
 
@@ -332,7 +295,6 @@ prepare_disk() {
   local pmbr_code="/root/.pmbr_code"
   [ -r $pmbr_code ] || die "Missing $pmbr_code; please rebuild image."
 
-  . "/usr/sbin/write_gpt.sh"
   write_base_table "${DST_DRIVE}" "${pmbr_code}" 2>&1
 
   # Informs OS of partition table changes. The autoupdater has trouble with loop
@@ -513,7 +475,7 @@ run_firmware_update() {
   local stateful_updater="${updater#/mnt/stateful_partition/}"
   local mount_opt=""
 
-  # If there's nothing assigned, we should load firmware from release rootfs;
+  # If there is nothing assigned, we should load firmware from release rootfs;
   # otherwise follow the assigned location (currently only stateful partition is
   # supported).
   if [ -z "$updater" ]; then
