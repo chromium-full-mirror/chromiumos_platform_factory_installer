@@ -12,10 +12,10 @@ TRACE_TTY=4
 
 # Dump bash trace to /var/log/factory_install.log.
 LOG_FILE=/var/log/factory_install.log
-mkdir -p $(dirname "$LOG_FILE")
-exec {LOG_FD}>"$LOG_FILE"
-tail -f "$LOG_FILE" > /dev/tty"$TRACE_TTY" &
-export BASH_XTRACEFD="$LOG_FD"
+mkdir -p $(dirname "${LOG_FILE}")
+exec {LOG_FD}>"${LOG_FILE}"
+tail -f "${LOG_FILE}" > /dev/tty"${TRACE_TTY}" &
+export BASH_XTRACEFD="${LOG_FD}"
 
 . "/usr/sbin/write_gpt.sh"
 . "$(dirname "$0")/ping_shopfloor.sh"
@@ -25,7 +25,7 @@ export BASH_XTRACEFD="$LOG_FD"
 # Tail memento output to both our stdout and the log file, since
 # there's no better way to display of download/install for individual
 # partitions.
-tail -F "$MEMENTO_AU_LOG" 2>/dev/null | tee -a "$LOG_FILE" &
+tail -F "${MEMENTO_AU_LOG}" 2>/dev/null | tee -a "${LOG_FILE}" &
 
 # Definition of ChromeOS partition layout
 DST_FACTORY_KERNEL_PART=2
@@ -86,7 +86,7 @@ log() {
 colorize() {
   set +x
   local code="$1"
-  case "$code" in
+  case "${code}" in
     "red" )
       code="1;31"
       ;;
@@ -103,7 +103,7 @@ colorize() {
       code="1;37"
       ;;
   esac
-  printf "\033[%sm" "$code"
+  printf "\033[%sm" "${code}"
   set -x
 }
 
@@ -114,9 +114,9 @@ on_die() {
   colorize red
   echo
   log "ERROR: Factory installation has been stopped."
-  log "See tty$TRACE_TTY (Ctrl-Alt-F$TRACE_TTY) for detailed information."
-  log "(The F$TRACE_TTY key is $TRACE_TTY keys to the right of the 'esc' key.)"
-  busybox openvt -c "$TRACE_TTY" sh -c "clear; exec secure_less.sh < $LOG_FILE"
+  log "See tty${TRACE_TTY} (Ctrl-Alt-F${TRACE_TTY}) for detailed information."
+  log "(The F${TRACE_TTY} key is ${TRACE_TTY} keys to the right of the 'esc' key.)"
+  busybox openvt -c "${TRACE_TTY}" sh -c "clear; exec secure_less.sh < ${LOG_FILE}"
 }
 
 kill_bg_jobs() {
@@ -124,7 +124,7 @@ kill_bg_jobs() {
   # Disown all background jobs to avoid terminated messages
   disown -a
   # Kill the jobs
-  echo "$pids" | xargs -r kill -9 2>/dev/null || true
+  echo "${pids}" | xargs -r kill -9 2>/dev/null || true
 }
 
 exit_success() {
@@ -150,7 +150,7 @@ config_tty() {
 
 clear_fwwp() {
   log "Firmware Write Protect disabled, clearing status registers."
-  if [ $EC_PRESENT -eq 1 ]; then
+  if [ ${EC_PRESENT} -eq 1 ]; then
     flashrom -p ec --wp-disable
   fi
   flashrom -p host --wp-disable
@@ -160,16 +160,16 @@ clear_fwwp() {
 ensure_fwwp_consistency() {
   local ec_wp main_wp
 
-  if [ $EC_PRESENT -eq 0 ]; then
+  if [ ${EC_PRESENT} -eq 0 ]; then
     return
   fi
 
   ec_wp="$(flashrom -p ec --wp-status 2>/dev/null)" || return
   main_wp="$(flashrom -p host --wp-status 2>/dev/null)"
-  ec_wp="$(echo "$ec_wp" | sed -nr 's/WP.*(disabled|enabled).$/\1/pg')"
-  main_wp="$(echo "$main_wp" | sed -nr 's/WP.*(disabled|enabled).$/\1/pg')"
-  if [ "$ec_wp" != "$main_wp" ]; then
-    die "Inconsist firmware write protection status: main=$main_wp, ec=$ec_wp."\
+  ec_wp="$(echo "${ec_wp}" | sed -nr 's/WP.*(disabled|enabled).$/\1/pg')"
+  main_wp="$(echo "${main_wp}" | sed -nr 's/WP.*(disabled|enabled).$/\1/pg')"
+  if [ "${ec_wp}" != "${main_wp}" ]; then
+    die "Inconsist firmware write protection status: main=${main_wp}, ec=${ec_wp}."\
         "Please disable Hardware Write Protection and restart again."
   fi
 }
@@ -194,8 +194,8 @@ clear_tpm() {
   local firmware_fw_versions="1 0 1 0"
   local firmware_reserved="0 0 0 0"
 
-  tpmc write $firmware_index $firmware_struct_version $firmware_flags \
-      $firmware_fw_versions $firmware_reserved
+  tpmc write ${firmware_index} ${firmware_struct_version} ${firmware_flags} \
+      ${firmware_fw_versions} ${firmware_reserved}
 
   local kernel_index="0x1008"
   local kernel_struct_version="1"
@@ -203,8 +203,8 @@ clear_tpm() {
   local kernel_kernel_versions="1 0 1 0"
   local kernel_reserved="0 0 0 0"
 
-  tpmc write $kernel_index $kernel_struct_version $kernel_uid \
-      $kernel_kernel_versions $kernel_reserved
+  tpmc write ${kernel_index} ${kernel_struct_version} ${kernel_uid} \
+      ${kernel_kernel_versions} ${kernel_reserved}
 
   log "Done clearing TPM"
 }
@@ -212,17 +212,17 @@ clear_tpm() {
 set_time() {
   log "Setting time from:"
   # Extract only the server and port.
-  local time_server_url="$(echo "$OMAHA" | sed "s|/update||; s|http://||")"
+  local time_server_url="$(echo "${OMAHA}" | sed "s|/update||; s|http://||")"
 
-  log " Server $time_server_url."
-  local result="$(htpdate -s -t "$time_server_url" 2>&1)"
-  if ! echo "$result" | grep -Eq "(failed|unavailable)"; then
+  log " Server ${time_server_url}."
+  local result="$(htpdate -s -t "${time_server_url}" 2>&1)"
+  if ! echo "${result}" | grep -Eq "(failed|unavailable)"; then
     log "Success, time set to $(date)"
     hwclock -w 2>/dev/null
     return 0
   fi
 
-  log "Failed to set time: $(echo "$result" | grep -E "(failed|unavailable)")"
+  log "Failed to set time: $(echo "${result}" | grep -E "(failed|unavailable)")"
   return 1
 }
 
@@ -231,10 +231,10 @@ check_ethernet_status() {
   local result=1
   link=$(ip -f link addr | sed 'N;s/\n/ /' | grep -w 'ether' |
     cut -d ' ' -f 2 | sed 's/://')
-  for i in $link; do
-    if ip -f inet addr show $i | grep -q inet; then
-      if ! iw $i info >/dev/null 2>&1; then
-        log "$(ip -f inet addr show $i | grep inet)"
+  for i in ${link}; do
+    if ip -f inet addr show ${i} | grep -q inet; then
+      if ! iw ${i} info >/dev/null 2>&1; then
+        log "$(ip -f inet addr show ${i} | grep inet)"
         result=0
       fi
     fi
@@ -280,7 +280,7 @@ reset_chromeos_device() {
   else
     mainfw_type="$(crossystem mainfw_type)"
     colorize yellow
-    log " - System was not booted in recovery mode (current: $mainfw_type).
+    log " - System was not booted in recovery mode (current: ${mainfw_type}).
 
     WARNING: TPM won't be cleared. To enforce clearing TPM, make sure you are
     using correct image signed with same key (MP, Pre-MP, or DEV), turn on
@@ -315,7 +315,7 @@ prepare_disk() {
   log "Factory Install: Setting partition table"
 
   local pmbr_code="/root/.pmbr_code"
-  [ -r $pmbr_code ] || die "Missing $pmbr_code; please rebuild image."
+  [ -r ${pmbr_code} ] || die "Missing ${pmbr_code}; please rebuild image."
 
   write_base_table "${DST_DRIVE}" "${pmbr_code}" 2>&1
 
@@ -324,7 +324,7 @@ prepare_disk() {
   log "Reloading partition table changes..."
   sync
   sleep 3  # Wait for sync to take place.
-  partprobe "$DST_DRIVE"
+  partprobe "${DST_DRIVE}"
 
   log "Done preparing disk"
 }
@@ -332,7 +332,7 @@ prepare_disk() {
 select_board() {
   # Prompt the user if USER_SELECT is true.
   local user_select="$(findLSBValue USER_SELECT | tr '[:upper:]' '[:lower:]')"
-  if [ "$user_select" = "true" ]; then
+  if [ "${user_select}" = "true" ]; then
     echo -n "Enter the board you want to install (ex: x86-mario): "
     read BOARD
   fi
@@ -346,8 +346,8 @@ find_var() {
   local key="$1"
 
   for item in $(cat /proc/cmdline); do
-    if echo "$item" | grep -q "$key"; then
-      echo "$item" | cut -d'=' -f2
+    if echo "${item}" | grep -q "${key}"; then
+      echo "${item}" | cut -d'=' -f2
       return 0
     fi
   done
@@ -360,29 +360,29 @@ override_from_firmware() {
   # memento_updater.
   local omaha=""
   if omaha="$(find_var omahaserver)"; then
-    log " Kernel cmdline OMAHA override to $omaha"
-    OMAHA="$omaha"
+    log " Kernel cmdline OMAHA override to ${omaha}"
+    OMAHA="${omaha}"
   fi
 
   local board=""
   if board="$(find_var cros_board)"; then
-    log " Kernel cmdline BOARD override to $board"
-    BOARD="$board"
+    log " Kernel cmdline BOARD override to ${board}"
+    BOARD="${board}"
   fi
 }
 
 override_from_board() {
   # Call into any board specific configuration settings we may need.
   # These will be provided by chromeos-bsp-[board] build in the private overlay.
-  local lastboard="$BOARD"
+  local lastboard="${BOARD}"
   if [ -f "/usr/sbin/board_customize_install.sh" ]; then
     . /usr/sbin/board_customize_install.sh
   fi
 
   # Let's notice if BOARD has changed and print a message.
-  if [ "$lastboard" != "$BOARD" ]; then
+  if [ "${lastboard}" != "${BOARD}" ]; then
     colorize red
-    log " Private overlay customization BOARD override to $BOARD"
+    log " Private overlay customization BOARD override to ${BOARD}"
     sleep 1
   fi
 }
@@ -394,20 +394,20 @@ override_from_tftp() {
   local tftp=""
   local omahaserver_config="omahaserver.conf"
   local tftp_output=""
-  # Use board specific config if $BOARD is not null.
-  [ -z $BOARD ] || omahaserver_config="omahaserver_$BOARD.conf"
+  # Use board specific config if ${BOARD} is not null.
+  [ -z ${BOARD} ] || omahaserver_config="omahaserver_${BOARD}.conf"
   tftp_output="/tmp/${omahaserver_config}"
 
   if tftp="$(find_var tftpserverip)"; then
-    log "override_from_tftp: kernel cmdline tftpserverip $tftp"
+    log "override_from_tftp: kernel cmdline tftpserverip ${tftp}"
     # Get omahaserver_config from tftp server.
     # Use busybox tftp command with options: "-g: Get file",
     # "-r FILE: Remote FILE" and "-l FILE: local FILE".
-    rm -rf "$tftp_output"
-    tftp -g -r $omahaserver_config -l $tftp_output $tftp || true
-    if [ -f $tftp_output ]; then
-      OMAHA="$(cat $tftp_output)"
-      log "override_from_tftp: OMAHA override to $OMAHA"
+    rm -rf "${tftp_output}"
+    tftp -g -r "${omahaserver_config}" -l "${tftp_output}" "${tftp}" || true
+    if [ -f "${tftp_output}" ]; then
+      OMAHA="$(cat "${tftp_output}")"
+      log "override_from_tftp: OMAHA override to ${OMAHA}"
     fi
   fi
 }
@@ -423,7 +423,7 @@ bringup_network() {
   local module_name
   local result=1
   for module in $(find /lib/modules/ -name "*.ko"); do
-    module_name="$(basename ${module%.ko})"
+    module_name="$(basename "${module%.ko}")"
     modprobe ${module_name}
   done
 
@@ -439,13 +439,13 @@ disable_release_partition() {
   # Release image is not allowed to boot unless the factory test is passed
   # otherwise the wipe and final verification can be skipped.
   # TODO(hungte) do this in memento_updater or postinst may be better
-  if ! cgpt add -i "$DST_RELEASE_KERNEL_PART" -P 0 -T 0 -S 0 "$DST_DRIVE"
+  if ! cgpt add -i "${DST_RELEASE_KERNEL_PART}" -P 0 -T 0 -S 0 "${DST_DRIVE}"
   then
     # Destroy kernels otherwise the system is still bootable.
-    dst="$(make_partition_dev $DST_DRIVE $DST_RELEASE_KERNEL_PART)"
-    dd if=/dev/zero of=$dst bs=1M count=1
-    dst="$(make_partition_dev $DST_DRIVE $DST_FACTORY_KERNEL_PART)"
-    dd if=/dev/zero of=$dst bs=1M count=1
+    dst="$(make_partition_dev ${DST_DRIVE} ${DST_RELEASE_KERNEL_PART})"
+    dd if=/dev/zero of="${dst}" bs=1M count=1
+    dst="$(make_partition_dev ${DST_DRIVE} ${DST_FACTORY_KERNEL_PART})"
+    dd if=/dev/zero of="${dst}" bs=1M count=1
     die "Failed to lock release image. Destroy all kernels."
   fi
 }
@@ -455,13 +455,13 @@ run_postinst() {
   local mount_point="$(mktemp -d)"
   local result=0
 
-  mount -t ext2 -o ro "$install_dev" "$mount_point"
-  IS_FACTORY_INSTALL=1 "$mount_point"/postinst \
-    "$install_dev" 2>&1 || result="$?"
+  mount -t ext2 -o ro "${install_dev}" "${mount_point}"
+  IS_FACTORY_INSTALL=1 "${mount_point}"/postinst \
+    "${install_dev}" 2>&1 || result="$?"
 
-  umount "$install_dev" || true
-  rmdir "$mount_point" || true
-  return $result
+  umount "${install_dev}" || true
+  rmdir "${mount_point}" || true
+  return ${result}
 }
 
 run_netboot_postinst()
@@ -477,18 +477,18 @@ run_netboot_postinst()
   POST_PROCESS_SCRIPT=/mnt/stateful_partition/netboot_postinst.sh
   HWID_COPIED_PATH=/mnt/stateful_partition/hwid_bundle.sh
   FIRMWARE_COPIED_PATH=/mnt/stateful_partition/firmware_install
-  mount -o ro -t ext2 "$INSTALLED_ROOT" "$CHROOT_PATH"
-  mount "$INSTALLED_STATEFUL" "$CHROOT_PATH"/mnt/stateful_partition
-  if [ -s "$HWID_SCRIPT" ]; then
-    cp "$HWID_SCRIPT" "${CHROOT_PATH}${HWID_COPIED_PATH}"
+  mount -o ro -t ext2 "${INSTALLED_ROOT}" "${CHROOT_PATH}"
+  mount "${INSTALLED_STATEFUL}" "${CHROOT_PATH}"/mnt/stateful_partition
+  if [ -s "${HWID_SCRIPT}" ]; then
+    cp "${HWID_SCRIPT}" "${CHROOT_PATH}${HWID_COPIED_PATH}"
   fi
-  if [ -s "$FIRMWARE_SCRIPT" ]; then
-    cp "$FIRMWARE_SCRIPT" "${CHROOT_PATH}${FIRMWARE_COPIED_PATH}"
+  if [ -s "${FIRMWARE_SCRIPT}" ]; then
+    cp "${FIRMWARE_SCRIPT}" "${CHROOT_PATH}${FIRMWARE_COPIED_PATH}"
   fi
   cp -p /bin/netboot_postinst.sh "${CHROOT_PATH}${POST_PROCESS_SCRIPT}"
-  chroot "$CHROOT_PATH" "$POST_PROCESS_SCRIPT"
-  umount "$CHROOT_PATH"/mnt/stateful_partition || true
-  umount "$CHROOT_PATH" || true
+  chroot "${CHROOT_PATH}" "${POST_PROCESS_SCRIPT}"
+  umount "${CHROOT_PATH}/mnt/stateful_partition" || true
+  umount "${CHROOT_PATH}" || true
   sync
 }
 
@@ -504,61 +504,61 @@ run_firmware_update() {
   # If there is nothing assigned, we should load firmware from release rootfs;
   # otherwise follow the assigned location (currently only stateful partition is
   # supported).
-  if [ -z "$updater" ]; then
-    updater="$mount_point/usr/sbin/chromeos-firmwareupdate"
-    install_dev="$(make_partition_dev "$install_drive" "$DST_RELEASE_PART")"
+  if [ -z "${updater}" ]; then
+    updater="${mount_point}/usr/sbin/chromeos-firmwareupdate"
+    install_dev="$(make_partition_dev "${install_drive}" "${DST_RELEASE_PART}")"
     mount_opt="-t ext2 -o ro"
-  elif [ "$updater" != "$stateful_updater" ]; then
-    updater="$mount_point/$stateful_updater"
-    install_dev="$(make_partition_dev "$install_drive" "$DST_STATE_PART")"
+  elif [ "${updater}" != "${stateful_updater}" ]; then
+    updater="${mount_point}/${stateful_updater}"
+    install_dev="$(make_partition_dev "${install_drive}" "${DST_STATE_PART}")"
     # Stateful partition may be ext4 and turned off ext2 compatibility mode.
     mount_opt="-o ro"
   else
-    die "Unknown firmware updater location: $updater"
+    die "Unknown firmware updater location: ${updater}"
   fi
 
-  log "Running firmware updater from $install_dev ($updater)..."
-  mount $mount_opt "$install_dev" "$mount_point"
+  log "Running firmware updater from ${install_dev} (${updater})..."
+  mount ${mount_opt} "${install_dev}" "${mount_point}"
   # If write protection is disabled, perform factory (RO+RW) firmware setup;
   # otherwise run updater in recovery (RW only) mode.
   if ! check_fwwp; then
-    "$updater" --force --mode=factory_install 2>&1 ||
+    "${updater}" --force --mode=factory_install 2>&1 ||
       result="$?"
   else
     # We need to recover the firmware and then enable developer firmware.
-    "$updater" --force --mode=recovery 2>&1 || result="$?"
+    "${updater}" --force --mode=recovery 2>&1 || result="$?"
     # For two-stop firmware, todev is a simple crossystem call; but for other
     # old firmware (alex/zgb), todev will perform flashrom and then reboot.
     # So this must be the very end command.
-    "$updater" --force --mode=todev 2>&1 || result="$?"
+    "${updater}" --force --mode=todev 2>&1 || result="$?"
   fi
 
-  umount "$mount_point" || true
-  rmdir "$mount_point" || true
-  return $result
+  umount "${mount_point}" || true
+  rmdir "${mount_point}" || true
+  return ${result}
 }
 
 save_omaha_url() {
   log "Save active Omaha server URL to stateful partition"
   local stateful_dev="$1"
   local mount_point="$(mktemp -d)"
-  local output_file="$mount_point/dev_image/etc/lsb-factory"
+  local output_file="${mount_point}/dev_image/etc/lsb-factory"
 
-  mount "$stateful_dev" "$mount_point"
-  mkdir -p "$(dirname "$output_file")"
-  echo "FACTORY_OMAHA_URL=$OMAHA" >> "$output_file"
+  mount "${stateful_dev}" "${mount_point}"
+  mkdir -p "$(dirname "${output_file}")"
+  echo "FACTORY_OMAHA_URL=${OMAHA}" >> "${output_file}"
 
   # Sometimes lsb-factory is not written yet before umount.
   sync;sync;sync;
 
-  umount "$mount_point" || true
-  rmdir "$mount_point" || true
+  umount "${mount_point}" || true
+  rmdir "${mount_point}" || true
 }
 
 omaha_greetings() {
   local message="$1"
   local uuid="$2"
-  if [ -n "$OMAHA" ]; then
+  if [ -n "${OMAHA}" ]; then
     wget -q "${OMAHA%/update}/greetings/${message}/${uuid}" \
          -O /dev/null 2>/dev/null || true
   fi
@@ -566,23 +566,23 @@ omaha_greetings() {
 }
 
 factory_on_complete() {
-  if [ ! -s "$COMPLETE_SCRIPT" ]; then
+  if [ ! -s "${COMPLETE_SCRIPT}" ]; then
     return 0
   fi
 
-  log "Executing completion script... ($COMPLETE_SCRIPT)"
-  if ! sh "$COMPLETE_SCRIPT" "$DST_DRIVE" 2>&1; then
-    die "Failed running completion script $COMPLETE_SCRIPT."
+  log "Executing completion script... (${COMPLETE_SCRIPT})"
+  if ! sh "${COMPLETE_SCRIPT}" "${DST_DRIVE}" 2>&1; then
+    die "Failed running completion script ${COMPLETE_SCRIPT}."
   fi
   log "Completion script executed successfully."
 }
 
 disable_dev_switch() {
   # Turn off developer mode on devices without physical developer switch.
-  if [ $DEVSW_PRESENT -eq 0 ]; then
+  if [ ${DEVSW_PRESENT} -eq 0 ]; then
     crossystem disable_dev_request=1
   # When physical switch exists, force user to turn it off.
-  elif [ $DEVSW_PRESENT -eq 1 -a "$(crossystem devsw_cur)" = "1" ]; then
+  elif [ ${DEVSW_PRESENT} -eq 1 -a "$(crossystem devsw_cur)" = "1" ]; then
     while [ "$(crossystem devsw_cur)" = "1" ]; do
       log "Please turn off developer switch to continue"
       sleep 5
@@ -592,12 +592,12 @@ disable_dev_switch() {
 
 factory_reset() {
   # Turn off developer mode on devices without physical developer switch.
-  if [ $DEVSW_PRESENT -eq 0 ]; then
+  if [ ${DEVSW_PRESENT} -eq 0 ]; then
     crossystem disable_dev_request=1
   fi
 
   log "Performing factory reset"
-  if ! /usr/sbin/factory_reset.sh "$DST_DRIVE"; then
+  if ! /usr/sbin/factory_reset.sh "${DST_DRIVE}"; then
     die "Factory reset failed."
   fi
 
@@ -608,7 +608,7 @@ factory_reset() {
 
 factory_disk_wipe() {
   log "Performing factory disk wipe"
-  if ! /usr/sbin/factory_reset.sh "$DST_DRIVE" wipe; then
+  if ! /usr/sbin/factory_reset.sh "${DST_DRIVE}" wipe; then
     die "Factory disk wipe failed."
   fi
   log "Done."
@@ -620,25 +620,26 @@ factory_install_usb() {
   local src_offset="$(findLSBValue FACTORY_INSTALL_USB_OFFSET)"
   local src_drive="$(findLSBValue REAL_USB_DEV)"
   # REAL_USB_DEV is optional on systems without initramfs (ex, ARM).
-  [ -n "$src_drive" ] || src_drive="$(rootdev -s 2>/dev/null)"
-  [ -n "$src_drive" ] || die "Unknown media source. Please define REAL_USB_DEV."
+  [ -n "${src_drive}" ] || src_drive="$(rootdev -s 2>/dev/null)"
+  [ -n "${src_drive}" ] || die "Unknown media source. Please define REAL_USB_DEV."
 
   # Finds the real drive from sd[a-z][0-9]* or mmcblk[0-9]*p[0-9]*
   src_drive="${src_drive%[0-9]*}"
-  src_drive="$(echo $src_drive | sed 's/\(mmcblk[0-9]*\)p/\1/')"
+  src_drive="$(echo ${src_drive} | sed 's/\(mmcblk[0-9]*\)p/\1/')"
 
   colorize yellow
   for i in EFI OEM STATE FACTORY FACTORY_KERNEL RELEASE RELEASE_KERNEL; do
     # The source media must have exactly the same layout.
-    local part="$(eval 'echo $DST_'${i}'_PART')"
-    local src="$(make_partition_dev $src_drive $part)"
-    local dst="$(make_partition_dev $DST_DRIVE $part)"
+    local var="DST_${i}_PART"
+    local part="${!var}"
+    local src="$(make_partition_dev ${src_drive} ${part})"
+    local dst="$(make_partition_dev ${DST_DRIVE} ${part})"
 
     # Factory/Release may be shifted on source media.
-    if [ -n "$src_offset" ]; then
-      case "$i" in
+    if [ -n "${src_offset}" ]; then
+      case "${i}" in
         FACTORY* | RELEASE* )
-          src="$(make_partition_dev $src_drive $((part + src_offset)) )"
+          src="$(make_partition_dev ${src_drive} $((part + src_offset)) )"
           true
           ;;
       esac
@@ -646,12 +647,12 @@ factory_install_usb() {
 
     # Detect file system size
     local dd_param="bs=1M"
-    local count="$(dumpe2fs -h "$src" 2>/dev/null |
+    local count="$(dumpe2fs -h "${src}" 2>/dev/null |
                    grep "^Block count" |
                    sed 's/.*: *//')"
 
-    if [ -n "$count" ]; then
-      local bs="$(dumpe2fs -h "$src" 2>/dev/null |
+    if [ -n "${count}" ]; then
+      local bs="$(dumpe2fs -h "${src}" 2>/dev/null |
             grep "^Block size" |
             sed 's/.*: *//')"
 
@@ -662,22 +663,22 @@ factory_install_usb() {
         count="$((count / 2))"
         bs="$((bs * 2))"
       done
-      dd_param="bs=$bs count=$count"
+      dd_param="bs=${bs} count=${count}"
     fi
 
-    log "Copying: [$i] $src -> $dst ($dd_param)"
+    log "Copying: [${i}] ${src} -> ${dst} (${dd_param})"
     # TODO(hungte) Detect copy failure
-    pv -B 1M "$src" |
-      dd $dd_param of="$dst" iflag=fullblock oflag=dsync
+    pv -B 1M "${src}" |
+      dd ${dd_param} of="${dst}" iflag=fullblock oflag=dsync
   done
 
   # Run postinst on release partition to validate rootfs and create
   # verity table.
-  run_postinst "$(make_partition_dev "$DST_DRIVE" "$DST_RELEASE_PART")"
+  run_postinst "$(make_partition_dev "${DST_DRIVE}" "${DST_RELEASE_PART}")"
   # Disable release partition and activate factory partition
   disable_release_partition
-  run_postinst "$(make_partition_dev "$DST_DRIVE" "$DST_FACTORY_PART")"
-  run_firmware_update "$DST_DRIVE"
+  run_postinst "$(make_partition_dev "${DST_DRIVE}" "${DST_FACTORY_PART}")"
+  run_firmware_update "${DST_DRIVE}"
 }
 
 factory_install_omaha() {
@@ -689,6 +690,7 @@ factory_install_omaha() {
   local src_url=""
   local src_checksum=""
   local ping_result=""
+  local var
 
   # Channels defined by memento updater
   FACTORY_CHANNEL_ARG='--force_track=factory-channel'
@@ -707,8 +709,8 @@ factory_install_omaha() {
 
   # Ping shopfloor server
   ping_result=$(ping_shopfloor 2>/dev/null) || return_code="$?"
-  if [ "$return_code" = "" ]; then
-    eval "$ping_result"
+  if [ "${return_code}" = "" ]; then
+    eval "${ping_result}"
   fi
 
   # Generate the uuid for current install session
@@ -719,80 +721,84 @@ factory_install_omaha() {
 
   # Install the partitions
   for i in EFI OEM STATE RELEASE FACTORY FIRMWARE HWID COMPLETE; do
-    if [ "$i" = "FACTORY" -a -n "$RELEASE_ONLY" ]; then
+    if [ "${i}" = "FACTORY" -a -n "${RELEASE_ONLY}" ]; then
         # Ignore factory image in release only mode
         continue
     fi
 
     # DST_*_PART can be a numeric partition number or plain file.
-    local part="$(eval 'echo $DST_'${i}'_PART')"
+    var="DST_${i}_PART"
+    local part="${!var}"
 
-    if [ -z "$part" ]; then
-      die "INVALID CHANNEL: $i."
-    elif echo "$part" | grep -qs "^[0-9]*$"; then
-      dst="$(make_partition_dev $DST_DRIVE $part)"
+    if [ -z "${part}" ]; then
+      die "INVALID CHANNEL: ${i}."
+    elif echo "${part}" | grep -qs "^[0-9]*$"; then
+      dst="$(make_partition_dev ${DST_DRIVE} ${part})"
       dst_arg=""
     else
-      dst="$part"
+      dst="${part}"
       dst_arg="--nocheck_block_device"
     fi
 
-    log "Factory Install: Installing $i image to $dst"
+    log "Factory Install: Installing ${i} image to ${dst}"
 
-    local channel_arg="$(eval 'echo $'${i}'_CHANNEL_ARG')"
+    var="${i}_CHANNEL_ARG"
+    local channel_arg="${!var}"
     local kpart="none"
-    if [ "$i" = "FACTORY" -o "$i" = "RELEASE" ]; then
+    if [ "${i}" = "FACTORY" -o "${i}" = "RELEASE" ]; then
       # Set up kernel partition
       kpart=""
     fi
 
     local extra_arg="--skip_postinst"
-    if [ "$i" = "FACTORY" ]; then
+    if [ "${i}" = "FACTORY" ]; then
       # Do postinst after update
       extra_arg=""
     fi
-    if [ "$i" = "RELEASE" -a -n "$RELEASE_ONLY" ]; then
+    if [ "${i}" = "RELEASE" -a -n "${RELEASE_ONLY}" ]; then
       # Do postinst after update in release only mode
       extra_arg=""
     fi
-    if [ -n "$BOARD" ]; then
-      extra_arg="$extra_arg --board=$BOARD"
+    if [ -n "${BOARD}" ]; then
+      extra_arg="${extra_arg} --board=${BOARD}"
     fi
 
-    if [ -n "$OMAHA" ]; then
-      extra_arg="$extra_arg --omaha_url=$OMAHA"
+    if [ -n "${OMAHA}" ]; then
+      extra_arg="${extra_arg} --omaha_url=${OMAHA}"
     fi
 
-    if [ "$SHOPFLOOR_INSTALL" = "1" ]; then
-      src_url="$(eval 'echo $SRC_'${i}'_URL')"
-      src_checksum="$(eval 'echo $SRC_'${i}'_CHECKSUM')"
-      extra_arg="$extra_arg --install_url=$src_url"
-      extra_arg="$extra_arg --install_url_checksum=$src_checksum"
+    if [ "${SHOPFLOOR_INSTALL}" = "1" ]; then
+      var="SRC_${i}_URL"
+      sec_url="${!var}"
+      var="SRC_${i}_CHECKSUM"
+      src_checksum="${!var}"
+      extra_arg="${extra_arg} --install_url=${src_url}"
+      extra_arg="${extra_arg} --install_url_checksum=${src_checksum}"
     fi
 
     return_code=0
     result="$(IS_FACTORY_INSTALL=1 \
       /opt/google/memento_updater/memento_updater.sh \
-      --dst_partition "$dst" --kernel_partition "$kpart" \
-      --allow_removable_boot $channel_arg $dst_arg $extra_arg)" ||
-      return_code="$?"
+      --dst_partition "${dst}" --kernel_partition "${kpart}" \
+      --allow_removable_boot ${channel_arg} ${dst_arg} ${extra_arg})" ||
+      return_code=$?
 
-    if [ "$i" = "RELEASE" -a -z "$RELEASE_ONLY" ]; then
+    if [ "${i}" = "RELEASE" -a -z "${RELEASE_ONLY}" ]; then
       # Disable release partition when we are not in release only mode.
       disable_release_partition
     fi
 
     # Check the result
-    if [ "$return_code" != "0" ]; then
+    if [ "${return_code}" != 0 ]; then
       # memento update has encountered a fatal error.
-      die "Factory install of target $dst has failed with error $return_code."
-    elif [ "$result" != "UPDATED" ]; then
-      if [ "$i" = "RELEASE" -a -n "$RELEASE_ONLY" ]; then
+      die "Factory install of target ${dst} has failed with error ${return_code}."
+    elif [ "${result}" != "UPDATED" ]; then
+      if [ "${i}" = "RELEASE" -a -n "${RELEASE_ONLY}" ]; then
         # Only updating the primary root/kernel partition is strictly required.
         # If the omahaserver is configured to not update others that's fine.
         # In release only mode, release image is required.
         die "AU failed."
-      elif [ "$i" = "FACTORY" -a -z "$RELEASE_ONLY" ]; then
+      elif [ "${i}" = "FACTORY" -a -z "${RELEASE_ONLY}" ]; then
         # Otherwise, factory image is required.
         die "AU failed."
       fi
@@ -803,51 +809,51 @@ factory_install_omaha() {
   omaha_greetings "download_complete" "${uuid}"
 
   # Post-processing channels in self-executable file.
-  if [ -n "$NETBOOT_RAMFS" ]; then
+  if [ -n "${NETBOOT_RAMFS}" ]; then
     run_netboot_postinst \
-      "$(make_partition_dev $DST_DRIVE 3)" \
-      "$(make_partition_dev $DST_DRIVE 1)" \
+      "$(make_partition_dev ${DST_DRIVE} 3)" \
+      "$(make_partition_dev ${DST_DRIVE} 1)" \
       "${DST_HWID_PART}" \
       "${DST_FIRMWARE_PART}"
   else
-    if [ -s "$DST_FIRMWARE_PART" ]; then
+    if [ -s "${DST_FIRMWARE_PART}" ]; then
       log "Execute firmware-install script"
-      dst="$DST_FIRMWARE_PART"
+      dst="${DST_FIRMWARE_PART}"
       dst_arg="--force --mode=factory_install"
       # In release only mode, we want to run firmware updater in recovery mode.
-      if [ -n "$RELEASE_ONLY" ]; then
+      if [ -n "${RELEASE_ONLY}" ]; then
         dst_arg="--force --mode=recovery"
       fi
-      if ! sh "$dst" $dst_arg 2>&1; then
+      if ! sh "${dst}" ${dst_arg} 2>&1; then
         die "Firmware updating failed."
       fi
     fi
-    if [ -s "$DST_HWID_PART" ]; then
+    if [ -s "${DST_HWID_PART}" ]; then
       log "Execute HWID component list updater script"
-      dst="$DST_HWID_PART"
-      dst_arg="$(make_partition_dev $DST_DRIVE $DST_STATE_PART)"
-      if ! sh "$dst" "$dst_arg" 2>&1; then
+      dst="${DST_HWID_PART}"
+      dst_arg="$(make_partition_dev ${DST_DRIVE} ${DST_STATE_PART})"
+      if ! sh "${dst}" "${dst_arg}" 2>&1; then
         die "HWID component list updating failed."
       fi
     fi
   fi
 
   # Update omaha information into stateful partition.
-  save_omaha_url "$(make_partition_dev $DST_DRIVE $DST_STATE_PART)" \
+  save_omaha_url "$(make_partition_dev ${DST_DRIVE} ${DST_STATE_PART})" \
     2>&1 || die "Failed to save OMAHA server information."
 
   # After post processing, notify miniomaha server a installation session
   # has been successfully completed.
   omaha_greetings "goodbye" "${uuid}"
 
-  if [ -s "$DST_COMPLETE_PART" ]; then
+  if [ -s "${DST_COMPLETE_PART}" ]; then
     log "Found completion script."
-    COMPLETE_SCRIPT="$DST_COMPLETE_PART"
+    COMPLETE_SCRIPT="${DST_COMPLETE_PART}"
   fi
 
   # In release only mode, disable developer switch in the end to avoid
   # entering developer mode after restart.
-  if [ -n "$RELEASE_ONLY" ]; then
+  if [ -n "${RELEASE_ONLY}" ]; then
     disable_dev_switch
   fi
 }
@@ -913,7 +919,7 @@ board_post_install() {
 crossystem_on_or_off() {
   local value
   if value="$(crossystem "$1" 2>/dev/null)"; then
-    case "$value" in
+    case "${value}" in
     "0")
       echo off
       ;;
@@ -921,7 +927,7 @@ crossystem_on_or_off() {
       echo on
       ;;
     *)
-      echo "$value"
+      echo "${value}"
       ;;
     esac
   else
@@ -949,8 +955,8 @@ print_device_info() {
     local bios_version="$(crossystem ro_fwid 2>/dev/null)"
     echo "BIOS version: ${bios_version:-(unknown)}"
     for type in RO RW; do
-      echo -n "EC $type version: "
-      ectool version | grep "^$type version" | sed -e 's/[^:]*: *//'
+      echo -n "EC ${type} version: "
+      ectool version | grep "^${type} version" | sed -e 's/[^:]*: *//'
     done
     echo
     echo System time: "$(date)"
@@ -960,8 +966,8 @@ print_device_info() {
     echo -n "Recovery mode: $(crossystem_on_or_off recoverysw_boot); "
     echo -n "HW write protect: $(crossystem_on_or_off wpsw_boot); "
     echo "SW write protect: $(crossystem_on_or_off sw_wpsw_boot)"
-    echo -n "EC present: $(bool_to_yes_or_no "$EC_PRESENT"); "
-    echo "Dev switch present: $(bool_to_yes_or_no "$DEVSW_PRESENT")"
+    echo -n "EC present: $(bool_to_yes_or_no "${EC_PRESENT}"); "
+    echo "Dev switch present: $(bool_to_yes_or_no "${DEVSW_PRESENT}")"
     echo
 }
 
@@ -979,7 +985,7 @@ menu_line() {
   printf "%-22s%s\n" "$2" "$3"
 }
 
-# Displays a menu, saving the action (one of $SUPPORTED_ACTIONS, always
+# Displays a menu, saving the action (one of ${SUPPORTED_ACTIONS}, always
 # lowercase) in the "ACTION" variable.  If no valid action is chosen,
 # ACTION will be empty.
 menu() {
@@ -1002,14 +1008,14 @@ menu() {
   echo
   read -p 'action> ' ACTION
   echo
-  ACTION="$(echo "$ACTION" | tr A-Z a-z)"
+  ACTION="$(echo "${ACTION}" | tr A-Z a-z)"
 
-  if echo "$ACTION" | grep -qv "^[$SUPPORTED_ACTIONS]\$"; then
+  if echo "${ACTION}" | grep -qv "^[${SUPPORTED_ACTIONS}]\$"; then
     echo "Invalid action; please select an action from the menu."
     ACTION=
     return
   fi
-  if echo "$ACTION" | grep -qv "^[$BLOCKDEV_ALLOWED_ACTIONS]\$"; then
+  if echo "${ACTION}" | grep -qv "^[${BLOCKDEV_ALLOWED_ACTIONS}]\$"; then
     if check_block_devmode; then
       echo "Action blocked by block_devmode. Please select another action."
       ACTION=
@@ -1023,7 +1029,7 @@ main() {
     echo "You must run this as root."
     exit 1
   fi
-  if [ -n "$RELEASE_ONLY" ]; then
+  if [ -n "${RELEASE_ONLY}" ]; then
     # Change the partition in release only mode
     DST_RELEASE_KERNEL_PART=2
     DST_RELEASE_PART=3
@@ -1059,24 +1065,24 @@ main() {
 
   # In netboot, automatically perform the I action; but first give the
   # user the chance to press any key to display the menu.
-  if [ "$NETBOOT_RAMFS" = 1 ]; then
+  if [ "${NETBOOT_RAMFS}" = 1 ]; then
     clear
     print_header
     log "Netbooting.  Will automatically perform 'install' action."
     log "Or press any key to show menu instead..."
     local prevent_install=false
     local timeout_secs=3
-    for i in $(seq $timeout_secs -1 1); do
+    for i in $(seq ${timeout_secs} -1 1); do
       # Read with timeout doesn't reliably work multiple times without
       # a subshell.
-      if ( read -N 1 -p "Press any key within $i sec> " -t 1 ); then
+      if ( read -N 1 -p "Press any key within ${i} sec> " -t 1 ); then
         echo
         prevent_install=true
         break
       fi
       echo
     done
-    if ! $prevent_install; then
+    if ! ${prevent_install}; then
       # No key pressed: perform the install action (which should
       # never return)
       # Note in netboot mode we ignore the BLOCKDEV_ALLOWED_ACTIONS list
@@ -1091,7 +1097,7 @@ main() {
     print_header
     menu
 
-    if [ -n "$ACTION" ]; then
+    if [ -n "${ACTION}" ]; then
       # Perform the selected action.
       action_${ACTION}
     fi
@@ -1109,13 +1115,13 @@ main() {
 action_i() {
   reset_chromeos_device
 
-  if [ -n "$install_from_omaha" ]; then
+  if [ -n "${install_from_omaha}" ]; then
 
     colorize yellow
     log "Waiting for ethernet connectivity to install"
 
     while true; do
-      if [ -n "$NETBOOT_RAMFS" ]; then
+      if [ -n "${NETBOOT_RAMFS}" ]; then
         # For initramfs network boot, there is no upstart job. We have to
         # bring up network interface and get IP address from DHCP on our own.
         # The network interface may not be ready, so let's ignore any
@@ -1141,7 +1147,7 @@ action_i() {
   prepare_disk
   select_board
 
-  if [ -n "$install_from_omaha" ]; then
+  if [ -n "${install_from_omaha}" ]; then
     factory_install_omaha
   else
     factory_install_usb
@@ -1155,7 +1161,7 @@ action_i() {
   # Default action after installation: reboot.
   trap - EXIT
   sleep 3
-  if [ -n "$NETBOOT_RAMFS" ]; then
+  if [ -n "${NETBOOT_RAMFS}" ]; then
     # There is no 'shutdown' and 'init' in initramfs.
     busybox reboot -f
   else
@@ -1168,7 +1174,7 @@ action_i() {
 
 # R = Factory reset.
 action_r() {
-  if [ -n "$NETBOOT_RAMFS" ]; then
+  if [ -n "${NETBOOT_RAMFS}" ]; then
     # factory_reset.sh script is not available in netboot mode.
     colorize red
     log "Not available in netboot."
@@ -1179,13 +1185,13 @@ action_r() {
   MOUNT_POINT=/tmp/stateful
   mkdir -p /tmp/stateful
   get_dst_drive
-  mount -o ro "$(make_partition_dev $DST_DRIVE $DST_STATE_PART)" "$MOUNT_POINT"
+  mount -o ro "$(make_partition_dev ${DST_DRIVE} ${DST_STATE_PART})" "${MOUNT_POINT}"
 
   local factory_exists=false
-  [ -e $MOUNT_POINT/dev_image/factory ] && factory_exists=true
-  umount "$MOUNT_POINT"
+  [ -e ${MOUNT_POINT}/dev_image/factory ] && factory_exists=true
+  umount "${MOUNT_POINT}"
 
-  if $factory_exists; then
+  if ${factory_exists}; then
     colorize red
     log "Factory software is still installed (device has not been finalized)."
     log "Unable to perform factory reset."
@@ -1226,8 +1232,8 @@ action_v() {
 
     for partition in RO_VPD RW_VPD; do
       echo
-      echo "$partition contents:"
-      vpd -i "$partition" -l || true
+      echo "${partition} contents:"
+      vpd -i "${partition}" -l || true
     done
 
     echo
@@ -1242,7 +1248,7 @@ action_v() {
 
 # Z = Zero
 action_z() {
-  if [ -n "$NETBOOT_RAMFS" ]; then
+  if [ -n "${NETBOOT_RAMFS}" ]; then
     # factory_reset.sh script is not available in netboot mode.
     colorize red
     log "Not available in netboot."
@@ -1261,7 +1267,7 @@ action_z() {
   colorize white
   local yes_or_no
   read -p "Wipe the internal disk? (yes/no)> " yes_or_no
-  if [ "$yes_or_no" = yes ]; then
+  if [ "${yes_or_no}" = yes ]; then
     factory_disk_wipe
   else
     echo "You did not type 'yes'. Cancelled."
