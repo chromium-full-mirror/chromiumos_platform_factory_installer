@@ -53,7 +53,7 @@ DEVSW_PRESENT=1
 NETBOOT_RAMFS=""
 
 # Supported actions (a set of lowercase characters)
-SUPPORTED_ACTIONS=irsvz
+SUPPORTED_ACTIONS=irsvzt
 
 # Each action x is implemented in an action_$x handler (e.g.,
 # action_i); see the handlers for more information about what
@@ -988,6 +988,7 @@ menu() {
   menu_line S "Shell" "Opens bash; available only with developer firmware"
   menu_line V "View configuration" "Shows crossystem, VPD, etc."
   menu_line Z "Zero (wipe) storage" "Makes device completely unusable"
+  menu_line T "TPM Initialize" "Reinitialize TPM rewritable nvram"
 
   echo
   read -p 'action> ' ACTION
@@ -1246,4 +1247,33 @@ action_z() {
   fi
 }
 
+# T = TPM NVRAM Clear
+action_t() {
+  colorize red
+  echo "!!"
+  echo "!! TPM rewritable NVRAM will be reinitialized"
+  echo "!! After you run this, you might recover the system"
+  echo "!! with recovery image."
+  echo "!!"
+  colorize white
+  local yes_or_no
+  read -p "Attempt to create the TPM NVRAM kernel version space? (yes/no)> " yes_or_no
+  if [ "$yes_or_no" = yes ]; then
+    log "Clearing TPM"
+    sleep 3
+    tpmc ppon
+    tpmc clear
+    tpmc enable
+    tpmc activate
+
+    local kernel_index="0x1008"
+    tpmc def $kernel_index 13 0x1
+
+    echo "Done"
+    sleep 3
+    shutdown -r now
+  else
+    echo "You did not type 'yes'. Cancelled."
+  fi
+}
 main "$@"
