@@ -211,17 +211,18 @@ set_time() {
 
 check_ethernet_status() {
   local link i
+  local result=1
   link=$(ip -f link addr | sed 'N;s/\n/ /' | grep -w 'ether' |
     cut -d ' ' -f 2 | sed 's/://')
   for i in $link; do
     if ip -f inet addr show $i | grep -q inet; then
       if ! iw $i info >/dev/null 2>&1; then
         log "$(ip -f inet addr show $i | grep inet)"
-        return 0
+        result=0
       fi
     fi
   done
-  return 1
+  return ${result}
 }
 
 reset_chromeos_device() {
@@ -399,14 +400,22 @@ bringup_network() {
   # Probe USB Ethernet devices.
   local module
   local module_name
+  local found_ip=0
   for module in $(find /lib/modules/ -name "*.ko"); do
     module_name="$(basename ${module%.ko})"
     modprobe ${module_name}
   done
 
-  # Try to bring up network and get an IP address.
-  ifconfig eth0 up
-  udhcpc -t 5 -f -q -s /etc/udhcpc.script
+  while [ "${found_ip}" = "0" ]; do
+    # Try to bring up network and get an IP address on each Ethernet device.
+    for iface in $(ifconfig -a | grep -Eo 'eth[0-9]+'); do
+      ifconfig ${iface} up
+      udhcpc -t 3 -f -q -n -i ${iface} -s /etc/udhcpc.script
+      if [ "$?" = "0" ]; then
+        found_ip=1
+      fi
+    done
+  done
 }
 
 disable_release_partition() {
