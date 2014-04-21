@@ -55,7 +55,7 @@ BLOCK_DEVMODE="$(crossystem block_devmode)"
 INSTALL_FROM_OMAHA="1"
 
 # Supported actions (a set of lowercase characters)
-SUPPORTED_ACTIONS=irsvz
+SUPPORTED_ACTIONS=cirsvyz
 
 # Security note: block_devmode must be checked or preserved for any actions that
 #                will install bootable image to fixed storage or clear NV data.
@@ -64,14 +64,15 @@ SUPPORTED_ACTIONS=irsvz
 # storage. In other words:
 #  1. Do not touch fixed storage and NVDATA ('v'), or
 #  2. Reset NVDATA while keeping block_devmode flag, ('r'), or
-#  3. Always turns fixed storage to unbootable state ('z').
+#  3. Always turns fixed storage to unbootable state ('z'), or
+#  4. Secure erase and verify the fixed storage ('y' and 'c').
 # Note: 'z' (Zero) action may be helpful when we need to pre-set block_devmode
 #           and move device to other place for later recovery due to special
 #           legal requirements.
 #       's' (Shell) action already cecks other flags requiring DEV mode, but
 #           in order to be on the safe side (try to be as strict as possible) we
 #           also want to block it.
-BLOCKDEV_ALLOWED_ACTIONS=rvz
+BLOCKDEV_ALLOWED_ACTIONS=crvyz
 
 # Each action x is implemented in an action_$x handler (e.g.,
 # action_i); see the handlers for more information about what
@@ -606,10 +607,21 @@ factory_reset() {
   exit_success
 }
 
-factory_disk_wipe() {
-  log "Performing factory disk wipe"
-  if ! /usr/sbin/factory_reset.sh "${DST_DRIVE}" wipe; then
-    die "Factory disk wipe failed."
+# Call reset code on the fixed driver.
+#
+# Assume the global variable DST_DRIVE contains the drive to operate on.
+#
+# Args:
+#   action: describe how to erase the drive.
+#     Allowed actions:
+#     - wipe: action Z
+#     - secure: action C
+#     - verify: action Y
+factory_disk_action() {
+  local action="$1"
+  log "Performing factory disk ${action}"
+  if ! /usr/sbin/factory_reset.sh "${DST_DRIVE}" "${action}"; then
+    die "Factory disk ${action} failed."
   fi
   log "Done."
   exit_success
@@ -1004,6 +1016,8 @@ menu() {
   menu_line S "Shell" "Opens bash; available only with developer firmware"
   menu_line V "View configuration" "Shows crossystem, VPD, etc."
   menu_line Z "Zero (wipe) storage" "Makes device completely unusable"
+  menu_line C "SeCure erase" "Performs full storage erase, write a verification pattern"
+  menu_line Y "VerifY erase" "Verifes the storage has been erased with option C"
 
   echo
   read -p 'action> ' ACTION
@@ -1245,8 +1259,15 @@ action_v() {
   ) 2>&1 | secure_less.sh
 }
 
-# Z = Zero
-action_z() {
+# Confirm and erase the fixed drive.
+#
+# Identify the fixed drive, ask confirmation and call
+# factory_disk_action function.
+#
+# Args:
+#   action: describe how to erase the drive.
+erase_drive() {
+  local action="$1"
   if [ -n "${NETBOOT_RAMFS}" ]; then
     # factory_reset.sh script is not available in netboot mode.
     colorize red
@@ -1267,10 +1288,33 @@ action_z() {
   local yes_or_no
   read -p "Wipe the internal disk? (yes/no)> " yes_or_no
   if [ "${yes_or_no}" = yes ]; then
-    factory_disk_wipe
+    factory_disk_action "${action}"
   else
     echo "You did not type 'yes'. Cancelled."
   fi
 }
+
+# Z = Zero
+action_z() {
+  erase_drive wipe
+}
+
+# C =SeCure
+action_c() {
+  erase_drive secure
+}
+
+# Y = VerifY
+action_y() {
+  if [ -n "${NETBOOT_RAMFS}" ]; then
+    # factory_reset.sh script is not available in netboot mode.
+    colorize red
+    log "Not available in netboot."
+    return
+  fi
+  get_dst_drive
+  factory_disk_action verify
+}
+
 
 main "$@"

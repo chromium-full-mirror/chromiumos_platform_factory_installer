@@ -13,6 +13,18 @@
 #
 
 . "/usr/share/misc/chromeos-common.sh"
+. "$(dirname "$0")/factory_verify.sh"
+
+usage() {
+  echo "Usage: $0 disk [wipe|erase|verify]."
+  echo "disk: device to operate on [for instance /dev/sda]"
+  echo "If no argument, do a factory reset. Otherwise:"
+  echo "wipe: write 0's on every LBA [backward compatibility]"
+  echo "secure: use internal erase command in the device"
+  echo "        and write a pattern on the disk"
+  echo "verify: verify the disk has been erased properly"
+  exit 1
+}
 
 # Note that some variables are shared with restore_crx_cache.
 preserve_crx_cache() {
@@ -76,12 +88,9 @@ restore_crx_cache() {
   fi
 }
 
-echo "Factory reset"
 
 if [ "$#" -lt 1 ]; then
-  echo "Usage: $0 disk [wipe]."
-  echo "ex, $0 /dev/sda."
-  exit 1
+  usage
 fi
 
 DEV="$1"
@@ -90,18 +99,33 @@ if [ ! -b "${DEV}" ]; then
   exit 1
 fi
 STATE_DEV=$(make_partition_dev "${DEV}" "1")
+DEV_SIZE=$(blockdev --getsize64 "${DEV}")
 shift
 
 # Tcsd will bring up the tpm and de-own it,
 # as we are in developer/recovery mode.
 start tcsd
 
-if [ $# -eq 1 -a "$1" = "wipe" ]; then
-  # Nuke the disk
-  DEV_SIZE=$(blockdev --getsize64 ${DEV})
-  pv -etpr -s ${DEV_SIZE} -B 8M /dev/zero 2>/dev/tty1 | \
-      dd bs=8M of=${DEV} oflag=dsync iflag=fullblock
+if [ $# -eq 1 ]; then
+  case "$1" in
+    wipe)
+      # Nuke the disk.
+      pv -etpr -s ${DEV_SIZE} -B 8M /dev/zero 2>/dev/tty1 | \
+        dd bs=8M of="${DEV}" oflag=dsync iflag=fullblock
+      ;;
+    secure)
+      # Erase using firmware feature first.
+      secure_erase ${DEV} || exit 1
+      perform_fio_op "${DEV}" "${DEV_SIZE}" "write" || exit 1
+      ;;
+    verify)
+      perform_fio_op "${DEV}" "${DEV_SIZE}" "verify" || exit 1
+      ;;
+    *)
+      usage
+  esac
 else
+  echo "Factory reset"
   if [ ! -b "${STATE_DEV}" ]; then
     echo "Failed to find stateful partition."
     exit 1
