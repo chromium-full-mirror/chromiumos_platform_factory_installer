@@ -52,6 +52,7 @@ EC_PRESENT=0
 DEVSW_PRESENT=1
 NETBOOT_RAMFS=""
 BLOCK_DEVMODE="$(crossystem block_devmode)"
+INSTALL_FROM_OMAHA="1"
 
 # Supported actions (a set of lowercase characters)
 SUPPORTED_ACTIONS=irsvz
@@ -1050,9 +1051,8 @@ main() {
   test_ec_flash_presence
   test_devsw_presence
 
-  local install_from_omaha="1"
   if [ "$(findLSBValue FACTORY_INSTALL_FROM_USB)" = "1" ]; then
-    install_from_omaha=""
+    INSTALL_FROM_OMAHA=""
   fi
 
   if [ "$(findLSBValue NETBOOT_RAMFS)" = "1" ]; then
@@ -1114,7 +1114,7 @@ main() {
 action_i() {
   reset_chromeos_device
 
-  if [ -n "${install_from_omaha}" ]; then
+  if [ -n "${INSTALL_FROM_OMAHA}" ]; then
 
     colorize yellow
     log "Waiting for ethernet connectivity to install"
@@ -1146,7 +1146,7 @@ action_i() {
   prepare_disk
   select_board
 
-  if [ -n "${install_from_omaha}" ]; then
+  if [ -n "${INSTALL_FROM_OMAHA}" ]; then
     factory_install_omaha
   else
     factory_install_usb
