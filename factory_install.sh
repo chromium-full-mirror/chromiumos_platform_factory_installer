@@ -120,7 +120,7 @@ on_die() {
 }
 
 kill_bg_jobs() {
-  pids=$(jobs -p)
+  local pids=$(jobs -p)
   # Disown all background jobs to avoid terminated messages
   disown -a
   # Kill the jobs
@@ -390,7 +390,6 @@ override_from_board() {
 override_from_tftp() {
   # Check for Omaha URL from tftp server.
   # OMAHA is override env variables used when calling memento_updater.
-  local omaha=""
   local tftp=""
   local omahaserver_config="omahaserver.conf"
   local tftp_output=""
@@ -789,7 +788,7 @@ factory_install_omaha() {
     fi
 
     # Check the result
-    if [ "${return_code}" != 0 ]; then
+    if [ ${return_code} -ne 0 ]; then
       # memento update has encountered a fatal error.
       die "Factory install of target ${dst} has failed with error ${return_code}."
     elif [ "${result}" != "UPDATED" ]; then
