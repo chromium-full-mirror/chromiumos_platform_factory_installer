@@ -51,9 +51,26 @@ DST_DRIVE=""
 EC_PRESENT=0
 DEVSW_PRESENT=1
 NETBOOT_RAMFS=""
+BLOCK_DEVMODE="$(crossystem block_devmode)"
 
 # Supported actions (a set of lowercase characters)
 SUPPORTED_ACTIONS=irsvz
+
+# Security note: block_devmode must be checked or preserved for any actions that
+#                will install bootable image to fixed storage or clear NV data.
+# List of actions allowed when block_devmode flag is set. These actions should
+# keep block_devmode NVDATA flag and not writing any bootable data to fixed
+# storage. In other words:
+#  1. Do not touch fixed storage and NVDATA ('v'), or
+#  2. Reset NVDATA while keeping block_devmode flag, ('r'), or
+#  3. Always turns fixed storage to unbootable state ('z').
+# Note: 'z' (Zero) action may be helpful when we need to pre-set block_devmode
+#           and move device to other place for later recovery due to special
+#           legal requirements.
+#       's' (Shell) action already cecks other flags requiring DEV mode, but
+#           in order to be on the safe side (try to be as strict as possible) we
+#           also want to block it.
+BLOCKDEV_ALLOWED_ACTIONS=rvz
 
 # Each action x is implemented in an action_$x handler (e.g.,
 # action_i); see the handlers for more information about what
@@ -230,6 +247,10 @@ reset_chromeos_device() {
   if ! mosys nvram clear; then
     # Not every platforms really need this - OK if nvram is not cleared.
     log "Warning: NVData not cleared."
+  fi
+  # Restore block_devmode if previously set, for Factory reset (action_r).
+  if [ "${BLOCK_DEVMODE}" = "1" ]; then
+    crossystem block_devmode=1
   fi
 
   if grep -q cros_netboot /proc/cmdline; then
@@ -853,6 +874,25 @@ test_devsw_presence() {
   fi
 }
 
+# Returns 0 if devmode is blocked; 1 if system is allowed to enter devmode.
+check_block_devmode() {
+  # If "developer mode is blocked" and "write protection is enabled", we should
+  # keep block_devmode flag and not allow writing any bootable OS image data to
+  # the fixed storage, since checking of block_devmode is currently done in
+  # signed OS image rootfs (not firmware).
+  crossystem 'block_devmode?1' 'wpsw_boot?1' && check_fwwp || return 1
+  colorize red
+  log "
+    crossystem flag 'block_devmode' is set on a write protected device.
+
+    You need to either disable write protection, or revert the flag by using a
+    signed recovery image and then run following command in developer console:
+
+      crossytem block_devmode=0
+    "
+  return 0
+}
+
 board_pre_install() {
   BOARD_PRE_INSTALL=/usr/sbin/board_factory_pre_install.sh
   if [ -x "${BOARD_PRE_INSTALL}" ]; then
@@ -964,11 +1004,18 @@ menu() {
   echo
   ACTION="$(echo "$ACTION" | tr A-Z a-z)"
 
-  if echo "$ACTION" | grep -q "^[$SUPPORTED_ACTIONS]$"; then
-      return
+  if echo "$ACTION" | grep -qv "^[$SUPPORTED_ACTIONS]\$"; then
+    echo "Invalid action; please select an action from the menu."
+    ACTION=
+    return
   fi
-  echo "Invalid action; please select an action from the menu."
-  ACTION=
+  if echo "$ACTION" | grep -qv "^[$BLOCKDEV_ALLOWED_ACTIONS]\$"; then
+    if check_block_devmode; then
+      echo "Action blocked by block_devmode. Please select another action."
+      ACTION=
+      return
+    fi
+  fi
 }
 
 main() {
@@ -1032,6 +1079,8 @@ main() {
     if ! $prevent_install; then
       # No key pressed: perform the install action (which should
       # never return)
+      # Note in netboot mode we ignore the BLOCKDEV_ALLOWED_ACTIONS list
+      # since netboot implies firmware write protection disabled.
       action_i
     fi
   fi
