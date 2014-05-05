@@ -400,22 +400,18 @@ bringup_network() {
   # Probe USB Ethernet devices.
   local module
   local module_name
-  local found_ip=0
+  local result=1
   for module in $(find /lib/modules/ -name "*.ko"); do
     module_name="$(basename ${module%.ko})"
     modprobe ${module_name}
   done
 
-  while [ "${found_ip}" = "0" ]; do
-    # Try to bring up network and get an IP address on each Ethernet device.
-    for iface in $(ifconfig -a | grep -Eo 'eth[0-9]+'); do
-      ifconfig ${iface} up
-      udhcpc -t 3 -f -q -n -i ${iface} -s /etc/udhcpc.script
-      if [ "$?" = "0" ]; then
-        found_ip=1
-      fi
-    done
+  # Try to bring up network and get an IP address on each Ethernet device.
+  for iface in $(ifconfig -a | grep -Eo 'eth[0-9]+'); do
+    ifconfig ${iface} up || true
+    udhcpc -t 3 -f -q -n -i ${iface} -s /etc/udhcpc.script && result=0
   done
+  return ${result}
 }
 
 disable_release_partition() {
