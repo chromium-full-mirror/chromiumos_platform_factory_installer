@@ -78,6 +78,11 @@ BLOCKDEV_ALLOWED_ACTIONS=crvyz
 # action_i); see the handlers for more information about what
 # each option is.
 
+# The ethernet interface to be used. It will be determined in
+# check_ethernet_status and be passed to ping_shopfloor as an
+# environment variable.
+ETH_INTERFACE=""
+
 # Define our own logging function.  The one from memento_updater writes to
 # a file, which may cause a race condition if we tail it.
 log() {
@@ -237,6 +242,7 @@ check_ethernet_status() {
     if ip -f inet addr show ${i} | grep -q inet; then
       if ! iw ${i} info >/dev/null 2>&1; then
         log "$(ip -f inet addr show ${i} | grep inet)"
+        ETH_INTERFACE=${i}
         result=0
       fi
     fi
@@ -720,7 +726,8 @@ factory_install_omaha() {
   DST_COMPLETE_PART="$(mktemp "/tmp/complete_XXXXXXXX")"
 
   # Ping shopfloor server
-  ping_result=$(ping_shopfloor 2>/dev/null) || return_code="$?"
+  ping_result=$(ETH_INTERFACE=${ETH_INTERFACE} ping_shopfloor 2>/dev/null) ||
+      return_code="$?"
   if [ "${return_code}" = "" ]; then
     eval "${ping_result}"
   fi

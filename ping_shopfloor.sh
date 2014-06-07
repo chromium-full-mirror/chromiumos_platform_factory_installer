@@ -29,11 +29,7 @@
 #
 
 sf_log() {
-  if [ -z "$(command -v "log")" ]; then
-    echo "$(date) $*" >&2
-  else
-    log "$*"
-  fi
+  echo "$(date) $*" >&2
 }
 
 ping_shopfloor() {
@@ -61,6 +57,34 @@ ping_shopfloor() {
   else
     sf_log "ping_shopfloor: SHOPFLOOR and OMAHA not found."
     return 1
+  fi
+
+  # Try to get resource map from Umpire. ETH_INTERFACE is passed from
+  # factory_install.sh.
+  local sn="$(vpd -i RO_VPD -g serial_number)" || sn=""
+  local mlb_sn="$(vpd -i RO_VPD -g mlb_serial_number)" || mlb_sn=""
+  local board="${BOARD}"
+  local mac_addr="$(ip link show ${ETH_INTERFACE} | grep link/ether |
+      tr -s ' '| cut -d ' ' -f 3)"
+  local resourcemap_rc="0"
+  local resourcemap=""
+  local mac="mac.${ETH_INTERFACE}=${mac_addr};"
+  local values="sn=${sn}; mlb_sn=${mlb_sn}; board=${board}; ${mac}"
+  local empty_values="firmware=; ec=; stage=;"
+  local x_umpire_dut_header="X-Umpire-DUT: ${values} ${empty_values}"
+  local target="${resource_url%/res}/resourcemap"
+  sf_log "ping_shopfloor: ${x_umpire_dut_header}"
+
+  resourcemap="$(wget -O - --header "${x_umpire_dut_header}" "${target}")" ||
+      resourcemap_rc="$?"
+
+  if [ "$resourcemap_rc" != "0" ]; then
+    sf_log "ping_shopfloor: could not fetch resourcemap."
+  else
+    sf_log "ping_shopfloor: got resourcemap: ${resourcemap}"
+    config_file="$(echo "${resourcemap}" | grep download_conf |
+        cut -d ':' -f 2 | tr -d ' ')"
+    sf_log "ping_shopfloor: config_file: ${config_file}"
   fi
 
   # Ping shopfloor by fetching the config file
