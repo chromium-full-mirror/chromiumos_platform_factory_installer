@@ -788,9 +788,14 @@ factory_install_omaha() {
 
     if [ "${SHOPFLOOR_INSTALL}" = "1" ]; then
       var="SRC_${i}_URL"
-      sec_url="${!var}"
+      src_url="${!var}"
       var="SRC_${i}_CHECKSUM"
       src_checksum="${!var}"
+
+      if [ -z "$src_url" ]; then
+        continue;
+      fi
+
       extra_arg="${extra_arg} --install_url=${src_url}"
       extra_arg="${extra_arg} --install_url_checksum=${src_checksum}"
     fi
