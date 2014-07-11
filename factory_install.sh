@@ -280,6 +280,12 @@ reset_chromeos_device() {
     clear_fwwp
   fi
 
+  log "Request to clear TPM owner at next boot."
+  # No matter if whole TPM (see below) is cleared or not, we always
+  # want to clear TPM ownership (safe and easy) so factory test program and
+  # release image won't start with unknown ownership.
+  crossystem clear_tpm_owner_request=1 || true
+
   log "Checking if TPM should be cleared (for version and owner)"
   # To clear TPM, we need it unlocked (only in recovery boot).
   # Booting with USB in developer mode (Ctrl-U) does not work.
