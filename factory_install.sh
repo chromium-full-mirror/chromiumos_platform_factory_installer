@@ -158,6 +158,8 @@ ensure_fwwp_consistency() {
 }
 
 check_fwwp() {
+  # Note "crossystem sw_wpsw_boot" only works on Baytrail systems, so we have to
+  # use flashrom for better compatibility.
   flashrom -p host --wp-status 2>/dev/null |
     grep -q "write protect is enabled"
 }
@@ -923,9 +925,11 @@ print_device_info() {
     echo -n "Dev mode: $(crossystem_on_or_off devsw_boot); "
     echo -n "Recovery mode: $(crossystem_on_or_off recoverysw_boot); "
     echo -n "HW write protect: $(crossystem_on_or_off wpsw_boot); "
-    echo "SW write protect: $(crossystem_on_or_off sw_wpsw_boot)"
-    echo -n "EC present: $(bool_to_yes_or_no "$EC_PRESENT"); "
-    echo "Dev switch present: $(bool_to_yes_or_no "$DEVSW_PRESENT")"
+    local wp_msg="yes"
+    check_fwwp || wp_msg="no"
+    echo -n "SW write protect: ${wp_msg}"
+    echo -n "EC present: $(bool_to_yes_or_no "${EC_PRESENT}"); "
+    echo "Dev switch present: $(bool_to_yes_or_no "${DEVSW_PRESENT}")"
     echo
 }
 
