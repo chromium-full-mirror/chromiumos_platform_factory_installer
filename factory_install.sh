@@ -181,10 +181,14 @@ ensure_fwwp_consistency() {
   fi
 }
 
+# Checks if firmware software write protection is enabled.
+# Args
+#   target: a "flashrom -p" descriptor. Defaults to "host".
 check_fwwp() {
+  local target="${1:-host}"
   # Note "crossystem sw_wpsw_boot" only works on Baytrail systems, so we have to
   # use flashrom for better compatibility.
-  flashrom -p host --wp-status 2>/dev/null |
+  flashrom -p "${target}" --wp-status 2>/dev/null |
     grep -q "write protect is enabled"
 }
 
@@ -972,6 +976,10 @@ bool_to_yes_or_no() {
   [ "$1" = 1 ] && echo yes || echo no
 }
 
+command_to_yes_or_no() {
+  "$@" >dev/null 2>&1 && echo yes || echo no
+}
+
 # Prints a header (a title, plus all the info in print_device_info)
 print_header() {
     colorize boldwhite
@@ -997,10 +1005,11 @@ print_device_info() {
     echo -n "Dev mode: $(crossystem_on_or_off devsw_boot); "
     echo -n "Recovery mode: $(crossystem_on_or_off recoverysw_boot); "
     echo -n "HW write protect: $(crossystem_on_or_off wpsw_boot); "
-    local wp_msg="yes"
-    check_fwwp || wp_msg="no"
-    echo -n "SW write protect: ${wp_msg}"
+    echo "SW write protect: $(command_to_yes_or_no check_fwwp host)"
     echo -n "EC present: $(bool_to_yes_or_no "${EC_PRESENT}"); "
+    if [ "${EC_PRESENT}" = "1" ]; then
+      echo -n "EC SW write protect: $(command_to_yes_or_no check_fwwp ec); "
+    fi
     echo "Dev switch present: $(bool_to_yes_or_no "${DEVSW_PRESENT}")"
     echo
 }
