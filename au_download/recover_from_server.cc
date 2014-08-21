@@ -311,52 +311,12 @@ void install_firmware_updater()
   }
 }
 
-void postprocess_release(const string& stateful_mount)
-{
-  const string kVmlinuzHdFile="vmlinuz_hd.vblock";
-  string image_path = stateful_mount + kImagePath;
-  char mount_template[] = "image_XXXXXX";
-  string image_mount(mkdtemp(mount_template));
-  image_mount += "/";
-
-  // Find of the location of stateful partition
-  int begin_sector = get_image_offset(kStatefulPartition, image_path);
-  int num_sectors = get_image_size(kStatefulPartition, image_path);
-
-  stringstream command;
-  command << "mount -o loop,offset=" << (uint64_t) begin_sector * 512 <<
-             ",sizelimit=" << (uint64_t) num_sectors * 512 << ",ro" <<
-             " " << image_path << " " << image_mount;
-  cerr << command.str() << endl;
-  if (system(command.str().c_str()) != 0) {
-    error_exit("Cannot mount stateful partition from image");
-  }
-
-  command.str(string());
-  string kernel_device = get_output_device(kRealKernel);
-  command << "dd if=" << image_mount << kVmlinuzHdFile <<
-             " of=" << kernel_device << " bs=512 conv=notrunc";
-  if (system(command.str().c_str()) != 0) {
-    error_exit("Cannot update kernel with " + kVmlinuzHdFile);
-  }
-
-  if (system(("umount " + image_mount).c_str()) != 0) {
-    error_exit("Cannot umount " + image_mount);
-  }
-  if (remove(image_mount.c_str()) != 0){
-    error_exit("Cannot remove " + image_mount);
-  }
-}
-
 void install_all_partition(const string& stateful_mount)
 {
   install_partition(stateful_mount, kRecoveryKernel, kRealKernel);
   install_partition(stateful_mount, kRootfsPartition);
   install_partition(stateful_mount, kOemPartition);
   install_partition(stateful_mount, kEfiPartition);
-  // Since we use release image, we need to copy vmlinuz_hd.block from
-  // stateful partition to kernel partition.
-  postprocess_release(stateful_mount);
 }
 
 int main()
