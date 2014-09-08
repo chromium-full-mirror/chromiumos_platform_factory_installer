@@ -65,6 +65,9 @@ setup_environment() {
 
   # Set up /usr/local
   mount --bind /mnt/stateful_partition/dev_image /usr/local || die
+
+  ln -sf /dev/cros_ec0 /dev/cros_ec
+  ls -al /dev/cros*
 }
 
 setup_environment
