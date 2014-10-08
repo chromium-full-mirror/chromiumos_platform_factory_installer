@@ -323,7 +323,7 @@ get_dst_drive() {
 
 lightup_screen() {
   # Light up screen in case you can't see our splash image.
-  backlight_tool --set_brightness_percent 100 || true
+  backlight_tool --set_brightness_percent=100 || true
 }
 
 load_modules() {
