@@ -51,7 +51,7 @@ DST_DRIVE=""
 EC_PRESENT=0
 DEVSW_PRESENT=1
 NETBOOT_RAMFS=""
-BLOCK_DEVMODE="$(crossystem block_devmode)"
+BLOCK_DEVMODE="$(crossystem block_devmode 2>/dev/null || true)"
 INSTALL_FROM_OMAHA="1"
 
 # Supported actions (a set of lowercase characters)
