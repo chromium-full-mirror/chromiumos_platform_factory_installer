@@ -153,6 +153,9 @@ die() {
 
 config_tty() {
   stty opost
+
+  # Turn off VESA blanking
+  setterm -blank 0 -powersave off -powerdown 0
 }
 
 clear_fwwp() {
@@ -1081,7 +1084,7 @@ main() {
     DST_RELEASE_KERNEL_PART=2
     DST_RELEASE_PART=3
   fi
-  config_tty
+  config_tty || true  # Never abort if TTY has problems.
 
   log "Starting Factory Installer."
   # TODO: do we still need this call now that the kernel was tweaked to
