@@ -1207,6 +1207,10 @@ action_i() {
 
   board_post_install
 
+  # Some installation procedure may clear or reset NVdata, so we want to ensure
+  # TPM will be cleared again.
+  crossystem clear_tpm_owner_request=1 || true
+
   # Default action after installation: reboot.
   trap - EXIT
   sleep 3
