@@ -110,7 +110,7 @@ if [ $# -eq 1 ]; then
   case "$1" in
     wipe)
       # Nuke the disk.
-      pv -etpr -s ${DEV_SIZE} -B 8M /dev/zero 2>/dev/tty1 | \
+      pv -etpr -s ${DEV_SIZE} -B 8M /dev/zero |
         dd bs=8M of="${DEV}" oflag=dsync iflag=fullblock
       ;;
     secure)

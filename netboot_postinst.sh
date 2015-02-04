@@ -15,7 +15,7 @@ POST_PROCESS_SCRIPT=$(readlink -f "$0")
 HWID_BUNDLE_PATH=/mnt/stateful_partition/hwid_bundle.sh
 FIRMWARE_PATH=/mnt/stateful_partition/firmware_install
 
-# Change color in tty1 by ANSI escape sequence code
+# Change color in console by ANSI escape sequence code
 colorize() {
   local code="$1"
   case "$code" in
@@ -29,7 +29,7 @@ colorize() {
       code="1;33"
       ;;
   esac
-  printf "\033[%sm" "$code" >/dev/tty1
+  printf "\033[%sm" "$code"
 }
 
 # Error message for any unexpected error.
@@ -38,7 +38,7 @@ die() {
   colorize "red"
   echo "
     ERROR: Factory installation has been stopped.
-    Press Ctrl-Alt-F3 (Refresh) to get the detail information." >/dev/tty1
+    Press Ctrl-Alt-F3 (Refresh) to get the detail information."
   sleep 1d
 }
 
@@ -69,11 +69,11 @@ setup_environment() {
 
 setup_environment
 if [ -s "$FIRMWARE_PATH" ]; then
-  echo "Execute firmware-install script" >/dev/tty1
-  sh "$FIRMWARE_PATH" --force --mode=factory_install >/dev/tty1 || die
+  echo "Execute firmware-install script"
+  sh "$FIRMWARE_PATH" --force --mode=factory_install || die
 fi
 if [ -s "$HWID_BUNDLE_PATH" ]; then
-  echo "Execute HWID component list updater script" >/dev/tty1
-  sh "$HWID_BUNDLE_PATH" >/dev/tty1 || die
+  echo "Execute HWID component list updater script"
+  sh "$HWID_BUNDLE_PATH" || die
 fi
 rm -f "$POST_PROCESS_SCRIPT" "$HWID_BUNDLE_PATH" "$FIRMWARE_PATH"
