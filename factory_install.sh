@@ -1,21 +1,19 @@
 #!/bin/bash
 
-# Copyright (c) 2014 The Chromium OS Authors. All rights reserved.
+# Copyright 2015 The Chromium OS Authors. All rights reserved.
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
 set -e
 
-# TTY which will get a copy of bash traces, and at the end a pager to
-# look through the trace if things fail.
-TRACE_TTY=4
-
-# Dump bash trace to /var/log/factory_install.log.
-LOG_FILE=/var/log/factory_install.log
-mkdir -p $(dirname "${LOG_FILE}")
-exec {LOG_FD}>"${LOG_FILE}"
-tail -f "${LOG_FILE}" > /dev/tty"${TRACE_TTY}" &
-export BASH_XTRACEFD="${LOG_FD}"
+# Dump bash trace to default log file.
+: ${LOG_FILE:=/var/log/factory_install.log}
+: ${LOG_TTY:=}
+if [ -n "${LOG_FILE}" ]; then
+  mkdir -p $(dirname "${LOG_FILE}")
+  exec {LOG_FD}>>"${LOG_FILE}"
+  export BASH_XTRACEFD="${LOG_FD}"
+fi
 
 . "/usr/sbin/write_gpt.sh"
 . "$(dirname "$0")/ping_shopfloor.sh"
@@ -89,7 +87,7 @@ log() {
   echo "$*"
 }
 
-# Change color in tty1 by ANSI escape sequence code
+# Change color by ANSI escape sequence code
 colorize() {
   set +x
   local code="$1"
@@ -121,9 +119,14 @@ on_die() {
   colorize red
   echo
   log "ERROR: Factory installation has been stopped."
-  log "See tty${TRACE_TTY} (Ctrl-Alt-F${TRACE_TTY}) for detailed information."
-  log "(The F${TRACE_TTY} key is ${TRACE_TTY} keys to the right of the 'esc' key.)"
-  busybox openvt -c "${TRACE_TTY}" sh -c "clear; exec secure_less.sh < ${LOG_FILE}"
+  if [ -n "${LOG_TTY}" ]; then
+    local tty_num="${LOG_TTY##*[^0-9]}"
+    log "See ${LOG_TTY} (Ctrl-Alt-F${tty_num}) for detailed information."
+    log "(The F${tty_num} key is ${tty_num} keys to the right of 'esc' key.)"
+    exit 1
+  else
+    log "See ${LOG_FILE} for detailed information."
+  fi
 }
 
 kill_bg_jobs() {
