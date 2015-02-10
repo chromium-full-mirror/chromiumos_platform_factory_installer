@@ -11,11 +11,28 @@ TTY=""
 TTY_FILE=/var/log/factory_install.output
 LOG_TTY=""
 LOG_FILE=/var/log/factory_install.log
-export TTY TTY_FILE LOG_TTY LOG_FILE
+OVERLORD_READY=1
+export TTY TTY_FILE LOG_TTY LOG_FILE OVERLORD_READY
+
+. "$(dirname "$0")/ping_shopfloor.sh"
 
 # Checks if given parameter is a valid TTY (or PTS) device file.
 is_valid_tty() {
   [ -c "$1" ] && (echo "" >"$1") 2>/dev/null
+}
+
+# Extracts tokens from kernel command line.
+get_kernel_var() {
+  local token="$1="
+  local entry="$(cat /proc/cmdline)"
+  local result=""
+
+  while echo "${entry}" | grep -q "${token}" ; do
+    entry="${entry#*${token}}"
+    result="${entry%%[ ,]*} ${result}"
+    entry="${entry#* }"
+  done
+  echo "${result}"
 }
 
 # Determine the right console by following order:
@@ -24,15 +41,8 @@ is_valid_tty() {
 #  - /dev/tty1 if available (for Non-Freon boards).
 #  - /dev/null if nothing available.
 find_best_tty() {
-  local entry="$(cat /proc/cmdline)"
-  local ttys=""
+  local ttys="$(get_kernel_var console)"
   local tty=""
-
-  while echo "${entry}" | grep -q console= ; do
-    entry="${entry#*console=}"
-    ttys="${entry%%[ ,]*} ${ttys}"
-    entry="${entry#* }"
-  done
 
   for tty in ${ttys}; do
     if is_valid_tty "/dev/${tty}"; then
@@ -57,12 +67,21 @@ find_best_tty() {
   fi
 }
 
+
 main() {
   find_best_tty
 
   # Setup and display log files
   mkdir -p "$(dirname "${TTY_FILE}")" "$(dirname "${LOG_FILE}")"
   touch "${TTY_FILE}" "${LOG_FILE}"
+
+  local omahaserver="$(get_kernel_var omahaserver)"
+  if [ -n "${omahaserver}" ]; then
+    # Should be netboot-ready environment. Try to start Overlord service.
+    bringup_network &&
+      register_to_overlord "${omahaserver}" "${TTY_FILE}" "${LOG_FILE}" ||
+      OVERLORD_READY=
+  fi
 
   if [ -n "${LOG_TTY}" ]; then
     echo "

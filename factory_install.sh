@@ -450,24 +450,6 @@ overrides() {
   override_from_board
 }
 
-bringup_network() {
-  # Probe USB Ethernet devices.
-  local module
-  local module_name
-  local result=1
-  for module in $(find /lib/modules/ -name "*.ko"); do
-    module_name="$(basename "${module%.ko}")"
-    modprobe ${module_name}
-  done
-
-  # Try to bring up network and get an IP address on each Ethernet device.
-  for iface in $(ifconfig -a | grep -Eo 'eth[0-9]+'); do
-    ifconfig ${iface} up || true
-    udhcpc -t 3 -f -q -n -i ${iface} -s /etc/udhcpc.script && result=0
-  done
-  return ${result}
-}
-
 disable_release_partition() {
   # Release image is not allowed to boot unless the factory test is passed
   # otherwise the wipe and final verification can be skipped.
@@ -760,6 +742,10 @@ factory_install_omaha() {
 
   # Generate the uuid for current install session
   uuid="$(uuidgen 2>/dev/null)" || uuid="Not_Applicable"
+
+  # Register to Overlord if haven't.
+  [ -n "${OVERLORD_READY}" ] ||
+    register_to_overlord "${OMAHA}" "${TTY_FILE}" "${LOG_FILE}"
 
   # Say hello to miniomaha server
   omaha_greetings "hello" "${uuid}"
