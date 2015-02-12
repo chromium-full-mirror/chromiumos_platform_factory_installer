@@ -123,10 +123,16 @@ on_die() {
     local tty_num="${LOG_TTY##*[^0-9]}"
     log "See ${LOG_TTY} (Ctrl-Alt-F${tty_num}) for detailed information."
     log "(The F${tty_num} key is ${tty_num} keys to the right of 'esc' key.)"
-    exit 1
   else
     log "See ${LOG_FILE} for detailed information."
   fi
+
+  # Open a terminal if the kernel command line allows debugging.
+  if grep -qw "cros_debug" /proc/cmdline 2>/dev/null; then
+    sh
+  fi
+
+  exit 1
 }
 
 kill_bg_jobs() {
