@@ -100,8 +100,11 @@ main() {
   # Use the System-V way to specify controlling TTY (CTTY): create a new session
   # (setsid) and the first opened TTY will be CTTY. 'script' is used (instead of
   # redirection) to keep input and output stream in terminal type.
+  # Service may be executed as 'exec' so we have to explicitly sleep here
+  # otherwise kernel will panic with 'init aborted' and hard to debug.
   exec setsid sh -c \
-    "exec script -afqc 'factory_install.sh' ${TTY_FILE} <${TTY} >>${TTY} 2>&1"
+    "exec script -afqc 'factory_install.sh || sleep 1d' ${TTY_FILE} \
+     <${TTY} >>${TTY} 2>&1"
 }
 
 main "$@"
