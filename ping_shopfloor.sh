@@ -175,7 +175,7 @@ register_to_overlord() {
 
   local header_tty="$(mktemp)" header_log="$(mktemp)"
   local header='{"name":"register",
-                 "params":{"cid":"%s","mid":"%s","format":%s,"mode":3}}\r\n'
+                 "params":{"cid":"%s","mid":"%s","format":%s,"mode":4}}\r\n'
   printf "${header}" "Console" "${machine_id}" "1" >"${header_tty}"
   printf "${header}" "DebugLog" "${machine_id}" "0" >"${header_log}"
 
