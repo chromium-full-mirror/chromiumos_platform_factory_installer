@@ -111,7 +111,11 @@ on_die() {
 
   # Open a terminal if the kernel command line allows debugging.
   if grep -qw "cros_debug" /proc/cmdline 2>/dev/null; then
-    sh
+    while true; do sh; done
+  else
+    log "To debug with a shell, add 'cros_debug' to your kernel command line."
+    log " - Factory netboot: Change kernel command line config file on TFTP."
+    log " - Factory install shim: Add cros_debug into --boot_args."
   fi
 
   exit 1
