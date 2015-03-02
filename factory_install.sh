@@ -940,7 +940,7 @@ bool_to_yes_or_no() {
 }
 
 command_to_yes_or_no() {
-  "$@" >dev/null 2>&1 && echo yes || echo no
+  "$@" >/dev/null 2>&1 && echo yes || echo no
 }
 
 # Prints a header (a title, plus all the info in print_device_info)
