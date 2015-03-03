@@ -7,12 +7,14 @@
 
 # We want to print the console UI to TTY_FILE, redirect its contents into TTY,
 # and print bash trace logs to LOG_FILE (via LOG_TTY if available).
+# Note TTY_CONSOLE may be changed by build script (from make.conf).
+TTY_CONSOLE=""
 TTY=""
 TTY_FILE=/var/log/factory_install.output
 LOG_TTY=""
 LOG_FILE=/var/log/factory_install.log
 OVERLORD_READY=1
-export TTY TTY_FILE LOG_TTY LOG_FILE OVERLORD_READY
+export TTY TTY_FILE LOG_TTY LOG_FILE OVERLORD_READY TTY_CONSOLE
 
 . "$(dirname "$0")/ping_shopfloor.sh"
 
@@ -37,14 +39,18 @@ get_kernel_var() {
 
 # Determine the right console by following order:
 #  - The last non-empty console= from cmdline.
-#  - Frecon if frecon is working fine.
+#  - TODO(hungte) Frecon if frecon is working fine.
+#  - ${TTY_CONSOLE} if none empty (which may be a list).
 #  - /dev/tty1 if available (for Non-Freon boards).
 #  - /dev/null if nothing available.
 find_best_tty() {
   local ttys="$(get_kernel_var console)"
   local tty_name="" tty_path=""
 
-  for tty_name in ${ttys}; do
+  TTY=""
+  LOG_TTY=""
+
+  for tty_name in ${ttys} ${TTY_CONSOLE} tty1 null; do
     tty_path="/dev/${tty_name}"
     if is_valid_tty "${tty_path}"; then
       TTY="${tty_path}"
@@ -52,20 +58,16 @@ find_best_tty() {
     fi
   done
 
-  if [ -z "${TTY}" ]; then
-    # TODO(hungte) Check and enable Frecon.
-    if is_valid_tty "/dev/tty1"; then
-      TTY=/dev/tty1
-    else
-      TTY=/dev/null
-    fi
+  # Devices using tty2 are actually using tty1 as default console.
+  [ "${TTY}" = /dev/tty2 ] && TTY=/dev/tty1
+
+  # Enable LOG_TTY if available (currently only if TTY is VT1).
+  if [ "${TTY}" = /dev/tty1 ] && is_valid_tty /dev/tty3; then
+    LOG_TTY=/dev/tty3
   fi
 
-  # Enable LOG_TTY if available (currently only if TTY looks like VT1).
-  # TODO(hungte) Support other non-VT1 TTYs.
-  if is_valid_tty "${TTY%1}3"; then
-    LOG_TTY="${TTY%1}3"
-  fi
+  # Report to kernel.
+  [ -e "/dev/kmsg" ] && (echo "$0: TTY=${TTY}" >>/dev/kmsg)
 }
 
 
