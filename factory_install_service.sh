@@ -42,11 +42,12 @@ get_kernel_var() {
 #  - /dev/null if nothing available.
 find_best_tty() {
   local ttys="$(get_kernel_var console)"
-  local tty=""
+  local tty_name="" tty_path=""
 
-  for tty in ${ttys}; do
-    if is_valid_tty "/dev/${tty}"; then
-      TTY="${tty}"
+  for tty_name in ${ttys}; do
+    tty_path="/dev/${tty_name}"
+    if is_valid_tty "${tty_path}"; then
+      TTY="${tty_path}"
       break
     fi
   done
