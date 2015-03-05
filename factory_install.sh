@@ -1135,12 +1135,15 @@ action_i() {
   fi
 
   log "Factory Installer Complete."
+  sync
+  sleep 3
   factory_on_complete
 
   board_post_install
 
   # Default action after installation: reboot.
   trap - EXIT
+  sync
   sleep 3
   if [ -n "$NETBOOT_RAMFS" ]; then
     # There is no 'shutdown' and 'init' in initramfs.
