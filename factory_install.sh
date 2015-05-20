@@ -83,6 +83,10 @@ BLOCKDEV_ALLOWED_ACTIONS=crvyz
 # environment variable.
 ETH_INTERFACE=""
 
+# Mount point for installer resources.
+RESOURCES_MOUNT_POINT="$(mktemp -d)"
+USB_INSTALL_OFFSET="$(findLSBValue FACTORY_INSTALL_USB_OFFSET)"
+
 # Define our own logging function.  The one from memento_updater writes to
 # a file, which may cause a race condition if we tail it.
 log() {
@@ -645,62 +649,211 @@ factory_disk_action() {
   exit_success
 }
 
-factory_install_usb() {
-  local i=""
-  local src_offset="$(findLSBValue FACTORY_INSTALL_USB_OFFSET)"
-  local src_drive="$(findLSBValue REAL_USB_DEV)"
-  # REAL_USB_DEV is optional on systems without initramfs (ex, ARM).
-  [ -n "${src_drive}" ] || src_drive="$(rootdev -s 2>/dev/null)"
-  [ -n "${src_drive}" ] || die "Unknown media source. Please define REAL_USB_DEV."
+# When install from USB drive, the partition mapping from source USB drive
+# to the destination internal storage is as below.
+# src_partition: dst_partition
+# ----------------------------
+#  1:     1 [stateful]
+#  2:  None [install-kernel] for bootstrap, not installed to destination
+#  3:  None [install-rootfs] for bootstrap, not installed to destination
+#  4:     2 [factory-kernel] src_offset=2
+#  5:     3 [factory-rootfs] src_offset=2
+#  6:     4 [release-kernel] src_offset=2
+#  7:     5 [release-rootfs] src_offset=2
+#  8:     8 [oem]
+# 12:    12 [efi]
+# ----------------------------
+process_usb_install_mapping() {
+  local callback="$1"
+  shift
+  local param="$@" i
 
-  # Finds the real drive from sd[a-z][0-9]* or mmcblk[0-9]*p[0-9]*
-  src_drive="${src_drive%[0-9]*}"
-  src_drive="$(echo ${src_drive} | sed 's/\(mmcblk[0-9]*\)p/\1/')"
-
-  colorize yellow
   for i in EFI OEM STATE FACTORY FACTORY_KERNEL RELEASE RELEASE_KERNEL; do
-    # The source media must have exactly the same layout.
     local var="DST_${i}_PART"
     local part="${!var}"
-    local src="$(make_partition_dev ${src_drive} ${part})"
-    local dst="$(make_partition_dev ${DST_DRIVE} ${part})"
-
-    # Factory/Release may be shifted on source media.
-    if [ -n "${src_offset}" ]; then
-      case "${i}" in
-        FACTORY* | RELEASE* )
-          src="$(make_partition_dev ${src_drive} $((part + src_offset)) )"
-          true
-          ;;
-      esac
-    fi
-
-    # Detect file system size
-    local dd_param="bs=1M"
-    local count="$(dumpe2fs -h "${src}" 2>/dev/null |
-                   grep "^Block count" |
-                   sed 's/.*: *//')"
-
-    if [ -n "${count}" ]; then
-      local bs="$(dumpe2fs -h "${src}" 2>/dev/null |
-            grep "^Block size" |
-            sed 's/.*: *//')"
-
-      # Optimize copy speed, with restriction: bs<10M
-      while [ "$(( (count > 0) &&
-                   (count % 2 == 0) &&
-                   (bs / 1048576 < 10) ))" = "1" ]; do
-        count="$((count / 2))"
-        bs="$((bs * 2))"
-      done
-      dd_param="bs=${bs} count=${count}"
-    fi
-
-    log "Copying: [${i}] ${src} -> ${dst} (${dd_param})"
-    # TODO(hungte) Detect copy failure
-    pv -B 1M "${src}" |
-      dd ${dd_param} of="${dst}" iflag=fullblock oflag=dsync
+    local src_offset=""
+    case "${i}" in
+      FACTORY* | RELEASE* )
+        src_offset="${USB_INSTALL_OFFSET}"
+        ;;
+    esac
+    # Early return when callback function fails.
+    "${callback}" "${part}" "${src_offset}" ${param} || return 1
   done
+}
+
+# Callback of process_usb_install_mapping.
+# Copy a partition to DST_DRIVE by given partition number, src_offset
+# and src_drive.
+dst_drive_partition_copy() {
+  local part="$1"
+  local src_offset="$2"
+  local src_drive="$3"
+
+  local src="$(make_partition_dev "${src_drive}" "$((part + src_offset))")"
+  local dst="$(make_partition_dev "${DST_DRIVE}" "${part}")"
+
+  # Detect file system size
+  local dd_param="bs=1M"
+  local count="$(dumpe2fs -h "${src}" 2>/dev/null |
+                 grep "^Block count" |
+                 sed 's/.*: *//')"
+
+  if [ -n "${count}" ]; then
+    local bs="$(dumpe2fs -h "${src}" 2>/dev/null |
+                grep "^Block size" |
+                sed 's/.*: *//')"
+
+    # Optimize copy speed, with restriction: bs<10M
+    while [ "$(( (count > 0) &&
+                 (count % 2 == 0) &&
+                 (bs / 1048576 < 10) ))" = "1" ]; do
+      count="$((count / 2))"
+      bs="$((bs * 2))"
+    done
+    dd_param="bs=${bs} count=${count}"
+  fi
+
+  log "Copying: [${i}] ${src} -> ${dst} (${dd_param})"
+  # TODO(hungte) Detect copy failure
+  pv -B 1M "${src}" |
+    dd ${dd_param} of="${dst}" iflag=fullblock oflag=dsync
+}
+
+# Callback of process_usb_install_mapping.
+# Verify a image resource by given partition number, src_offset and
+# resources_dir.
+verify_resources_checksum() {
+  local part="$1"
+  local src_offset="$2"
+  local resources_dir="$3"
+  local resources_file=""
+
+  part=$(( part + src_offset ))
+  resources_file="${resources_dir}/${part}.gz"
+  [ -f "${resources_file}" ] || return 1
+
+  # The config file contains the checksum of each image file.
+  # For example:
+  #   1_checksum = HSQdstR/U3hoBpDtnHVEfdNgm/Y=
+  #   4_checksum = 3pt+EALoyH6hUmDbk735NY/MfAQ=
+  #   5_checksum = ZyDaPXjzJJK8i0hkIcsD4D+o2DE=
+  #   6_checksum = U/uLMDAkR3aP9oY/eD44K4ZReSg=
+  #   7_checksum = twHsO9+o8m0mn9KL3pKhzJATsHQ=
+  #   8_checksum = twHsO9+o8m0mn9KL3pKhzJATsHQ=
+  #  12_checksum = twHsO9+o8m0mn9KL3pKhzJATsHQ=
+  local config="${resources_dir}/config"
+  local expected_checksum="$(grep "${part}_checksum" "${config}" |
+                             cut -d" " -f3)"
+  local actual_checksum="$(openssl sha1 -binary "${resources_file}" |
+                           openssl base64)"
+  if [ "${actual_checksum}" = "${expected_checksum}" ]; then
+    return 0
+  else
+    return 1
+  fi
+}
+
+# Callback of process_usb_install_mapping.
+# Install a image resource to a partition on DST_DRIVE by given
+# partition number, src_offset and resources_dir.
+dst_drive_resources_install() {
+  local part="$1"
+  local src_offset="$2"
+  local resources_dir="$3"
+
+  local resource_file="${resources_dir}/$(( part + src_offset )).gz"
+  local dst="$(make_partition_dev "${DST_DRIVE}" "${part}")"
+
+  log "Installing: ${resource_file} -> ${dst}"
+  pv -B 1M "${resource_file}" | gunzip -c |
+    dd bs=1M of="${dst}" iflag=fullblock oflag=dsync
+}
+
+mount_installer_resources() {
+  local resources_drive="$1"
+  # Resources are stored in partition 1.
+  local resources_dev="$(make_partition_dev "${resources_drive}" 1)"
+  local resources_dir="${RESOURCES_MOUNT_POINT}/installer_resources"
+
+  mount -t ext4 -o ro "${resources_dev}" "${RESOURCES_MOUNT_POINT}"
+  if [ -d "${resources_dir}" ]; then
+    echo "${resources_dir}"
+  else
+    echo ""
+  fi
+}
+
+append_lsb_from_dst_drive() {
+  local lsb_file="dev_image/etc/lsb-factory"
+  local dst_path="/mnt/stateful_partition/${lsb_file}"
+  local state_dev="$(make_partition_dev "${DST_DRIVE}" 1)"
+  local state_mount="$(mktemp -d)"
+  local src_path="${state_mount}/${lsb_file}"
+
+  if ! mount "${state_dev}" "${state_mount}"; then
+    die "Failed to mount ${state_dev}!!"
+  fi
+
+  if [ -f "${src_path}" ]; then
+    cat "${src_path}" >> "${dst_path}"
+  else
+    die "Failed to find ${src_path}!!"
+  fi
+
+  umount "${state_mount}" || true
+  rmdir "${state_mount}" || true
+}
+
+factory_install_usb_resources() {
+  local installer_resources_dir="$1"
+  local kern_guid="$(findLSBValue KERN_ARG_KERN_GUID)"
+  local board_resources_dir="${installer_resources_dir}/${kern_guid}"
+
+  [ -n "${kern_guid}" ] || die "Kernel GUID not found in kernel cmdline."
+  [ -d "${board_resources_dir}" ] || die "Board resources not found."
+
+  # Verify resources checksum before installation.
+  log "Verifying resources checksum..."
+  process_usb_install_mapping \
+      verify_resources_checksum "${board_resources_dir}" ||
+    die "Resources checksum verification failed."
+  log "Done verifying checksum, start installation..."
+
+  # Install from board_resources_dir.
+  process_usb_install_mapping \
+      dst_drive_resources_install "${board_resources_dir}"
+
+  # Load board specific lsb-factory in DST_DRIVE for post installations.
+  # For example, FACTORY_INSTALL_FIRMWARE in lsb-factory.
+  append_lsb_from_dst_drive
+}
+
+factory_install_usb() {
+  local i="" installer_resources_dir=""
+  local src_drive="$(findLSBValue REAL_USB_DEV)"
+  # REAL_USB_DEV is optional on systems without initramfs (e.g., ARM).
+  [ -n "${src_drive}" ] || src_drive="$(rootdev -s 2>/dev/null)"
+  [ -n "${src_drive}" ] ||
+    die "Unknown media source. Please define REAL_USB_DEV."
+
+  # Finds the real drive by removing the partition numbers at the end.
+  # For example: sd[a-z][0-9]* -> sd[a-z]
+  #              mmcblk[0-9]*p[0-9]* -> mmcblk[0-9]*
+  src_drive="$(echo "${src_drive}" | sed 's/[0-9]\+$//')"
+  src_drive="$(echo "${src_drive}" | sed 's/\(mmcblk[0-9]*\)p/\1/')"
+
+  colorize yellow
+  installer_resources_dir="$(mount_installer_resources "${src_drive}")"
+  if [ -z "${installer_resources_dir}" ]; then
+    # Install from src_drive if installer resources are not found.
+    process_usb_install_mapping dst_drive_partition_copy "${src_drive}"
+  else
+    log "Installer resources found on USB stick."
+    # Install from installer resources.
+    factory_install_usb_resources "${installer_resources_dir}"
+  fi
+  umount "${RESOURCES_MOUNT_POINT}" || true
 
   # Run postinst on release partition to validate rootfs and create
   # verity table.
