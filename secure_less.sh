@@ -17,5 +17,5 @@ fi
 
 # Disable EDITOR and SHELL, just in case.  Always use busybox less,
 # since it has no fancy features that could enable exploits.
-exec su -s /bin/sh \
-  -c "EDITOR=/bin/false SHELL=/bin/false busybox less" - nobody
+exec sudo -s /bin/sh \
+  -c "EDITOR=/bin/false SHELL=/bin/false busybox less" -u nobody
