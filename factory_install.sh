@@ -38,7 +38,7 @@ DST_STATE_PART=1
 COMPLETE_SCRIPT=""
 
 # Override this if we want to install with a board different from installer
-BOARD=""
+BOARD="$(findLSBValue CHROMEOS_RELEASE_BOARD)"
 
 # Override this if we want to install with a different omaha server.
 OMAHA="$(findLSBValue CHROMEOS_AUSERVER)"
