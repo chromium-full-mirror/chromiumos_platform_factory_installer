@@ -363,6 +363,15 @@ select_board() {
   fi
 }
 
+define_board() {
+  # Define board if BOARD_SELECT is true.
+  local board_select="$(findLSBValue BOARD_SELECT | tr '[:upper:]' '[:lower:]')"
+  local board_name="$(findLSBValue BOARD_NAME | tr '[:upper:]' '[:lower:]')"
+  if [ "$board_select" = "true" ]; then
+    BOARD="$board_name"
+  fi
+}
+
 find_var() {
   # Check kernel commandline for a specific key value pair.
   # Usage: omaha=$(find_var omahaserver)
@@ -1281,6 +1290,7 @@ action_i() {
   get_dst_drive
   prepare_disk
   select_board
+  define_board
 
   if [ -n "$install_from_omaha" ]; then
     factory_install_omaha
