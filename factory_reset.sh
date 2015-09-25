@@ -14,6 +14,7 @@
 
 . "/usr/share/misc/chromeos-common.sh"
 . "$(dirname "$0")/factory_verify.sh"
+. "/opt/google/memento_updater/find_omaha.sh"
 
 usage() {
   echo "Usage: $0 disk [wipe|erase|verify]."
@@ -24,6 +25,11 @@ usage() {
   echo "        and write a pattern on the disk"
   echo "verify: verify the disk has been erased properly"
   exit 1
+}
+
+show_banner_message() {
+  local msg="$1"
+  figlet "$msg"
 }
 
 # Note that some variables are shared with restore_crx_cache.
@@ -88,6 +94,155 @@ restore_crx_cache() {
   fi
 }
 
+reset_activate_date() {
+  /usr/sbin/activate_date --clean
+}
+
+has_battery() {
+  power_supply_info | grep -q 'Device: Battery'
+}
+
+get_battery_percentage() {
+  power_supply_info 2>/dev/null |
+    awk '/percentage/ && !/display/ {print int($2)}'
+}
+
+get_battery_voltage() {
+  ectool battery 2>/dev/null | awk '/Present voltage/ {print int($3)}'
+}
+
+is_ac_present() {
+  ectool battery | grep -q AC_PRESENT
+}
+
+require_ac() {
+  if ! is_ac_present; then
+    show_banner_message "Connect AC"
+    while ! is_ac_present; do
+      sleep 0.5
+    done
+  fi
+}
+
+require_remove_ac() {
+  if is_ac_present; then
+    show_banner_message "Remove AC"
+    while is_ac_present; do
+      sleep 0.5
+    done
+  fi
+}
+
+check_battery_value() {
+  local min_battery_value="" max_battery_value=""
+  local get_value_cmd=""
+  local battery_value=""
+  local prev_battery_value=""
+
+  min_battery_value="$1"
+  max_battery_value="$2"
+  get_value_cmd="$3"
+  battery_value=$($get_value_cmd)
+
+  if [ -n "$min_battery_value" ] &&
+     [ "$battery_value" -lt "$min_battery_value" ]; then
+    require_ac
+    show_banner_message "Charging..."
+
+    # Wait for battery to charge to min_battery_value
+    prev_battery_value="-1"
+    while [ "$battery_value" -lt "$min_battery_value" ]; do
+      # Only print battery info when it changes.
+      if [ "$battery_value" -ne "$prev_battery_value" ]; then
+        echo "current: $battery_value, target: $min_battery_value"
+        prev_battery_value="$battery_value"
+      fi
+      sleep 1
+      battery_value=$($get_value_cmd)
+    done
+  fi
+
+  if [ -n "$max_battery_value" ] &&
+     [ "$battery_value" -gt "$max_battery_value" ]; then
+    require_remove_ac
+    show_banner_message "Discharging..."
+
+    # Wait for battery to discharge to max_battery_value
+    prev_battery_value="-1"
+    while [ "$battery_value" -gt "$max_battery_value" ]; do
+      # Only print battery info when it changes.
+      if [ "$battery_value" -ne "$prev_battery_value" ]; then
+        echo "current: $battery_value, target: $max_battery_value"
+        prev_battery_value="$battery_value"
+      fi
+      sleep 1
+      battery_value=$($get_value_cmd)
+    done
+  fi
+}
+
+check_ac_state() {
+  local cutoff_ac_state="$1"
+  if [ "$cutoff_ac_state" = "ac_connect" ]; then
+    require_ac
+  elif [ "$cutoff_ac_state" = "ac_disconnect" ]; then
+    require_remove_ac
+  fi
+}
+
+default_cutoff_flow() {
+  local cutoff_method=""
+  local cutoff_ac_state=""
+  local min_battery_percent="" max_battery_percent=""
+  local min_battery_voltage="" max_battery_voltage=""
+
+  cutoff_method=$(findLSBValue CUTOFF_METHOD)
+  cutoff_ac_state=$(findLSBValue CUTOFF_AC_STATE)
+
+  reset_activate_date
+
+  if has_battery; then
+    # Needed by 'ectool battery'.
+    mkdir -p /var/lib/power_manager
+    modprobe i2c_dev
+
+    min_battery_percent=$(findLSBValue CUTOFF_BATTERY_MIN_PERCENTAGE)
+    max_battery_percent=$(findLSBValue CUTOFF_BATTERY_MAX_PERCENTAGE)
+    min_battery_voltage=$(findLSBValue CUTOFF_BATTERY_MIN_VOLTAGE)
+    max_battery_voltage=$(findLSBValue CUTOFF_BATTERY_MAX_VOLTAGE)
+    check_battery_value "$min_battery_percent" "$max_battery_percent" \
+      "get_battery_percentage"
+    check_battery_value "$min_battery_voltage" "$max_battery_voltage" \
+      "get_battery_voltage"
+  fi
+
+  case "$cutoff_method" in
+    SHUTDOWN )
+      shutdown -h now
+      ;;
+    REBOOT )
+      reboot
+      ;;
+    EC_BATTERY_CUTOFF )
+      check_ac_state "$cutoff_ac_state"
+      ectool batterycutoff
+      ;;
+    EC_BATTERY_CUTOFF_AT_SHUTDOWN )
+      check_ac_state "$cutoff_ac_state"
+      ectool batterycutoff at-shutdown && shutdown -h now
+      ;;
+    * )
+      # By default we shutdown the device without doing anything.
+      shutdown -h now
+  esac
+
+  show_banner_message "Please wait for shutdown"
+
+  sleep 15
+  show_banner_message "Cutoff failed"
+  sleep 1d
+  exit 1
+}
 
 if [ "$#" -lt 1 ]; then
   usage
@@ -143,10 +298,14 @@ fi
 
 # Do any board specific resetting here.
 # board_factory_reset.sh will be installed by the board overlay if necessary.
+# Otherwise, settings in lsb-factory will be loaded and default cutoff flow
+# will be applied.
 BOARD_RESET=/usr/sbin/board_factory_reset.sh
 if [ -x "${BOARD_RESET}" ]; then
   echo "Running board specific factory reset: ${BOARD_RESET}"
   ${BOARD_RESET} || exit 1
+else
+  default_cutoff_flow
 fi
 
 echo "Done"
