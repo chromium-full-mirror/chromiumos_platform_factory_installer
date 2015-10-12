@@ -165,11 +165,8 @@ else
   min_battery_voltage="$(findLSBValue CUTOFF_BATTERY_MIN_VOLTAGE)"
   max_battery_voltage="$(findLSBValue CUTOFF_BATTERY_MAX_VOLTAGE)"
 
-  if [ -z "${cutoff_method}" ]; then
-    cutoff_method="shutdown"
-  fi
-
-  local args="${cutoff_method}"
+  local args=""
+  [ -n "${cutoff_method}" ] && args="--method ${cutoff_method}"
   [ -n "${cutoff_ac_state}" ] && args="${args} --check-ac ${cutoff_ac_state}"
   [ -n "${min_battery_percent}" ] &&
     args="${args} --min-battery-percent ${min_battery_percent}"
