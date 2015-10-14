@@ -1235,20 +1235,23 @@ main() {
     fi
   fi
 
-  while true; do
-    # Display the header and UI.
-    clear
-    print_header
-    menu
+  # Display the header and UI.
+  clear
+  print_header
+  sleep 3
 
-    if [ -n "$ACTION" ]; then
-      # Perform the selected action.
-      action_${ACTION}
-    fi
+  log "Performing Battery charge"
+  /usr/sbin/board_charge_battery.sh
 
-    colorize white
-    read -N 1 -p "Press any key to continue> "
-  done
+  log "Performing Battery cut-off"
+  if ! /usr/sbin/battery_cut_off.sh ; then
+    die "Battery cut-off failed."
+  fi
+
+  # should not reach here
+  log "Done."
+  exit_success
+
 }
 
 #
