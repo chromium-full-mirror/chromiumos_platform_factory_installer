@@ -1240,8 +1240,6 @@ main() {
   print_header
   sleep 3
 
-  disable_dev_switch
-
   log "Performing Battery charge"
   /usr/sbin/board_charge_battery.sh
 
