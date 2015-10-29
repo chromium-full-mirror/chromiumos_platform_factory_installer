@@ -18,6 +18,11 @@
 
 FACTORY_SCRIPT_DIR="/usr/local/factory/sh/"
 CUTOFF_SCRIPT="${FACTORY_SCRIPT_DIR}/battery_cutoff.sh"
+INFORM_SHOPFLOOR_SCRIPT="${FACTORY_SCRIPT_DIR}/inform_shopfloor.sh"
+
+# Do any board specific resetting here.
+# board_factory_reset.sh will be installed by the board overlay if necessary.
+BOARD_RESET=/usr/sbin/board_factory_reset.sh
 
 usage() {
   echo "Usage: $0 disk [wipe|erase|verify]."
@@ -144,40 +149,42 @@ else
   restore_crx_cache
 fi
 
-# Do any board specific resetting here.
-# board_factory_reset.sh will be installed by the board overlay if necessary.
-# Otherwise, settings in lsb-factory will be loaded and default cutoff flow
-# will be applied.
-BOARD_RESET=/usr/sbin/board_factory_reset.sh
+local cutoff_method=""
+local cutoff_ac_state=""
+local min_battery_percent="" max_battery_percent=""
+local min_battery_voltage="" max_battery_voltage=""
+local shopfloor_url=""
+
+cutoff_method="$(findLSBValue CUTOFF_METHOD)"
+cutoff_ac_state="$(findLSBValue CUTOFF_AC_STATE)"
+min_battery_percent="$(findLSBValue CUTOFF_BATTERY_MIN_PERCENTAGE)"
+max_battery_percent="$(findLSBValue CUTOFF_BATTERY_MAX_PERCENTAGE)"
+min_battery_voltage="$(findLSBValue CUTOFF_BATTERY_MIN_VOLTAGE)"
+max_battery_voltage="$(findLSBValue CUTOFF_BATTERY_MAX_VOLTAGE)"
+shopfloor_url="$(findLSBValue SHOPFLOOR_URL)"
+
+if [ -n "${shopfloor_url}" ]; then
+  "${INFORM_SHOPFLOOR_SCRIPT}" "${shopfloor_url}" "factory_reset" || exit 1
+fi
+
+# Run board factory reset before cutoff.
 if [ -x "${BOARD_RESET}" ]; then
   echo "Running board specific factory reset: ${BOARD_RESET}"
   ${BOARD_RESET} || exit 1
-else
-  local cutoff_method=""
-  local cutoff_ac_state=""
-  local min_battery_percent="" max_battery_percent=""
-  local min_battery_voltage="" max_battery_voltage=""
-
-  cutoff_method="$(findLSBValue CUTOFF_METHOD)"
-  cutoff_ac_state="$(findLSBValue CUTOFF_AC_STATE)"
-  min_battery_percent="$(findLSBValue CUTOFF_BATTERY_MIN_PERCENTAGE)"
-  max_battery_percent="$(findLSBValue CUTOFF_BATTERY_MAX_PERCENTAGE)"
-  min_battery_voltage="$(findLSBValue CUTOFF_BATTERY_MIN_VOLTAGE)"
-  max_battery_voltage="$(findLSBValue CUTOFF_BATTERY_MAX_VOLTAGE)"
-
-  local args=""
-  [ -n "${cutoff_method}" ] && args="--method ${cutoff_method}"
-  [ -n "${cutoff_ac_state}" ] && args="${args} --check-ac ${cutoff_ac_state}"
-  [ -n "${min_battery_percent}" ] &&
-    args="${args} --min-battery-percent ${min_battery_percent}"
-  [ -n "${max_battery_percent}" ] &&
-    args="${args} --max-battery-percent ${max_battery_percent}"
-  [ -n "${min_battery_voltage}" ] &&
-    args="${args} --min-battery-voltage ${min_battery_voltage}"
-  [ -n "${max_battery_voltage}" ] &&
-    args="${args} --max-battery-voltage ${max_battery_voltage}"
-
-  "${CUTOFF_SCRIPT}" ${args}
 fi
+
+local args=""
+[ -n "${cutoff_method}" ] && args="--method ${cutoff_method}"
+[ -n "${cutoff_ac_state}" ] && args="${args} --check-ac ${cutoff_ac_state}"
+[ -n "${min_battery_percent}" ] &&
+  args="${args} --min-battery-percent ${min_battery_percent}"
+[ -n "${max_battery_percent}" ] &&
+  args="${args} --max-battery-percent ${max_battery_percent}"
+[ -n "${min_battery_voltage}" ] &&
+  args="${args} --min-battery-voltage ${min_battery_voltage}"
+[ -n "${max_battery_voltage}" ] &&
+  args="${args} --max-battery-voltage ${max_battery_voltage}"
+
+"${CUTOFF_SCRIPT}" ${args}
 
 echo "Done"
