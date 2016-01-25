@@ -58,6 +58,9 @@ SUPPORTED_ACTIONS=cirsvyz
 # action_i); see the handlers for more information about what
 # each option is.
 
+# The default action if no keys were pressed before timeout.
+DEFAULT_ACTION=""
+
 # The ethernet interface to be used. It will be determined in
 # check_ethernet_status and be passed to ping_shopfloor as an
 # environment variable.
@@ -1144,6 +1147,11 @@ menu_line() {
   printf "%-22s%s\n" "$2" "$3"
 }
 
+# Checks if the given action is valid and supported.
+is_valid_action() {
+  echo "$1" | grep -q "^[${SUPPORTED_ACTIONS}]$"
+}
+
 # Displays a menu, saving the action (one of ${SUPPORTED_ACTIONS}, always
 # lowercase) in the "ACTION" variable.  If no valid action is chosen,
 # ACTION will be empty.
@@ -1171,7 +1179,7 @@ menu() {
   echo
   ACTION="$(echo "${ACTION}" | tr A-Z a-z)"
 
-  if echo "$ACTION" | grep -q "^[$SUPPORTED_ACTIONS]$"; then
+  if is_valid_action "${ACTION}"; then
       return
   fi
   echo "Invalid action; please select an action from the menu."
@@ -1216,29 +1224,47 @@ main() {
   # Check for any configuration overrides.
   overrides
 
-  # In netboot, automatically perform the I action; but first give the
-  # user the chance to press any key to display the menu.
+  # Read default options
   if [ "${NETBOOT_RAMFS}" = 1 ]; then
+    log "Netbooting. Set default action to (I)nstall."
+    DEFAULT_ACTION=i
+  else
+    DEFAULT_ACTION="$(findLSBValue FACTORY_INSTALL_DEFAULT_ACTION)"
+  fi
+
+  # Sanity check default action
+  if [ -n "${DEFAULT_ACTION}" ]; then
     clear
     print_header
-    log "Netbooting.  Will automatically perform 'install' action."
+    log "Default action: [${DEFAULT_ACTION}]."
+    if ! is_valid_action "${DEFAULT_ACTION}"; then
+      log "Action [${DEFAULT_ACTION}] is invalid."
+      log "Only support ${SUPPORTED_ACTIONS}. Will fallback to normal menu..."
+      DEFAULT_ACTION=""
+      sleep 3
+    fi
+  fi
+
+  # Automatically perform the default action; but first give the user the chance
+  # to press any key to display the menu.
+  if [ -n "${DEFAULT_ACTION}" ]; then
+    log "Will automatically perform action [${DEFAULT_ACTION}]."
     log "Or press any key to show menu instead..."
-    local prevent_install=false
+    local prevent_default_action=false
     local timeout_secs=3
     for i in $(seq ${timeout_secs} -1 1); do
       # Read with timeout doesn't reliably work multiple times without
       # a subshell.
       if ( read -N 1 -p "Press any key within ${i} sec> " -t 1 ); then
         echo
-        prevent_install=true
+        prevent_default_action=true
         break
       fi
       echo
     done
-    if ! ${prevent_install}; then
-      # No key pressed: perform the install action (which should
-      # never return)
-      action_i
+    if ! ${prevent_default_action}; then
+      # No key pressed: perform the default action (which should never return)
+      action_${DEFAULT_ACTION}
     fi
   fi
 
