@@ -55,7 +55,7 @@ BLOCK_DEVMODE="$(crossystem block_devmode 2>/dev/null || true)"
 INSTALL_FROM_OMAHA="1"
 
 # Supported actions (a set of lowercase characters)
-SUPPORTED_ACTIONS=cirsvyz
+SUPPORTED_ACTIONS=cirsvyzk
 
 # Security note: block_devmode must be checked or preserved for any actions that
 #                will install bootable image to fixed storage or clear NV data.
@@ -72,7 +72,7 @@ SUPPORTED_ACTIONS=cirsvyz
 #       's' (Shell) action already cecks other flags requiring DEV mode, but
 #           in order to be on the safe side (try to be as strict as possible) we
 #           also want to block it.
-BLOCKDEV_ALLOWED_ACTIONS=crvyz
+BLOCKDEV_ALLOWED_ACTIONS=crvyzk
 
 # Each action x is implemented in an action_$x handler (e.g.,
 # action_i); see the handlers for more information about what
@@ -956,6 +956,13 @@ board_post_install() {
   fi
 }
 
+recovery_kingston_ussd() {
+  echo "Special Recovery for Kingston uSSD"
+  chromeos-disk-firmware-update.sh \
+    --status "/tmp/firmware_update.txt" \
+    --fw_package_dir "/opt/google/disk/firmware"
+}
+
 # Echoes "on" or "off" based on the value of a crossystem Boolean flag.
 crossystem_on_or_off() {
   local value
@@ -1054,6 +1061,7 @@ menu() {
   menu_line Z "Zero (wipe) storage" "Makes device completely unusable"
   menu_line C "SeCure erase" "Performs full storage erase, write a verification pattern"
   menu_line Y "VerifY erase" "Verifes the storage has been erased with option C"
+  menu_line K "Kingston recovery" "Special Recovery for Kingston uSSD"
 
   echo
   read -p 'action> ' ACTION
@@ -1354,6 +1362,14 @@ action_y() {
   fi
   get_dst_drive
   factory_disk_action verify
+}
+
+# K = Kingston
+action_k() {
+  recovery_kingston_ussd
+  echo "Kingston USSD recovery completed. Will reboot now..."
+  sleep 5
+  reboot
 }
 
 
