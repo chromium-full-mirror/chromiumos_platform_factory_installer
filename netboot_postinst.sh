@@ -43,25 +43,30 @@ die() {
 }
 
 setup_environment() {
-  # We need /tmp for mktemp
-  mount -t tmpfs -o exec none /tmp
+  # This script was executed after chroot so we have to re-create all run state
+  # folders. In future we should migrate to using "mount -o move" by moving the
+  # chroot call into this script.
 
-  # Copied from platform/initramfs/init
-  mount -t proc -o nodev,noexec,nosuid none /proc
-  mount -t sysfs -o nodev,noexec,nosuid none /sys
-  if ! mount -t devtmpfs -o mode=0755 none /dev; then
-    mount -t tmpfs -o mode=0755 none /dev
-    mknod -m 0600 /dev/console c 5 1
-    mknod -m 0601 /dev/tty1 c 4 1
-    mknod -m 0601 /dev/tty2 c 4 2
-    mknod -m 0601 /dev/tty3 c 4 3
-    mknod -m 0600 /dev/tpm0 c 10 224
-    mknod /dev/null c 1 3
-    ln -s /proc/self/fd /dev/fd
-  fi
+  # We need /tmp for mktemp and /run/[lock] for flashrom / mosys.
+  mount -t tmpfs -o exec none /tmp
+  mount -t tmpfs -o noexec none /run
+  mkdir -p /run/lock
+
+  # Copied from platform/initramfs/common/init.sh#init_mounts
+  mount -n -t proc -o nodev,noexec,nosuid proc /proc
+  mount -n -t sysfs -o nodev,noexec,nosuid sysfs /sys
+
+  mount -t devtmpfs -o mode=0755,nosuid devtmpfs /dev
+  ln -sf /proc/self/fd /dev/fd || :
+  ln -sf fd/0 /dev/stdin || :
+  ln -sf fd/1 /dev/stdout || :
+  ln -sf fd/2 /dev/stderr || :
+
   mkdir -p /dev/pts
-  mount -t devpts -o noexec,nosuid none /dev/pts || true
+  mount -n -t devpts -o noexec,nosuid devpts /dev/pts || :
+
   mount -n -t debugfs debugfs /sys/kernel/debug
+  # End of platform/initramfs/common/init.sh#init_mounts
 
   # Set up /usr/local
   mount --bind /mnt/stateful_partition/dev_image /usr/local || die
