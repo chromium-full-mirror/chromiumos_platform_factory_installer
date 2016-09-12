@@ -17,6 +17,16 @@ fi
 
 # Disable EDITOR and SHELL, just in case.  Always use busybox less,
 # since it has no fancy features that could enable exploits.
-set -x
-exec sudo -u nobody -s /bin/sh \
-  -c "EDITOR=/bin/false SHELL=/bin/false busybox less"
+
+# We can switch back to only su if either of these bugs get fixed:
+# https://bugs.debian.org/663200
+# https://bugs.busybox.net/9231
+if sudo -h >/dev/null 2>&1; then
+  set -x
+  exec sudo -u nobody -s /bin/sh \
+    -c "EDITOR=/bin/false SHELL=/bin/false busybox less"
+else
+  set -x
+  exec su -s /bin/sh \
+    -c "EDITOR=/bin/false SHELL=/bin/false busybox less" - nobody
+fi
