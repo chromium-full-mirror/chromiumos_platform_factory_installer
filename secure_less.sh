@@ -7,7 +7,7 @@
 # Opens "less" securely as the "nobody" user.  Only piping from stdin
 # is supported (there may be no command line arguments).
 
-set -ex
+set -e
 
 if [ $# -ne 0 ]; then
   echo "Usage: secure_less.sh" >& 2
@@ -17,5 +17,6 @@ fi
 
 # Disable EDITOR and SHELL, just in case.  Always use busybox less,
 # since it has no fancy features that could enable exploits.
+set -x
 exec sudo -u nobody -s /bin/sh \
   -c "EDITOR=/bin/false SHELL=/bin/false busybox less"
