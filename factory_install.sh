@@ -52,7 +52,7 @@ NETBOOT_RAMFS=""
 INSTALL_FROM_OMAHA="1"
 
 # Supported actions (a set of lowercase characters)
-SUPPORTED_ACTIONS=cirsvyz
+SUPPORTED_ACTIONS=cdirsvyz
 
 # Each action x is implemented in an action_$x handler (e.g.,
 # action_i); see the handlers for more information about what
@@ -1162,6 +1162,7 @@ menu() {
   menu_line R "Reset" "Performs a factory reset; finalized devices only"
   menu_line S "Shell" "Opens bash; available only with developer firmware"
   menu_line V "View configuration" "Shows crossystem, VPD, etc."
+  menu_line D "Debug info and logs" "Shows useful debugging information and kernel/firmware logs"
   menu_line Z "Zero (wipe) storage" "Makes device completely unusable"
   menu_line C "SeCure erase" "Performs full storage erase, write a verification pattern"
   menu_line Y "VerifY erase" "Verifes the storage has been erased with option C"
@@ -1401,6 +1402,56 @@ action_v() {
     echo
     echo "lsb-factory:"
     cat /mnt/stateful_partition/dev_image/etc/lsb-factory || true
+  ) 2>&1 | secure_less.sh
+}
+
+# D = Debug info and logs.
+action_d() {
+  (
+    echo "## Information in this commend:"
+    echo "##   dev_debug_vboot"
+    echo "##     date"
+    echo "##     crossystem --all"
+    echo "##     rootdev -s"
+    echo "##     la -aCF /root"
+    echo "##     ls -aCF /mnt/stateful_partition"
+    echo "##     cgpt show /dev/mmcblk0"
+    echo "##     cgpt show /dev/sda"
+    echo "##     etc..."
+    echo "##   firmware event log"
+    echo "##   /sys/firmware/log"
+    echo "##   kernel log"
+    echo "##   SMART log"
+    echo "##   checksums"
+
+    echo
+    echo "## dev_debug_vboot:"
+    dev_debug_vboot || true
+
+    echo
+    echo "## debug_vboot_noisy.log:"
+    cat /var/log/debug_vboot_noisy.log || true
+
+    echo
+    echo "## firmware event log:"
+    mosys eventlog list || true
+
+    echo
+    echo "## /sys/firmware/log:"
+    cat /sys/firmware/log || true
+
+    echo
+    echo "## kernel log:"
+    dmesg || true
+
+    echo
+    echo "## SMART log:"
+    smartctl -x /dev/sda || true
+
+    echo
+    echo "## checksums:"
+    md5sum /dev/mmcblk0p2 /dev/mmcblk0p4 || true
+    md5sum /dev/sda2 /dev/sda4 || true
   ) 2>&1 | secure_less.sh
 }
 
