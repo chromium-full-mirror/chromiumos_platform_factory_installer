@@ -1407,7 +1407,7 @@ action_s() {
   fi
 
   echo Entering shell.
-  bash
+  bash || true
 }
 
 # V = View configuration.
