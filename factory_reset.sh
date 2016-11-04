@@ -20,10 +20,6 @@ FACTORY_SCRIPT_DIR="/usr/local/factory/sh/"
 CUTOFF_SCRIPT="${FACTORY_SCRIPT_DIR}/battery_cutoff.sh"
 INFORM_SHOPFLOOR_SCRIPT="${FACTORY_SCRIPT_DIR}/inform_shopfloor.sh"
 
-# Do any board specific resetting here.
-# board_factory_reset.sh will be installed by the board overlay if necessary.
-BOARD_RESET=/usr/sbin/board_factory_reset.sh
-
 usage() {
   echo "Usage: $0 disk [wipe|erase|verify]."
   echo "disk: device to operate on [for instance /dev/sda]"
@@ -165,12 +161,6 @@ shopfloor_url="$(findLSBValue SHOPFLOOR_URL)"
 
 if [ -n "${shopfloor_url}" ]; then
   "${INFORM_SHOPFLOOR_SCRIPT}" "${shopfloor_url}" "factory_reset" || exit 1
-fi
-
-# Run board factory reset before cutoff.
-if [ -x "${BOARD_RESET}" ]; then
-  echo "Running board specific factory reset: ${BOARD_RESET}"
-  ${BOARD_RESET} || exit 1
 fi
 
 local args=""
