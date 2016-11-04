@@ -141,7 +141,7 @@ bringup_network() {
   local module
   local module_name
   local result=1
-  for module in $(find /lib/modules/ -name "*.ko"); do
+  for module in /lib/modules/*/kernel/drivers/net/usb/*; do
     module_name="$(basename "${module%.ko}")"
     modprobe ${module_name}
   done
