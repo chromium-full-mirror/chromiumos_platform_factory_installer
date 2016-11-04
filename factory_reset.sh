@@ -167,12 +167,6 @@ if [ -n "${shopfloor_url}" ]; then
   "${INFORM_SHOPFLOOR_SCRIPT}" "${shopfloor_url}" "factory_reset" || exit 1
 fi
 
-# Run board factory reset before cutoff.
-if [ -x "${BOARD_RESET}" ]; then
-  echo "Running board specific factory reset: ${BOARD_RESET}"
-  ${BOARD_RESET} || exit 1
-fi
-
 local args=""
 [ -n "${cutoff_method}" ] && args="--method ${cutoff_method}"
 [ -n "${cutoff_ac_state}" ] && args="${args} --check-ac ${cutoff_ac_state}"
