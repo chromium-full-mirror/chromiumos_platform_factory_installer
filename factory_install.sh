@@ -181,7 +181,8 @@ ensure_fwwp_consistency() {
   ec_wp="$(echo "${ec_wp}" | sed -nr 's/WP.*(disabled|enabled).$/\1/pg')"
   main_wp="$(echo "${main_wp}" | sed -nr 's/WP.*(disabled|enabled).$/\1/pg')"
   if [ "${ec_wp}" != "${main_wp}" ]; then
-    die "Inconsist firmware write protection status: main=${main_wp}, ec=${ec_wp}."\
+    die "Inconsistent firmware write protection status: " \
+        "main=${main_wp}, ec=${ec_wp}." \
         "Please disable Hardware Write Protection and restart again."
   fi
 }
@@ -1170,10 +1171,13 @@ menu() {
   menu_line R "Reset" "Performs a factory reset; finalized devices only"
   menu_line S "Shell" "Opens bash; available only with developer firmware"
   menu_line V "View configuration" "Shows crossystem, VPD, etc."
-  menu_line D "Debug info and logs" "Shows useful debugging information and kernel/firmware logs"
+  menu_line D "Debug info and logs" \
+              "Shows useful debugging information and kernel/firmware logs"
   menu_line Z "Zero (wipe) storage" "Makes device completely unusable"
-  menu_line C "SeCure erase" "Performs full storage erase, write a verification pattern"
-  menu_line Y "VerifY erase" "Verifes the storage has been erased with option C"
+  menu_line C "SeCure erase" \
+              "Performs full storage erase, write a verification pattern"
+  menu_line Y "VerifY erase" \
+              "Verifies the storage has been erased with option C"
 
   echo
   read -p 'action> ' ACTION
@@ -1255,7 +1259,7 @@ main() {
     local timeout_secs=3
     for i in $(seq ${timeout_secs} -1 1); do
       # Read with timeout doesn't reliably work multiple times without
-      # a subshell.
+      # a sub shell.
       if ( read -N 1 -p "Press any key within ${i} sec> " -t 1 ); then
         echo
         prevent_default_action=true
