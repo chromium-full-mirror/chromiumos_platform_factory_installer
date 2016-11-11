@@ -198,38 +198,6 @@ check_fwwp() {
     grep -q "write protect is enabled"
 }
 
-clear_tpm() {
-  log "Clearing TPM"
-
-  # Reset TPM. tcsd needs to have not been run because it locks the TPM.
-  tpmc ppon
-  tpmc clear
-  tpmc enable
-  tpmc activate
-
-  local firmware_index="0x1007"
-  local firmware_struct_version="2"
-  local firmware_flags="0"
-  local firmware_fw_versions="1 0 1 0"
-  local firmware_reserved="0 0 0"
-  local firmware_checksum="0x4f"
-
-  tpmc write ${firmware_index} ${firmware_struct_version} ${firmware_flags} \
-      ${firmware_fw_versions} ${firmware_reserved} ${firmware_checksum}
-
-  local kernel_index="0x1008"
-  local kernel_struct_version="2"
-  local kernel_uid="4c 57 52 47"
-  local kernel_kernel_versions="1 0 1 0"
-  local kernel_reserved="0 0 0"
-  local kernel_checksum="0x55"
-
-  tpmc write ${kernel_index} ${kernel_struct_version} ${kernel_uid} \
-      ${kernel_kernel_versions} ${kernel_reserved} ${kernel_checksum}
-
-  log "Done clearing TPM"
-}
-
 set_time() {
   log "Setting time from:"
   # Extract only the server and port.
@@ -296,11 +264,22 @@ reset_chromeos_device() {
   # release image won't start with unknown ownership.
   crossystem clear_tpm_owner_request=1 || true
 
-  log "Checking if TPM should be cleared (for version and owner)"
+  log "Checking if TPM should be recovered (for version and owner)"
   # To clear TPM, we need it unlocked (only in recovery boot).
   # Booting with USB in developer mode (Ctrl-U) does not work.
   if crossystem "mainfw_type?recovery"; then
-    clear_tpm
+    if ! chromeos-tpm-recovery; then
+      colorize yellow
+      log " - TPM recovery failed.
+
+      This is usually not a problem for devices on manufacturing line,
+      but if you are using factory shim to reset TPM (for antirollback issue),
+      there's something wrong.
+      "
+      sleep 3
+    else
+      log "TPM recovered."
+    fi
   else
     mainfw_type="$(crossystem mainfw_type)"
     colorize yellow
