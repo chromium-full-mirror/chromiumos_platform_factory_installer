@@ -18,7 +18,7 @@
 
 # CUTOFF_DIR is provided from platform/factory/sh/cutoff, repacked by ebuild.
 CUTOFF_DIR="/usr/share/cutoff"
-CUTOFF_SCRIPT="${CUTOFF_SCRIPT}/battery_cutoff.sh"
+CUTOFF_SCRIPT="${CUTOFF_DIR}/cutoff.sh"
 INFORM_SHOPFLOOR_SCRIPT="${CUTOFF_DIR}/inform_shopfloor.sh"
 
 usage() {
