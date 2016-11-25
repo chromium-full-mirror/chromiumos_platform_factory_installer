@@ -16,10 +16,9 @@
 . "$(dirname "$0")/factory_verify.sh"
 . "/opt/google/memento_updater/find_omaha.sh"
 
-# CUTOFF_DIR is provided from platform/factory/sh/cutoff, repacked by ebuild.
-CUTOFF_DIR="/usr/share/cutoff"
-CUTOFF_SCRIPT="${CUTOFF_DIR}/cutoff.sh"
-INFORM_SHOPFLOOR_SCRIPT="${CUTOFF_DIR}/inform_shopfloor.sh"
+FACTORY_SCRIPT_DIR="/usr/local/factory/sh/"
+CUTOFF_SCRIPT="${FACTORY_SCRIPT_DIR}/battery_cutoff.sh"
+INFORM_SHOPFLOOR_SCRIPT="${FACTORY_SCRIPT_DIR}/inform_shopfloor.sh"
 
 usage() {
   echo "Usage: $0 disk [wipe|erase|verify]."
@@ -146,8 +145,6 @@ else
   restore_crx_cache
 fi
 
-# TODO(hungte) Remove all the checks below since cutoff now reads its own
-# config.
 local cutoff_method=""
 local cutoff_ac_state=""
 local min_battery_percent="" max_battery_percent=""
