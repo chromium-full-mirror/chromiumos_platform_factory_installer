@@ -260,12 +260,20 @@ check_ethernet_status() {
   return ${result}
 }
 
+clear_block_devmode() {
+  # Try our best to clear block_devmode.
+  crossystem block_devmode=0 || true
+  vpd -i RW_VPD -d block_devmode -d check_enrollment || true
+}
+
 reset_chromeos_device() {
   log "Clearing NVData."
   if ! mosys nvram clear; then
     # Not every platforms really need this - OK if nvram is not cleared.
     log "Warning: NVData not cleared."
   fi
+
+  clear_block_devmode
 
   if grep -q cros_netboot /proc/cmdline; then
     log "Device is network booted."
