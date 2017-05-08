@@ -5,6 +5,7 @@
 # found in the LICENSE file.
 
 set -e
+umask 022
 
 # Dump bash trace to default log file.
 : ${LOG_FILE:=/var/log/factory_install.log}
@@ -16,16 +17,13 @@ if [ -n "${LOG_FILE}" ]; then
 fi
 
 . "/usr/sbin/write_gpt.sh"
+. "$(dirname "$0")/factory_common.sh"
 . "$(dirname "$0")/ping_shopfloor.sh"
-. "$(dirname "$0")/factory_install_legacy.sh"
 
 # Definition of ChromeOS partition layout
 DST_FACTORY_KERNEL_PART=2
 DST_FACTORY_PART=3
 DST_RELEASE_KERNEL_PART=4
-DST_RELEASE_PART=5
-DST_OEM_PART=8
-DST_EFI_PART=12
 DST_STATE_PART=1
 
 # Override this if we need to perform additional commands
@@ -43,6 +41,13 @@ EC_PRESENT=0
 DEVSW_PRESENT=1
 NETBOOT_RAMFS=""
 INSTALL_FROM_OMAHA="1"
+FACTORY_INSTALL_FROM_USB="$(findLSBValue FACTORY_INSTALL_FROM_USB)"
+
+# Override this to switch between legacy mode and new cros_payload mode.
+USE_CROS_PAYLOAD="$(findLSBValue USE_CROS_PAYLOAD)"
+if [ -z "${USE_CROS_PAYLOAD}" ] || [ -z "${FACTORY_INSTALL_FROM_USB}" ] ; then
+  . "$(dirname "$0")/factory_install_legacy.sh"
+fi
 
 # Supported actions (a set of lowercase characters)
 SUPPORTED_ACTIONS=cdirsvyz
@@ -445,14 +450,59 @@ run_postinst() {
   return ${result}
 }
 
-omaha_greetings() {
-  local message="$1"
-  local uuid="$2"
-  if [ -n "${OMAHA}" ]; then
-    wget -q "${OMAHA%/update}/greetings/${message}/${uuid}" \
-         -O /dev/null 2>/dev/null || true
+stateful_postinst() {
+  local stateful_dev="$1"
+  local mount_point="$(mktemp -d)"
+
+  mount "${stateful_dev}" "${mount_point}"
+  mkdir -p "$(dirname "${output_file}")"
+
+  # Update lsb-factory on stateful partition.
+  local lsb_factory="${mount_point}/dev_image/etc/lsb-factory"
+  if [ -n "${INSTALL_FROM_OMAHA}" ]; then
+    log "Save active Omaha server URL to stateful partition lsb-factory."
+    echo "FACTORY_OMAHA_URL=${OMAHA}" >> "${lsb_factory}"
+  else
+    log "Clone lsb-factory to stateful partition."
+    cat "${FACTORY_LSB_FILE}" >>"${lsb_factory}"
   fi
 
+  # Gain some space.
+  local portage_db="mount_point}/var_overlay/db/pkg"
+  if [ -d "${portage_db}" ]; then
+    rm -rf "${portage_db}"
+  fi
+
+  # Extract release_image.part1
+  local release_part1_gz="${mount_point}/cros_payloads/release_image.part1.gz"
+  if [ -f "${release_part1_gz}" ]; then
+    local release_part1="$(mktemp)"
+    gunzip -cd "${release_part1_gz}" >"${release_part1}"
+    local release_stateful="$(mktemp -d)"
+    mount -o ro "${release_part1}" "${release_stateful}"
+    local extensions_path="unencrypted/import_extensions"
+    rm -rf "${mount_point}/${extensions_path}"
+    mkdir -p "${mount_point}/unencrypted"
+    cp -prf "${release_stateful}/${extensions_path}" \
+      "${mount_point}/${extensions_path}"
+
+    rm "${release_part1}"
+    umount "${release_stateful}" || true
+    rmdir "${release_stateful}" || true
+  fi
+
+  umount "${mount_point}" || true
+  rmdir "${mount_point}" || true
+}
+
+omaha_greetings() {
+  if [ -z "${INSTALL_FROM_OMAHA}" ]; then
+    return
+  fi
+
+  local message="$1"
+  local uuid="$2"
+  curl "${OMAHA%/update}/greetings/${message}/${uuid}" >/dev/null 2>&1 || true
 }
 
 factory_on_complete() {
@@ -514,6 +564,100 @@ factory_disk_action() {
   fi
   log "Done."
   exit_success
+}
+
+factory_install_cros_paylod() {
+  local src_media="$1"
+  local src_mount=""
+  local tmp_dir="$(mktemp -d)"
+  local json_url="${src_media}/${BOARD}.json"
+
+  if [ -b "${src_media}" ]; then
+    src_mount="$(mktemp -d)"
+    colorize yellow
+    mount -o ro "${src_media}" "${src_mount}"
+    json_url="${src_mount}/cros_payloads/${BOARD}.json"
+  fi
+
+  # Generate the uuid for current install session
+  local uuid="$(uuidgen 2>/dev/null)" || uuid="Not_Applicable"
+
+  # Say hello to server if available.
+  omaha_greetings "hello" "${uuid}"
+
+  cros_payload install "${json_url}" "${DST_DRIVE}" \
+    test_image release_image toolkit hwid
+  cros_payload install "${json_url}" "${tmp_dir}" \
+    firmware complete
+  # The release_image.part1 contains pre-downloaded extensions to preserve.
+  cros_payload download "${json_url}" "${DST_DRIVE}" \
+    release_image.part1
+
+  if [ -n "${src_mount}" ]; then
+    umount "${src_mount}"
+  fi
+  colorize green
+
+  # Notify server that all downloads are completed.
+  omaha_greetings "download_complete" "${uuid}"
+
+  # Disable release partition and activate factory partition
+  disable_release_partition
+  run_postinst "$(make_partition_dev "${DST_DRIVE}" "${DST_FACTORY_PART}")"
+  stateful_postinst "$(make_partition_dev "${DST_DRIVE}" "${DST_STATE_PART}")"
+
+  gzip -df "${tmp_dir}"/*.gz
+  if [ -s "${tmp_dir}/firmware" ]; then
+    log "Found firmware updater."
+    # TODO(hungte) Check if we need to run --mode=recovery if WP is enabled.
+    sh "${tmp_dir}/firmware" --force --mode=factory_install ||
+      die "Firmware updating failed."
+  fi
+  if [ -s "${tmp_dir}/complete" ]; then
+    log "Found completion script."
+    COMPLETE_SCRIPT="${tmp_dir}/complete"
+  fi
+
+  # After post processing, notify server a installation session has been
+  # successfully completed.
+  omaha_greetings "goodbye" "${uuid}"
+}
+
+factory_install_usb() {
+  local src_dev="$(findLSBValue REAL_USB_DEV)"
+  [ -n "${src_dev}" ] || src_dev="$(rootdev -s 2>/dev/null)"
+  [ -n "${src_dev}" ] ||
+    die "Unknown media source. Please define REAL_USB_DEV."
+
+  # Switch to stateful partition.
+  # shellcheck disable=SC2001
+  src_dev="$(echo "${src_dev}" | sed 's/[0-9]\+$/1/')"
+
+  factory_install_cros_paylod "${src_dev}"
+}
+
+factory_install_omaha() {
+  local ping_result return_code=0
+
+  # Ping shopfloor server
+  ping_result=$(ETH_INTERFACE=${ETH_INTERFACE} ping_shopfloor 2>/dev/null) ||
+      return_code="$?"
+  if [ "${return_code}" = "" ]; then
+    eval "${ping_result}"
+  fi
+
+  # Register to Overlord if haven't.
+  if [ -z "${OVERLORD_READY}" ]; then
+    register_to_overlord "${OMAHA}" "${TTY_FILE}" "${LOG_FILE}"
+  fi
+
+  # Check if remote server supports cros_payload.
+  local cros_payload_base="${OMAHA%/update}/static"
+  if curl -f "${cros_payload_base}/${BOARD}.json" >/dev/null 2>&1; then
+    factory_install_cros_paylod "${cros_payload_base}"
+  else
+    factory_install_omaha_old
+  fi
 }
 
 test_ec_flash_presence() {
@@ -790,7 +934,9 @@ action_i() {
   select_board
 
   if [ -n "${INSTALL_FROM_OMAHA}" ]; then
-    factory_install_omaha_old
+    factory_install_omaha
+  elif [ -n "${USE_CROS_PAYLOAD}" ]; then
+    factory_install_usb
   else
     factory_install_usb_old
   fi
