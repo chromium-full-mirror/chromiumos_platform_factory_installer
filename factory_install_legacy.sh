@@ -338,7 +338,6 @@ factory_install_omaha_old() {
   local dst_arg=""
   local src_url=""
   local src_checksum=""
-  local ping_result=""
   local var
 
   # Channels defined by memento updater
@@ -356,19 +355,8 @@ factory_install_omaha_old() {
   DST_HWID_PART="$(mktemp "/tmp/hwid_XXXXXXXX")"
   DST_COMPLETE_PART="$(mktemp "/tmp/complete_XXXXXXXX")"
 
-  # Ping shopfloor server
-  ping_result=$(ETH_INTERFACE=${ETH_INTERFACE} ping_shopfloor 2>/dev/null) ||
-      return_code="$?"
-  if [ "${return_code}" = "" ]; then
-    eval "${ping_result}"
-  fi
-
   # Generate the uuid for current install session
   uuid="$(uuidgen 2>/dev/null)" || uuid="Not_Applicable"
-
-  # Register to Overlord if haven't.
-  [ -n "${OVERLORD_READY}" ] ||
-    register_to_overlord "${OMAHA}" "${TTY_FILE}" "${LOG_FILE}"
 
   # Say hello to miniomaha server
   omaha_greetings "hello" "${uuid}"
