@@ -3,15 +3,18 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-# Prepares system environment to start ChromeOS factory installer.
+# Prepares system environment to start ChromeOS factory shim.
 
 # We want to print the console UI to TTY_FILE, redirect its contents into TTY,
 # and print bash trace logs to LOG_FILE (via LOG_TTY if available).
+# shellcheck disable=SC2034
 TTY_CONSOLE=""
-TTY_FILE=/var/log/factory_install.output
-LOG_FILE=/var/log/factory_install.log
+TTY_FILE=/var/log/factory_shim.output
+LOG_FILE=/var/log/factory_shim.log
 OVERLORD_READY=1
-: ${SHIM_LOG_FILE:=/log/factory_shim.log}
+# This must be using a different file name from LOG_FILE because /var/log may be
+# a symlink to /log.
+: "${INITRAMFS_LOG_FILE:=/log/factory_initramfs.log}"
 export TTY_FILE LOG_FILE OVERLORD_READY
 
 . "$(dirname "$0")/ping_shopfloor.sh"
@@ -27,20 +30,23 @@ main() {
   local omahaserver="$(kernel_get_var omahaserver)"
   if [ -n "${omahaserver}" ]; then
     # Should be netboot-ready environment. Try to start Overlord service.
-    bringup_network &&
-      register_to_overlord "${omahaserver}" "${TTY_FILE}" "${LOG_FILE}" ||
+    if ! bringup_network ||
+       ! register_to_overlord "${omahaserver}" "${TTY_FILE}" "${LOG_FILE}"; then
       OVERLORD_READY=
+    fi
   fi
 
   if [ -n "${LOG_TTY}" ]; then
     echo "
         ---------------------------------------------------------
-        ChromeOS Factory Installer - $(date)
+        ChromeOS Factory Shim - $(date)
 
          Press [q] to refresh, [g/G] to begin/end of logs, [b/f]
          to backward/forward pages, or navigation keys to scroll.
         ---------------------------------------------------------" >${LOG_FILE}
-    [ -e "${SHIM_LOG_FILE}" ] && cat "${SHIM_LOG_FILE}" >>"${LOG_FILE}"
+    if [ -e "${INITRAMFS_LOG_FILE}" ]; then
+      cat "${INITRAMFS_LOG_FILE}" >>"${LOG_FILE}"
+    fi
     LOG_VIEWER_COMMAND="while true; do secure_less.sh <${LOG_FILE}; done"
     # 'script' here helps to reset control terminal environment on LOG_TTY.
     setsid sh -c \
