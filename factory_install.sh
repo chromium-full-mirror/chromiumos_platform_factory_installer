@@ -42,7 +42,6 @@ BOARD="$(findLSBValue CHROMEOS_RELEASE_BOARD)"
 
 # Override this if we want to install with a different omaha server.
 OMAHA="$(findLSBValue CHROMEOS_AUSERVER)"
-RELEASE_ONLY="$(findLSBValue RELEASE_ONLY)"
 
 # Global variables
 DST_DRIVE=""
@@ -878,11 +877,6 @@ factory_install_omaha() {
 
   # Install the partitions
   for i in EFI OEM STATE RELEASE FACTORY FIRMWARE HWID COMPLETE; do
-    if [ "${i}" = "FACTORY" -a -n "${RELEASE_ONLY}" ]; then
-        # Ignore factory image in release only mode
-        continue
-    fi
-
     # DST_*_PART can be a numeric partition number or plain file.
     var="DST_${i}_PART"
     local part="${!var}"
@@ -910,10 +904,6 @@ factory_install_omaha() {
     local extra_arg="--skip_postinst"
     if [ "${i}" = "FACTORY" ]; then
       # Do postinst after update
-      extra_arg=""
-    fi
-    if [ "${i}" = "RELEASE" -a -n "${RELEASE_ONLY}" ]; then
-      # Do postinst after update in release only mode
       extra_arg=""
     fi
     if [ -n "${BOARD}" ]; then
@@ -945,8 +935,8 @@ factory_install_omaha() {
       --allow_removable_boot ${channel_arg} ${dst_arg} ${extra_arg})" ||
       return_code=$?
 
-    if [ "${i}" = "RELEASE" -a -z "${RELEASE_ONLY}" ]; then
-      # Disable release partition when we are not in release only mode.
+    if [ "${i}" = "RELEASE" ]; then
+      # Disable release partition.
       disable_release_partition
     fi
 
@@ -955,13 +945,8 @@ factory_install_omaha() {
       # memento update has encountered a fatal error.
       die "Factory install of target ${dst} has failed with error ${return_code}."
     elif [ "${result}" != "UPDATED" ]; then
-      if [ "${i}" = "RELEASE" -a -n "${RELEASE_ONLY}" ]; then
-        # Only updating the primary root/kernel partition is strictly required.
-        # If the omahaserver is configured to not update others that's fine.
-        # In release only mode, release image is required.
-        die "AU failed."
-      elif [ "${i}" = "FACTORY" -a -z "${RELEASE_ONLY}" ]; then
-        # Otherwise, factory image is required.
+      if [ "${i}" = "FACTORY" ]; then
+        # Factory image is required.
         die "AU failed."
       fi
     fi
@@ -982,10 +967,6 @@ factory_install_omaha() {
       log "Execute firmware-install script"
       dst="${DST_FIRMWARE_PART}"
       dst_arg="--force --mode=factory_install"
-      # In release only mode, we want to run firmware updater in recovery mode.
-      if [ -n "${RELEASE_ONLY}" ]; then
-        dst_arg="--force --mode=recovery"
-      fi
       if ! sh "${dst}" ${dst_arg} 2>&1; then
         die "Firmware updating failed."
       fi
@@ -1012,12 +993,6 @@ factory_install_omaha() {
     log "Found completion script."
     COMPLETE_SCRIPT="${DST_COMPLETE_PART}"
   fi
-
-  # In release only mode, disable developer switch in the end to avoid
-  # entering developer mode after restart.
-  if [ -n "${RELEASE_ONLY}" ]; then
-    disable_dev_switch
-  fi
 }
 
 test_ec_flash_presence() {
@@ -1039,22 +1014,6 @@ test_devsw_presence() {
     DEVSW_PRESENT=1
   else
     DEVSW_PRESENT=0
-  fi
-}
-
-board_pre_install() {
-  BOARD_PRE_INSTALL=/usr/sbin/board_factory_pre_install.sh
-  if [ -x "${BOARD_PRE_INSTALL}" ]; then
-    echo "Running board specific pre-install: ${BOARD_PRE_INSTALL}"
-    ${BOARD_PRE_INSTALL} || exit 1
-  fi
-}
-
-board_post_install() {
-  BOARD_POST_INSTALL=/usr/sbin/board_factory_post_install.sh
-  if [ -x "${BOARD_POST_INSTALL}" ]; then
-    echo "Running board specific post-install: ${BOARD_POST_INSTALL}"
-    ${BOARD_POST_INSTALL} || exit 1
   fi
 }
 
@@ -1183,11 +1142,6 @@ main() {
     echo "You must run this as root."
     exit 1
   fi
-  if [ -n "${RELEASE_ONLY}" ]; then
-    # Change the partition in release only mode
-    DST_RELEASE_KERNEL_PART=2
-    DST_RELEASE_PART=3
-  fi
   config_tty || true  # Never abort if TTY has problems.
 
   log "Starting Factory Installer."
@@ -1199,8 +1153,6 @@ main() {
 
   colorize white
   clear
-
-  board_pre_install
 
   test_ec_flash_presence
   test_devsw_presence
@@ -1326,8 +1278,6 @@ action_i() {
   sync
   sleep 3
   factory_on_complete
-
-  board_post_install
 
   # Some installation procedure may clear or reset NVdata, so we want to ensure
   # TPM will be cleared again.
