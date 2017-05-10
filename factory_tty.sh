@@ -60,7 +60,8 @@ tty_start_frecon() {
   udevd --daemon
   udevadm trigger
   udevadm settle
-  frecon-lite --enable-vt1 --daemon --no-login --enable-vts --pre-create-vts
+  frecon-lite --enable-vt1 --daemon --no-login --enable-vts --pre-create-vts \
+    --num-vts=8 --enable-gfx
 
   local loop_time=30
   while [ ! -e "${FRECON_TTY}" -a ${loop_time} -gt 0 ]; do
