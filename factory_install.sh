@@ -473,11 +473,23 @@ stateful_postinst() {
     rm -rf "${portage_db}"
   fi
 
-  # Extract release_image.part1
-  local release_part1_gz="${mount_point}/cros_payloads/release_image.part1.gz"
-  if [ -f "${release_part1_gz}" ]; then
+  # TODO(hungte) This is a dirty hack. This should be done only in factory
+  # wiping process in future.
+  # Extract release_image.part1, which may be gz or bz2.
+  local release_part1_src="${mount_point}/cros_payloads/release_image.part1"
+  local command=""
+  if [ -f "${release_part1_src}.gz" ]; then
+    release_part1_src="${release_part1_src}.gz"
+    command="gzip"
+  elif [ -f "${release_part1_src}.bz2" ]; then
+    release_part1_src="${release_part1_src}.bz2"
+    command="bzip2"
+  fi
+
+  if [ -n "${command}" ]; then
     local release_part1="$(mktemp)"
-    gunzip -cd "${release_part1_gz}" >"${release_part1}"
+    "${command}" -cd "${release_part1_src}" >"${release_part1}"
+
     local release_stateful="$(mktemp -d)"
     mount -o ro "${release_part1}" "${release_stateful}"
     local extensions_path="unencrypted/import_extensions"
@@ -606,7 +618,6 @@ factory_install_cros_paylod() {
   run_postinst "$(make_partition_dev "${DST_DRIVE}" "${DST_FACTORY_PART}")"
   stateful_postinst "$(make_partition_dev "${DST_DRIVE}" "${DST_STATE_PART}")"
 
-  gzip -df "${tmp_dir}"/*.gz
   if [ -s "${tmp_dir}/firmware" ]; then
     log "Found firmware updater."
     # TODO(hungte) Check if we need to run --mode=recovery if WP is enabled.
