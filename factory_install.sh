@@ -8,10 +8,11 @@ set -e
 umask 022
 
 # Dump bash trace to default log file.
-: ${LOG_FILE:=/var/log/factory_install.log}
-: ${LOG_TTY:=}
+: "${LOG_FILE:=/var/log/factory_install.log}"
+: "${LOG_TTY:=}"
 if [ -n "${LOG_FILE}" ]; then
-  mkdir -p $(dirname "${LOG_FILE}")
+  mkdir -p "$(dirname "${LOG_FILE}")"
+  # shellcheck disable=SC2093 disable=SC1083
   exec {LOG_FD}>>"${LOG_FILE}"
   export BASH_XTRACEFD="${LOG_FD}"
 fi
@@ -20,49 +21,47 @@ fi
 . "$(dirname "$0")/factory_common.sh"
 . "$(dirname "$0")/ping_shopfloor.sh"
 
+# Variables from dev_image/etc/lsb-factory that developers may want to override.
+#
+# - Override this if we want to install with a board different from installer
+BOARD="$(findLSBValue CHROMEOS_RELEASE_BOARD)"
+# - Override this if we want to install with a different omaha server.
+OMAHA="$(findLSBValue CHROMEOS_AUSERVER)"
+# - Override this to switch between legacy mode and new cros_payload mode.
+USE_CROS_PAYLOAD="$(findLSBValue USE_CROS_PAYLOAD)"
+# - Override this for The default action if no keys were pressed before timeout.
+DEFAULT_ACTION="$(findLSBValue FACTORY_INSTALL_DEFAULT_ACTION)"
+
+# Variables prepared by make_factory_package or netboot initramfs code.
+NETBOOT_RAMFS="$(findLSBValue NETBOOT_RAMFS)"
+FACTORY_INSTALL_FROM_USB="$(findLSBValue FACTORY_INSTALL_FROM_USB)"
+
+# Global variables
+DST_DRIVE=""
+EC_PRESENT=0
+DEVSW_PRESENT=1
+COMPLETE_SCRIPT=""
+
+# The ethernet interface to be used. It will be determined in
+# check_ethernet_status and be passed to ping_shopfloor as an
+# environment variable.
+ETH_INTERFACE=""
+
 # Definition of ChromeOS partition layout
 DST_FACTORY_KERNEL_PART=2
 DST_FACTORY_PART=3
 DST_RELEASE_KERNEL_PART=4
 DST_STATE_PART=1
 
-# Override this if we need to perform additional commands
-COMPLETE_SCRIPT=""
-
-# Override this if we want to install with a board different from installer
-BOARD="$(findLSBValue CHROMEOS_RELEASE_BOARD)"
-
-# Override this if we want to install with a different omaha server.
-OMAHA="$(findLSBValue CHROMEOS_AUSERVER)"
-
-# Global variables
-DST_DRIVE=""
-EC_PRESENT=0
-DEVSW_PRESENT=1
-NETBOOT_RAMFS=""
-INSTALL_FROM_OMAHA="1"
-FACTORY_INSTALL_FROM_USB="$(findLSBValue FACTORY_INSTALL_FROM_USB)"
-
-# Override this to switch between legacy mode and new cros_payload mode.
-USE_CROS_PAYLOAD="$(findLSBValue USE_CROS_PAYLOAD)"
-if [ -z "${USE_CROS_PAYLOAD}" ] || [ -z "${FACTORY_INSTALL_FROM_USB}" ] ; then
-  . "$(dirname "$0")/factory_install_legacy.sh"
-fi
-
 # Supported actions (a set of lowercase characters)
-SUPPORTED_ACTIONS=cdirsvyz
-
 # Each action x is implemented in an action_$x handler (e.g.,
 # action_i); see the handlers for more information about what
 # each option is.
+SUPPORTED_ACTIONS=cdirsvyz
 
-# The default action if no keys were pressed before timeout.
-DEFAULT_ACTION=""
-
-# The ethernet interface to be used. It will be determined in
-# check_ethernet_status and be passed to ping_shopfloor as an
-# environment variable.
-ETH_INTERFACE=""
+if [ -z "${USE_CROS_PAYLOAD}" ] || [ -z "${FACTORY_INSTALL_FROM_USB}" ] ; then
+  . "$(dirname "$0")/factory_install_legacy.sh"
+fi
 
 # Define our own logging function.  The one from memento_updater writes to
 # a file, which may cause a race condition if we tail it.
@@ -195,10 +194,11 @@ check_fwwp() {
 set_time() {
   log "Setting time from:"
   # Extract only the server and port.
-  local time_server_url="$(echo "${OMAHA}" | sed "s|/update||; s|http://||")"
+  local time_server_url="${OMAHA%/update}"
+  local time_server_port="${time_server_url#http://}"
 
-  log " Server ${time_server_url}."
-  local result="$(htpdate -s -t "${time_server_url}" 2>&1)"
+  log " Server ${time_server_port}."
+  local result="$(htpdate -s -t "${time_server_port}" 2>&1)"
   if ! echo "${result}" | grep -Eq "(failed|unavailable)"; then
     log "Success, time set to $(date)"
     hwclock -w 2>/dev/null
@@ -215,9 +215,9 @@ check_ethernet_status() {
   link=$(ip -f link addr | sed 'N;s/\n/ /' | grep -w 'ether' |
     cut -d ' ' -f 2 | sed 's/://')
   for i in ${link}; do
-    if ip -f inet addr show ${i} | grep -q inet; then
-      if ! iw ${i} info >/dev/null 2>&1; then
-        log "$(ip -f inet addr show ${i} | grep inet)"
+    if ip -f inet addr show "${i}" | grep -q inet; then
+      if ! iw "${i}" info >/dev/null 2>&1; then
+        log "$(ip -f inet addr show "${i}" | grep inet)"
         ETH_INTERFACE=${i}
         result=0
       fi
@@ -350,6 +350,7 @@ find_var() {
   # and that keys and values do not contain spaces.
   local key="$1"
 
+  # shellcheck disable=SC2013
   for item in $(cat /proc/cmdline); do
     if echo "${item}" | grep -q "${key}"; then
       echo "${item}" | cut -d'=' -f2
@@ -399,7 +400,7 @@ override_from_tftp() {
   local omahaserver_config="omahaserver.conf"
   local tftp_output=""
   # Use board specific config if ${BOARD} is not null.
-  [ -z ${BOARD} ] || omahaserver_config="omahaserver_${BOARD}.conf"
+  [ -z "${BOARD}" ] || omahaserver_config="omahaserver_${BOARD}.conf"
   tftp_output="/tmp/${omahaserver_config}"
 
   if tftp="$(find_var tftpserverip)"; then
@@ -428,9 +429,9 @@ disable_release_partition() {
   if ! cgpt add -i "${DST_RELEASE_KERNEL_PART}" -P 0 -T 0 -S 0 "${DST_DRIVE}"
   then
     # Destroy kernels otherwise the system is still bootable.
-    dst="$(make_partition_dev ${DST_DRIVE} ${DST_RELEASE_KERNEL_PART})"
+    dst="$(make_partition_dev "${DST_DRIVE}" "${DST_RELEASE_KERNEL_PART}")"
     dd if=/dev/zero of="${dst}" bs=1M count=1
-    dst="$(make_partition_dev ${DST_DRIVE} ${DST_FACTORY_KERNEL_PART})"
+    dst="$(make_partition_dev "${DST_DRIVE}" "${DST_FACTORY_KERNEL_PART}")"
     dd if=/dev/zero of="${dst}" bs=1M count=1
     die "Failed to lock release image. Destroy all kernels."
   fi
@@ -459,7 +460,7 @@ stateful_postinst() {
 
   # Update lsb-factory on stateful partition.
   local lsb_factory="${mount_point}/dev_image/etc/lsb-factory"
-  if [ -n "${INSTALL_FROM_OMAHA}" ]; then
+  if [ -z "${FACTORY_INSTALL_FROM_USB}" ]; then
     log "Save active Omaha server URL to stateful partition lsb-factory."
     echo "FACTORY_OMAHA_URL=${OMAHA}" >> "${lsb_factory}"
   else
@@ -508,7 +509,7 @@ stateful_postinst() {
 }
 
 omaha_greetings() {
-  if [ -z "${INSTALL_FROM_OMAHA}" ]; then
+  if [ -n "${FACTORY_INSTALL_FROM_USB}" ]; then
     return
   fi
 
@@ -804,104 +805,15 @@ menu() {
   echo
   read -p 'action> ' ACTION
   echo
-  ACTION="$(echo "${ACTION}" | tr A-Z a-z)"
+  # busybox tr may not have '[:upper:]'.
+  # shellcheck disable=SC2019 disable=SC2018
+  ACTION="$(echo "${ACTION}" | tr 'A-Z' 'a-z')"
 
   if is_valid_action "${ACTION}"; then
       return
   fi
   echo "Invalid action; please select an action from the menu."
   ACTION=
-}
-
-main() {
-  if [ "$(id -u)" -ne 0 ]; then
-    echo "You must run this as root."
-    exit 1
-  fi
-  config_tty || true  # Never abort if TTY has problems.
-
-  log "Starting Factory Installer."
-  # TODO: do we still need this call now that the kernel was tweaked to
-  # provide a good light level by default?
-  lightup_screen
-
-  load_modules
-
-  colorize white
-  clear
-
-  test_ec_flash_presence
-  test_devsw_presence
-
-  if [ "$(findLSBValue FACTORY_INSTALL_FROM_USB)" = "1" ]; then
-    INSTALL_FROM_OMAHA=""
-  fi
-
-  if [ "$(findLSBValue NETBOOT_RAMFS)" = "1" ]; then
-    NETBOOT_RAMFS="1"
-  fi
-
-  # Check for any configuration overrides.
-  overrides
-
-  # Read default options
-  if [ "${NETBOOT_RAMFS}" = 1 ]; then
-    log "Netbooting. Set default action to (I)nstall."
-    DEFAULT_ACTION=i
-  else
-    DEFAULT_ACTION="$(findLSBValue FACTORY_INSTALL_DEFAULT_ACTION)"
-  fi
-
-  # Sanity check default action
-  if [ -n "${DEFAULT_ACTION}" ]; then
-    clear
-    print_header
-    log "Default action: [${DEFAULT_ACTION}]."
-    if ! is_valid_action "${DEFAULT_ACTION}"; then
-      log "Action [${DEFAULT_ACTION}] is invalid."
-      log "Only support ${SUPPORTED_ACTIONS}. Will fallback to normal menu..."
-      DEFAULT_ACTION=""
-      sleep 3
-    fi
-  fi
-
-  # Automatically perform the default action; but first give the user the chance
-  # to press any key to display the menu.
-  if [ -n "${DEFAULT_ACTION}" ]; then
-    log "Will automatically perform action [${DEFAULT_ACTION}]."
-    log "Or press any key to show menu instead..."
-    local prevent_default_action=false
-    local timeout_secs=3
-    for i in $(seq ${timeout_secs} -1 1); do
-      # Read with timeout doesn't reliably work multiple times without
-      # a sub shell.
-      if ( read -N 1 -p "Press any key within ${i} sec> " -t 1 ); then
-        echo
-        prevent_default_action=true
-        break
-      fi
-      echo
-    done
-    if ! ${prevent_default_action}; then
-      # No key pressed: perform the default action (which should never return)
-      action_${DEFAULT_ACTION}
-    fi
-  fi
-
-  while true; do
-    # Display the header and UI.
-    clear
-    print_header
-    menu
-
-    if [ -n "${ACTION}" ]; then
-      # Perform the selected action.
-      action_${ACTION}
-    fi
-
-    colorize white
-    read -N 1 -p "Press any key to continue> "
-  done
 }
 
 #
@@ -912,7 +824,7 @@ main() {
 action_i() {
   reset_chromeos_device
 
-  if [ -n "${INSTALL_FROM_OMAHA}" ]; then
+  if [ -z "${FACTORY_INSTALL_FROM_USB}" ]; then
 
     colorize yellow
     log "Waiting for ethernet connectivity to install"
@@ -944,7 +856,7 @@ action_i() {
   prepare_disk
   select_board
 
-  if [ -n "${INSTALL_FROM_OMAHA}" ]; then
+  if [ -z "${FACTORY_INSTALL_FROM_USB}" ]; then
     factory_install_omaha
   elif [ -n "${USE_CROS_PAYLOAD}" ]; then
     factory_install_usb
@@ -989,7 +901,8 @@ action_r() {
   MOUNT_POINT=/tmp/stateful
   mkdir -p /tmp/stateful
   get_dst_drive
-  mount -o ro "$(make_partition_dev ${DST_DRIVE} ${DST_STATE_PART})" "${MOUNT_POINT}"
+  mount -o ro "$(make_partition_dev "${DST_DRIVE}" "${DST_STATE_PART}")" \
+    "${MOUNT_POINT}"
 
   local factory_exists=false
   [ -e ${MOUNT_POINT}/dev_image/factory ] && factory_exists=true
@@ -1157,5 +1070,84 @@ action_y() {
   factory_disk_action verify
 }
 
+main() {
+  if [ "$(id -u)" -ne 0 ]; then
+    echo "You must run this as root."
+    exit 1
+  fi
+  config_tty || true  # Never abort if TTY has problems.
 
+  log "Starting Factory Installer."
+  # TODO: do we still need this call now that the kernel was tweaked to
+  # provide a good light level by default?
+  lightup_screen
+
+  load_modules
+
+  colorize white
+  clear
+
+  test_ec_flash_presence
+  test_devsw_presence
+
+  # Check for any configuration overrides.
+  overrides
+
+  # Read default options
+  if [ "${NETBOOT_RAMFS}" = 1 ]; then
+    log "Netbooting. Set default action to (I)nstall."
+    DEFAULT_ACTION=i
+  fi
+
+  # Sanity check default action
+  if [ -n "${DEFAULT_ACTION}" ]; then
+    clear
+    print_header
+    log "Default action: [${DEFAULT_ACTION}]."
+    if ! is_valid_action "${DEFAULT_ACTION}"; then
+      log "Action [${DEFAULT_ACTION}] is invalid."
+      log "Only support ${SUPPORTED_ACTIONS}. Will fallback to normal menu..."
+      DEFAULT_ACTION=""
+      sleep 3
+    fi
+  fi
+
+  # Automatically perform the default action; but first give the user the chance
+  # to press any key to display the menu.
+  if [ -n "${DEFAULT_ACTION}" ]; then
+    log "Will automatically perform action [${DEFAULT_ACTION}]."
+    log "Or press any key to show menu instead..."
+    local prevent_default_action=false
+    local timeout_secs=3
+    for i in $(seq ${timeout_secs} -1 1); do
+      # Read with timeout doesn't reliably work multiple times without
+      # a sub shell.
+      if ( read -N 1 -p "Press any key within ${i} sec> " -t 1 ); then
+        echo
+        prevent_default_action=true
+        break
+      fi
+      echo
+    done
+    if ! ${prevent_default_action}; then
+      # No key pressed: perform the default action (which should never return)
+      action_${DEFAULT_ACTION}
+    fi
+  fi
+
+  while true; do
+    # Display the header and UI.
+    clear
+    print_header
+    menu
+
+    if [ -n "${ACTION}" ]; then
+      # Perform the selected action.
+      "action_${ACTION}"
+    fi
+
+    colorize white
+    read -N 1 -p "Press any key to continue> "
+  done
+}
 main "$@"
