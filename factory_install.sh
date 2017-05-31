@@ -27,8 +27,6 @@ fi
 BOARD="$(findLSBValue CHROMEOS_RELEASE_BOARD)"
 # - Override this if we want to install with a different omaha server.
 OMAHA="$(findLSBValue CHROMEOS_AUSERVER)"
-# - Override this to switch between legacy mode and new cros_payload mode.
-USE_CROS_PAYLOAD="$(findLSBValue USE_CROS_PAYLOAD)"
 # - Override this for The default action if no keys were pressed before timeout.
 DEFAULT_ACTION="$(findLSBValue FACTORY_INSTALL_DEFAULT_ACTION)"
 
@@ -59,12 +57,7 @@ DST_STATE_PART=1
 # each option is.
 SUPPORTED_ACTIONS=cdirsvyz
 
-if [ -z "${USE_CROS_PAYLOAD}" ] || [ -z "${FACTORY_INSTALL_FROM_USB}" ] ; then
-  . "$(dirname "$0")/factory_install_legacy.sh"
-fi
-
-# Define our own logging function.  The one from memento_updater writes to
-# a file, which may cause a race condition if we tail it.
+# Define our own logging function.
 log() {
   echo "$*"
 }
@@ -363,7 +356,6 @@ find_var() {
 override_from_firmware() {
   # Check for Omaha URL or Board type from kernel commandline.
   # OMAHA and BOARD are override env variables used when calling
-  # memento_updater.
   local omaha=""
   if omaha="$(find_var omahaserver)"; then
     log " Kernel cmdline OMAHA override to ${omaha}"
@@ -395,7 +387,6 @@ override_from_board() {
 
 override_from_tftp() {
   # Check for Omaha URL from tftp server.
-  # OMAHA is override env variables used when calling memento_updater.
   local tftp=""
   local omahaserver_config="omahaserver.conf"
   local tftp_output=""
@@ -425,7 +416,6 @@ overrides() {
 disable_release_partition() {
   # Release image is not allowed to boot unless the factory test is passed
   # otherwise the wipe and final verification can be skipped.
-  # TODO(hungte) do this in memento_updater or postinst may be better
   if ! cgpt add -i "${DST_RELEASE_KERNEL_PART}" -P 0 -T 0 -S 0 "${DST_DRIVE}"
   then
     # Destroy kernels otherwise the system is still bootable.
