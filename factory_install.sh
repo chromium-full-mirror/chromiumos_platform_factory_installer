@@ -41,7 +41,7 @@ DEVSW_PRESENT=1
 COMPLETE_SCRIPT=""
 
 # The ethernet interface to be used. It will be determined in
-# check_ethernet_status and be passed to ping_shopfloor as an
+# check_ethernet_status and be passed to get_server_payload_json_path as an
 # environment variable.
 ETH_INTERFACE=""
 
@@ -355,7 +355,6 @@ find_var() {
 
 override_from_firmware() {
   # Check for Omaha URL or Board type from kernel commandline.
-  # OMAHA and BOARD are override env variables used when calling
   local omaha=""
   if omaha="$(find_var omahaserver)"; then
     log " Kernel cmdline OMAHA override to ${omaha}"
@@ -569,17 +568,18 @@ factory_disk_action() {
   exit_success
 }
 
-factory_install_cros_paylod() {
+factory_install_cros_payload() {
   local src_media="$1"
+  local json_path="$2"
   local src_mount=""
   local tmp_dir="$(mktemp -d)"
-  local json_url="${src_media}/${BOARD}.json"
+  local json_url="${src_media}/${json_path}"
 
   if [ -b "${src_media}" ]; then
     src_mount="$(mktemp -d)"
     colorize yellow
     mount -o ro "${src_media}" "${src_mount}"
-    json_url="${src_mount}/cros_payloads/${BOARD}.json"
+    json_url="${src_mount}/${json_path}"
   fi
 
   # Generate the uuid for current install session
@@ -635,31 +635,21 @@ factory_install_usb() {
   # shellcheck disable=SC2001
   src_dev="$(echo "${src_dev}" | sed 's/[0-9]\+$/1/')"
 
-  factory_install_cros_paylod "${src_dev}"
+  factory_install_cros_payload "${src_dev}" "cros_payloads/${BOARD}.json"
 }
 
-factory_install_omaha() {
-  local ping_result return_code=0
-
-  # Ping shopfloor server
-  ping_result=$(ETH_INTERFACE=${ETH_INTERFACE} ping_shopfloor 2>/dev/null) ||
-      return_code="$?"
-  if [ "${return_code}" = "" ]; then
-    eval "${ping_result}"
-  fi
-
+factory_install_network() {
   # Register to Overlord if haven't.
   if [ -z "${OVERLORD_READY}" ]; then
     register_to_overlord "${OMAHA}" "${TTY_FILE}" "${LOG_FILE}"
   fi
 
-  # Check if remote server supports cros_payload.
-  local cros_payload_base="${OMAHA%/update}/static"
-  if curl -f "${cros_payload_base}/${BOARD}.json" >/dev/null 2>&1; then
-    factory_install_cros_paylod "${cros_payload_base}"
-  else
-    factory_install_omaha_old
-  fi
+  local omaha="${OMAHA%/update}"
+  # Get path of cros_payload json file from server (Umpire or Mini-Omaha).
+  local json_path="$(get_server_payload_json_path \
+    "${omaha}" "${ETH_INTERFACE}" 2>/dev/null)"
+  [ -n "${json_path}" ] || die "Failed to get payload json path from server."
+  factory_install_cros_payload "${omaha}" "${json_path}"
 }
 
 test_ec_flash_presence() {
@@ -800,7 +790,7 @@ menu() {
   ACTION="$(echo "${ACTION}" | tr 'A-Z' 'a-z')"
 
   if is_valid_action "${ACTION}"; then
-      return
+    return
   fi
   echo "Invalid action; please select an action from the menu."
   ACTION=
@@ -846,12 +836,10 @@ action_i() {
   prepare_disk
   select_board
 
-  if [ -z "${FACTORY_INSTALL_FROM_USB}" ]; then
-    factory_install_omaha
-  elif [ -n "${USE_CROS_PAYLOAD}" ]; then
+  if [ -n "${FACTORY_INSTALL_FROM_USB}" ]; then
     factory_install_usb
   else
-    factory_install_usb_old
+    factory_install_network
   fi
 
   log "Factory Installer Complete."
