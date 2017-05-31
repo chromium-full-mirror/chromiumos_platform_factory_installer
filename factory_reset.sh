@@ -13,8 +13,8 @@
 #
 
 . "/usr/share/misc/chromeos-common.sh"
+. "$(dirname "$0")/factory_common.sh"
 . "$(dirname "$0")/factory_verify.sh"
-. "/opt/google/memento_updater/find_omaha.sh"
 
 # CUTOFF_DIR is provided from platform/factory/sh/cutoff, repacked by ebuild.
 CUTOFF_DIR="/usr/share/cutoff"
