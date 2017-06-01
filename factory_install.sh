@@ -590,8 +590,17 @@ factory_install_cros_payload() {
 
   cros_payload install "${json_url}" "${DST_DRIVE}" \
     test_image release_image toolkit hwid
-  cros_payload install "${json_url}" "${tmp_dir}" \
-    firmware complete
+
+  # Install optional components.
+  local component all_components="$(cros_payload list "${json_url}")"
+  for component in firmware complete; do
+    if echo "${all_components}" | grep -w "${component}"; then
+      cros_payload install "${json_url}" "${tmp_dir}" "${component}"
+    else
+      log "Ignore optional component ${component}."
+    fi
+  done
+
   # The release_image.part1 contains pre-downloaded extensions to preserve.
   cros_payload download "${json_url}" "${DST_DRIVE}" \
     release_image.part1
