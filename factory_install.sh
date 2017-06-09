@@ -568,6 +568,18 @@ factory_disk_action() {
   exit_success
 }
 
+enlarge_partition() {
+  local dev="$1"
+  local block_size="$(dumpe2fs -h "${dev}" | sed -n 's/Block size: *//p')"
+  local minimal="$(resize2fs -P "${dev}" | sed -n 's/Estimated .*: //p')"
+
+  # Try to allocate 1G if possible.
+  if [ "${minimal}" -gt 0 ] && [ "${block_size}" -gt 0 ]; then
+    e2fsck -f "${dev}"
+    resize2fs "${dev}" "$((minimal + (1024 * 1048576 / block_size)))" || true
+  fi
+}
+
 factory_install_cros_payload() {
   local src_media="$1"
   local json_path="$2"
@@ -588,8 +600,13 @@ factory_install_cros_payload() {
   # Say hello to server if available.
   omaha_greetings "hello" "${uuid}"
 
-  cros_payload install "${json_url}" "${DST_DRIVE}" \
-    test_image release_image toolkit hwid
+  cros_payload install "${json_url}" "${DST_DRIVE}" test_image release_image
+
+  # Test image stateful partition may pretty full and we may want more space,
+  # before installing toolkit (which may be huge).
+  enlarge_partition "$(make_partition_dev "${DST_DRIVE}" "${DST_STATE_PART}")"
+
+  cros_payload install "${json_url}" "${DST_DRIVE}" toolkit hwid
 
   # Install optional components.
   local component all_components="$(cros_payload list "${json_url}")"
