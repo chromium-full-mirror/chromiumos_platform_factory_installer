@@ -25,7 +25,7 @@ get_server_payload_json_path() {
   local target="${omaha}/resourcemap"
   sf_log "${header}"
 
-  if resourcemap="$(wget -O - --header "${header}" "${target}")"; then
+  if resourcemap="$(curl -f --header "${header}" "${target}")"; then
     sf_log "got resourcemap: ${resourcemap}"
     local json_name="$(echo "${resourcemap}" | grep "^payloads: " |
       cut -d ' ' -f 2)"
