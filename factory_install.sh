@@ -970,15 +970,19 @@ action_v() {
 # D = Debug info and logs.
 action_d() {
   (
-    echo "## Information in this commend:"
+    echo "## Information in this command:"
     echo "##   dev_debug_vboot"
     echo "##     date"
     echo "##     crossystem --all"
     echo "##     rootdev -s"
     echo "##     la -aCF /root"
     echo "##     ls -aCF /mnt/stateful_partition"
-    echo "##     cgpt show /dev/mmcblk0"
-    echo "##     cgpt show /dev/sda"
+    local devs=$(awk \
+        '/(mmcblk[0-9])$|(sd[a-z])$|(nvme[0-9]+n[0-9]+)$/ {print "/dev/"$4}' \
+        /proc/partitions)
+    for dev in ${devs}; do
+      echo "##     cgpt show ${dev}"
+    done
     echo "##     etc..."
     echo "##   firmware event log"
     echo "##   /sys/firmware/log"
@@ -1012,8 +1016,10 @@ action_d() {
 
     echo
     echo "## checksums:"
-    md5sum /dev/mmcblk0p2 /dev/mmcblk0p4 || true
-    md5sum /dev/sda2 /dev/sda4 || true
+    local parts=$(sed -n 's/.* \([^ ]*[^0-9][24]$\)/\1/p' /proc/partitions)
+    for part in ${parts}; do
+      md5sum "/dev/${part}" || true
+    done
   ) 2>&1 | secure_less.sh
 }
 
