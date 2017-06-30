@@ -121,6 +121,28 @@ secure_erase_sata() {
   fi
 }
 
+# Erase an NVMe device using nvme format
+#
+# We first secure_erase with crypto mode, if failed, then we try to do with
+# user data mode with a timeout proportion to the size of the device.
+secure_erase_nvme() {
+  local disk="$1"
+  local ses_user="1"  # 0: no secure, 1: user data erase, 2: cryptographic erase
+  local ses_crypto="2"
+  local one_gb=$((1024 * 1024 * 1024))  # 1gb size in bytes
+  local base_timeout=$((60 * 1000))  # base timeout for 1 minute
+
+  # Format with crypto mode
+  nvme format "${disk}" --ses "${ses_crypto}" && return 0
+
+  local dev_size="$(lsblk --bytes --noheadings --output SIZE "${disk}")"
+  # Let timeout prportion to the size of device
+  local timeout="$((${base_timeout} + ${dev_size} * 10 * 1000 / ${one_gb}))"
+
+  # Format with userdata mode
+  nvme format "${disk}" --ses "${ses_user}" --timeout "${timeout}" || return $?
+}
+
 # Erase a device using its internal firmware function
 #
 # Arguments:
@@ -138,6 +160,9 @@ secure_erase() {
     ;;
     ATA)
       secure_erase_sata "${disk}"
+    ;;
+    NVME)
+      secure_erase_nvme "${disk}"
     ;;
     *)
       echo "Unable to identify the type of disk: -${disk_type}-"

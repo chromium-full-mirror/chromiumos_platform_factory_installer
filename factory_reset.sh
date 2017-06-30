@@ -22,7 +22,7 @@ CUTOFF_SCRIPT="${CUTOFF_DIR}/cutoff.sh"
 INFORM_SHOPFLOOR_SCRIPT="${CUTOFF_DIR}/inform_shopfloor.sh"
 
 usage() {
-  echo "Usage: $0 disk [wipe|erase|verify]."
+  echo "Usage: $0 disk [wipe|secure|verify]."
   echo "disk: device to operate on [for instance /dev/sda]"
   echo "If no argument, do a factory reset. Otherwise:"
   echo "wipe: write 0's on every LBA [backward compatibility]"
