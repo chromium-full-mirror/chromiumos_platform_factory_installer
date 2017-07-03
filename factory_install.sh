@@ -21,12 +21,18 @@ fi
 . "$(dirname "$0")/factory_common.sh"
 . "$(dirname "$0")/ping_shopfloor.sh"
 
+normalize_server_url() {
+  local removed_protocol="${1#http://}"
+  local removed_path="${removed_protocol%%/*}"
+  echo "http://${removed_path}"
+}
+
 # Variables from dev_image/etc/lsb-factory that developers may want to override.
 #
 # - Override this if we want to install with a board different from installer
 BOARD="$(findLSBValue CHROMEOS_RELEASE_BOARD)"
 # - Override this if we want to install with a different omaha server.
-OMAHA="$(findLSBValue CHROMEOS_AUSERVER)"
+OMAHA="$(normalize_server_url "$(findLSBValue CHROMEOS_AUSERVER)")"
 # - Override this for The default action if no keys were pressed before timeout.
 DEFAULT_ACTION="$(findLSBValue FACTORY_INSTALL_DEFAULT_ACTION)"
 
@@ -187,8 +193,7 @@ check_fwwp() {
 set_time() {
   log "Setting time from:"
   # Extract only the server and port.
-  local time_server_url="${OMAHA%/update}"
-  local time_server_port="${time_server_url#http://}"
+  local time_server_port="${OMAHA#http://}"
 
   log " Server ${time_server_port}."
   local result="$(htpdate -s -t "${time_server_port}" 2>&1)"
@@ -357,8 +362,8 @@ override_from_firmware() {
   # Check for Omaha URL or Board type from kernel commandline.
   local omaha=""
   if omaha="$(find_var omahaserver)"; then
-    log " Kernel cmdline OMAHA override to ${omaha}"
-    OMAHA="${omaha}"
+    OMAHA="$(normalize_server_url "${omaha}")"
+    log " Kernel cmdline OMAHA override to ${OMAHA}"
   fi
 
   local board=""
@@ -401,7 +406,7 @@ override_from_tftp() {
     rm -rf "${tftp_output}"
     tftp -g -r "${omahaserver_config}" -l "${tftp_output}" "${tftp}" || true
     if [ -f "${tftp_output}" ]; then
-      OMAHA="$(cat "${tftp_output}")"
+      OMAHA="$(normalize_server_url "$(cat "${tftp_output}")")"
       log "override_from_tftp: OMAHA override to ${OMAHA}"
     fi
   fi
@@ -504,7 +509,7 @@ omaha_greetings() {
 
   local message="$1"
   local uuid="$2"
-  curl "${OMAHA%/update}/greetings/${message}/${uuid}" >/dev/null 2>&1 || true
+  curl "${OMAHA}/greetings/${message}/${uuid}" >/dev/null 2>&1 || true
 }
 
 factory_on_complete() {
@@ -670,12 +675,11 @@ factory_install_network() {
     register_to_overlord "${OMAHA}" "${TTY_FILE}" "${LOG_FILE}"
   fi
 
-  local omaha="${OMAHA%/update}"
   # Get path of cros_payload json file from server (Umpire or Mini-Omaha).
   local json_path="$(get_server_payload_json_path \
-    "${omaha}" "${ETH_INTERFACE}" 2>/dev/null)"
+    "${OMAHA}" "${ETH_INTERFACE}" 2>/dev/null)"
   [ -n "${json_path}" ] || die "Failed to get payload json path from server."
-  factory_install_cros_payload "${omaha}" "${json_path}"
+  factory_install_cros_payload "${OMAHA}" "${json_path}"
 }
 
 test_ec_flash_presence() {
