@@ -468,36 +468,6 @@ stateful_postinst() {
     rm -rf "${portage_db}"
   fi
 
-  # TODO(hungte) This is a dirty hack. This should be done only in factory
-  # wiping process in future.
-  # Extract release_image.part1, which may be gz or bz2.
-  local release_part1_src="${mount_point}/cros_payloads/release_image.part1"
-  local command=""
-  if [ -f "${release_part1_src}.gz" ]; then
-    release_part1_src="${release_part1_src}.gz"
-    command="gzip"
-  elif [ -f "${release_part1_src}.bz2" ]; then
-    release_part1_src="${release_part1_src}.bz2"
-    command="bzip2"
-  fi
-
-  if [ -n "${command}" ]; then
-    local release_part1="$(mktemp)"
-    "${command}" -cd "${release_part1_src}" >"${release_part1}"
-
-    local release_stateful="$(mktemp -d)"
-    mount -o ro "${release_part1}" "${release_stateful}"
-    local extensions_path="unencrypted/import_extensions"
-    rm -rf "${mount_point}/${extensions_path}"
-    mkdir -p "${mount_point}/unencrypted"
-    cp -prf "${release_stateful}/${extensions_path}" \
-      "${mount_point}/${extensions_path}"
-
-    rm "${release_part1}"
-    umount "${release_stateful}" || true
-    rmdir "${release_stateful}" || true
-  fi
-
   umount "${mount_point}" || true
   rmdir "${mount_point}" || true
 }
@@ -611,7 +581,8 @@ factory_install_cros_payload() {
   # before installing toolkit (which may be huge).
   enlarge_partition "$(make_partition_dev "${DST_DRIVE}" "${DST_STATE_PART}")"
 
-  cros_payload install "${json_url}" "${DST_DRIVE}" toolkit hwid
+  cros_payload install "${json_url}" "${DST_DRIVE}" \
+    toolkit hwid release_image.crx_cache
 
   # Install optional components.
   local component all_components="$(cros_payload list "${json_url}")"
@@ -622,10 +593,6 @@ factory_install_cros_payload() {
       log "Ignore optional component ${component}."
     fi
   done
-
-  # The release_image.part1 contains pre-downloaded extensions to preserve.
-  cros_payload download "${json_url}" "${DST_DRIVE}" \
-    release_image.part1
 
   if [ -n "${src_mount}" ]; then
     umount "${src_mount}"
