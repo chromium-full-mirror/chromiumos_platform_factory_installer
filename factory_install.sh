@@ -61,7 +61,7 @@ DST_STATE_PART=1
 # Each action x is implemented in an action_$x handler (e.g.,
 # action_i); see the handlers for more information about what
 # each option is.
-SUPPORTED_ACTIONS=cdirsvyz
+SUPPORTED_ACTIONS=cdirstuvyz
 
 # Define our own logging function.
 log() {
@@ -778,6 +778,9 @@ menu() {
               "Performs full storage erase, write a verification pattern"
   menu_line Y "VerifY erase" \
               "Verifies the storage has been erased with option C"
+  menu_line T "Reset TPM" "Call chromeos-tpm-recovery"
+  menu_line U "Update Cr50" \
+              "Update Cr50 fw from STATEFUL_PARTITION/cr50.bin.prod"
 
   echo
   read -p 'action> ' ACTION
@@ -1034,7 +1037,7 @@ action_z() {
   erase_drive wipe
 }
 
-# C =SeCure
+# C = SeCure
 action_c() {
   erase_drive secure
 }
@@ -1049,6 +1052,31 @@ action_y() {
   fi
   get_dst_drive
   factory_disk_action verify
+}
+
+# T = Reset TPM
+action_t() {
+  chromeos-tpm-recovery
+}
+
+# U = Update Cr50
+action_u() {
+  local real_usb_dev="$(findLSBValue REAL_USB_DEV)"
+  [ -n "${real_usb_dev}" ] ||
+    die "Unknown media source. Please define REAL_USB_DEV."
+  stateful_dev=${real_usb_dev%[0-9]*}1
+  local mount_point="$(mktemp -d)"
+  local firmware_path="${mount_point}/cr50.bin.prod"
+  local temp_firmware="$(mktemp)"
+
+  mount -o ro "${stateful_dev}" "${mount_point}"
+  cp "${firmware_path}" "${temp_firmware}"
+  umount "${stateful_dev}"
+  rmdir "${mount_point}"
+
+  usb_updater "${temp_firmware}"
+  # usb_updater will either auto-reboot or jump to on_die, and should never
+  # reach here.
 }
 
 main() {
