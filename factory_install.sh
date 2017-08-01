@@ -316,13 +316,7 @@ prepare_disk() {
   [ -r ${pmbr_code} ] || die "Missing ${pmbr_code}; please rebuild image."
 
   write_base_table "${DST_DRIVE}" "${pmbr_code}" 2>&1
-
-  # Informs OS of partition table changes. The autoupdater has trouble with loop
-  # devices.
-  log "Reloading partition table changes..."
-  sync
-  sleep 3  # Wait for sync to take place.
-  partprobe "${DST_DRIVE}"
+  reload_partitions "${DST_DRIVE}"
 
   log "Done preparing disk"
 }
@@ -424,6 +418,8 @@ disable_release_partition() {
     dd if=/dev/zero of="${dst}" bs=1M count=1
     die "Failed to lock release image. Destroy all kernels."
   fi
+  # cgpt changed partition table, so we have to make sure it's notified.
+  reload_partitions "${DST_DRIVE}"
 }
 
 run_postinst() {
@@ -548,6 +544,19 @@ enlarge_partition() {
     e2fsck -f "${dev}"
     resize2fs "${dev}" "$((minimal + (1024 * 1048576 / block_size)))" || true
   fi
+}
+
+reload_partitions() {
+  # Some devices, for example NVMe, may need extra time to update block device
+  # files via udev. We should do sync, partprobe, and then wait until partition
+  # device files appear again.
+  local drive="$1"
+  log "Reloading partition table changes..."
+  sync
+
+  # Reference: src/platform2/installer/chromeos-install#reload_partitions
+  udevadm settle || true  # Netboot environment may not have udev.
+  blockdev --rereadpt "${drive}"
 }
 
 factory_install_cros_payload() {
