@@ -305,6 +305,8 @@ get_dst_drive() {
 }
 
 lightup_screen() {
+  # Always backlight on factory install shim.
+  ectool forcelidopen 1 || true
   # Light up screen in case you can't see our splash image.
   backlight_tool --set_brightness_percent=100 || true
 }
