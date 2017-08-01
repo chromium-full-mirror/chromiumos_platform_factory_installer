@@ -1076,9 +1076,23 @@ action_u() {
   umount "${stateful_dev}"
   rmdir "${mount_point}"
 
-  usb_updater "${temp_firmware}"
-  # usb_updater will either auto-reboot or jump to on_die, and should never
-  # reach here.
+  stop trunksd || true
+  local result=0
+  usb_updater -s -u "${temp_firmware}" || result="$?"
+
+  rm "${temp_firmware}"
+
+  # Allow 0(no-op), 1(all_updated), 2(rw_updated), other return values are
+  # considered fail.
+  # See trunk/src/platform/ec/extra/usb_updater/usb_updater.c for more detail.
+  case "${result}" in
+    "0" | "1" | "2" )
+      return 0
+      ;;
+    *)
+      die "usb_updater execution failed as ${result}."
+      ;;
+  esac
 }
 
 main() {
