@@ -460,12 +460,6 @@ stateful_postinst() {
     cat "${FACTORY_LSB_FILE}" >>"${lsb_factory}"
   fi
 
-  # Gain some space.
-  local portage_db="mount_point}/var_overlay/db/pkg"
-  if [ -d "${portage_db}" ]; then
-    rm -rf "${portage_db}"
-  fi
-
   umount "${mount_point}" || true
   rmdir "${mount_point}" || true
 }
