@@ -560,6 +560,22 @@ reload_partitions() {
   blockdev --rereadpt "${drive}"
 }
 
+cros_payload_install_optional() {
+  local json_url="$1"
+  local dest="$2"
+  local component="$3"
+  local remote="$4"
+  local remote_component
+
+  for remote_component in ${remote}; do
+    if [ "${remote_component}" = "${component}" ]; then
+      cros_payload install "${json_url}" "${dest}" "${component}"
+      return
+    fi
+  done
+  log "Optional component ${component} does not exist, ignored."
+}
+
 factory_install_cros_payload() {
   local src_media="$1"
   local json_path="$2"
@@ -587,17 +603,13 @@ factory_install_cros_payload() {
   enlarge_partition "$(make_partition_dev "${DST_DRIVE}" "${DST_STATE_PART}")"
 
   cros_payload install "${json_url}" "${DST_DRIVE}" \
-    toolkit hwid release_image.crx_cache
+    toolkit release_image.crx_cache
 
   # Install optional components.
-  local component all_components="$(cros_payload list "${json_url}")"
-  for component in firmware complete; do
-    if echo "${all_components}" | grep -w "${component}"; then
-      cros_payload install "${json_url}" "${tmp_dir}" "${component}"
-    else
-      log "Ignore optional component ${component}."
-    fi
-  done
+  local remote="$(cros_payload list "${json_url}")"
+  cros_payload_install_optional "${json_url}" "${DST_DRIVE}" hwid "${remote}"
+  cros_payload_install_optional "${json_url}" "${temp_dir}" firmware "${remote}"
+  cros_payload_install_optional "${json_url}" "${temp_dir}" complete "${remote}"
 
   if [ -n "${src_mount}" ]; then
     umount "${src_mount}"
