@@ -608,8 +608,8 @@ factory_install_cros_payload() {
   # Install optional components.
   local remote="$(cros_payload list "${json_url}")"
   cros_payload_install_optional "${json_url}" "${DST_DRIVE}" hwid "${remote}"
-  cros_payload_install_optional "${json_url}" "${temp_dir}" firmware "${remote}"
-  cros_payload_install_optional "${json_url}" "${temp_dir}" complete "${remote}"
+  cros_payload_install_optional "${json_url}" "${tmp_dir}" firmware "${remote}"
+  cros_payload_install_optional "${json_url}" "${tmp_dir}" complete "${remote}"
 
   if [ -n "${src_mount}" ]; then
     umount "${src_mount}"
