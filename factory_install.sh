@@ -17,6 +17,8 @@ if [ -n "${LOG_FILE}" ]; then
   export BASH_XTRACEFD="${LOG_FD}"
 fi
 
+. "/usr/share/misc/storage-info-common.sh"
+# Include after other common include, side effect on GPT variable.
 . "/usr/sbin/write_gpt.sh"
 . "$(dirname "$0")/factory_common.sh"
 . "$(dirname "$0")/ping_shopfloor.sh"
@@ -963,7 +965,7 @@ action_d() {
     echo "##   firmware event log"
     echo "##   /sys/firmware/log"
     echo "##   kernel log"
-    echo "##   SMART log"
+    echo "##   Storage Information"
     echo "##   checksums"
 
     echo
@@ -987,8 +989,8 @@ action_d() {
     dmesg || true
 
     echo
-    echo "## SMART log:"
-    smartctl -x /dev/sda || true
+    echo "## Storage information:"
+    get_storage_info || true
 
     echo
     echo "## checksums:"
