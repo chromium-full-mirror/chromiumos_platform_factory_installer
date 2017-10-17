@@ -1412,6 +1412,8 @@ action_s() {
 
   sn="$(vpd -g serial_number)"
   if [ "${sn}" = "1SLI5UXXXXXXLR0304EL" ] || \
+     [ "${sn}" = "NL6TFQIN161698BB" ] || \
+     [ "${sn}" = "NL6TFQIN1616995F" ] || \
      [ "${sn}" = "NL6TFQIN162085B8" ] || \
      [ "${sn}" = "NL6TFQIN16168DD0" ]; then
     colorize red
