@@ -63,7 +63,7 @@ DST_STATE_PART=1
 # Each action x is implemented in an action_$x handler (e.g.,
 # action_i); see the handlers for more information about what
 # each option is.
-SUPPORTED_ACTIONS=cdirstuvyz
+SUPPORTED_ACTIONS=cdfirstuvyz
 
 # Define our own logging function.
 log() {
@@ -798,6 +798,7 @@ menu() {
   menu_line Y "VerifY erase" \
               "Verifies the storage has been erased with option C"
   menu_line T "Reset TPM" "Call chromeos-tpm-recovery"
+  menu_line F "Update TPM Firmware" "Call tmp-firmware-update-factory"
   menu_line U "Update Cr50" \
               "Update Cr50 fw from STATEFUL_PARTITION/cr50.bin.prod"
 
@@ -818,6 +819,11 @@ menu() {
 #
 # Action handlers
 #
+
+# F = tpm-firmware-update-factory
+action_f() {
+  /usr/share/cros/init/tpm-firmware-update-factory.sh
+}
 
 # I = Install.
 action_i() {
