@@ -63,7 +63,7 @@ DST_STATE_PART=1
 # Each action x is implemented in an action_$x handler (e.g.,
 # action_i); see the handlers for more information about what
 # each option is.
-SUPPORTED_ACTIONS=cdfirstuvyz
+SUPPORTED_ACTIONS=cdefirstuvyz
 
 # Define our own logging function.
 log() {
@@ -772,6 +772,28 @@ is_valid_action() {
   echo "$1" | grep -q "^[${SUPPORTED_ACTIONS}]$"
 }
 
+check_devmode_is_allowed() {
+  # Check block_devmode flag
+  echo "Checking block_devmode flags"
+  if crossystem 'block_devmode?1' 'wpsw_boot?1' 2>/dev/null; then
+    echo
+    echo "crossystem flag 'block_devmode' is set on a write protected device."
+    echo
+    echo "You need to disable hardware write protection to bypass this check."
+    echo
+
+    # Run cr50-reset.sh if available
+    if command -v /usr/share/cros/cr50-reset.sh >/dev/null; then
+      echo "Defaulting to RMA reset"
+      sleep 2
+      # Perform an RMA reset
+      action_e
+    fi
+    return 1
+  fi
+  return 0
+}
+
 # Displays a menu, saving the action (one of ${SUPPORTED_ACTIONS}, always
 # lowercase) in the "ACTION" variable.  If no valid action is chosen,
 # ACTION will be empty.
@@ -801,6 +823,7 @@ menu() {
   menu_line F "Update TPM Firmware" "Call tmp-firmware-update-factory"
   menu_line U "Update Cr50" \
               "Update Cr50 fw from STATEFUL_PARTITION/cr50.bin.prod"
+  menu_line E "Reset Cr50" "Perform a Cr50 reset"
 
   echo
   read -p 'action> ' ACTION
@@ -1118,6 +1141,11 @@ action_u() {
   esac
 }
 
+# E = Reset Cr50
+action_e() {
+  /usr/share/cros/cr50-reset.sh
+}
+
 main() {
   if [ "$(id -u)" -ne 0 ]; then
     echo "You must run this as root."
@@ -1187,11 +1215,13 @@ main() {
     # Display the header and UI.
     clear
     print_header
-    menu
+    if check_devmode_is_allowed; then
+      menu
 
-    if [ -n "${ACTION}" ]; then
-      # Perform the selected action.
-      "action_${ACTION}"
+      if [ -n "${ACTION}" ]; then
+        # Perform the selected action.
+        "action_${ACTION}"
+      fi
     fi
 
     colorize white
