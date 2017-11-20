@@ -94,90 +94,96 @@ restore_crx_cache() {
   fi
 }
 
-if [ "$#" -lt 1 ]; then
-  usage
-fi
+do_cutoff() {
+  # TODO(hungte) Remove all the checks below since cutoff now reads its own
+  # config.
+  local cutoff_method=""
+  local cutoff_ac_state=""
+  local min_battery_percent="" max_battery_percent=""
+  local min_battery_voltage="" max_battery_voltage=""
+  local shopfloor_url=""
 
-DEV="$1"
-if [ ! -b "${DEV}" ]; then
-  echo "Invalid root disk ${DEV}."
-  exit 1
-fi
-STATE_DEV=$(make_partition_dev "${DEV}" "1")
-DEV_SIZE=$(blockdev --getsize64 "${DEV}")
-shift
+  cutoff_method="$(findLSBValue CUTOFF_METHOD)"
+  cutoff_ac_state="$(findLSBValue CUTOFF_AC_STATE)"
+  min_battery_percent="$(findLSBValue CUTOFF_BATTERY_MIN_PERCENTAGE)"
+  max_battery_percent="$(findLSBValue CUTOFF_BATTERY_MAX_PERCENTAGE)"
+  min_battery_voltage="$(findLSBValue CUTOFF_BATTERY_MIN_VOLTAGE)"
+  max_battery_voltage="$(findLSBValue CUTOFF_BATTERY_MAX_VOLTAGE)"
+  shopfloor_url="$(findLSBValue SHOPFLOOR_URL)"
 
-# Tcsd will bring up the tpm and de-own it,
-# as we are in developer/recovery mode.
-start tcsd
-
-if [ $# -eq 1 ]; then
-  case "$1" in
-    wipe)
-      # Nuke the disk.
-      pv -etpr -s ${DEV_SIZE} -B 8M /dev/zero |
-        dd bs=8M of="${DEV}" oflag=dsync iflag=fullblock
-      ;;
-    secure)
-      # Erase using firmware feature first.
-      secure_erase ${DEV} || exit 1
-      perform_fio_op "${DEV}" "${DEV_SIZE}" "write" || exit 1
-      ;;
-    verify)
-      perform_fio_op "${DEV}" "${DEV_SIZE}" "verify" || exit 1
-      ;;
-    *)
-      usage
-  esac
-else
-  echo "Factory reset"
-  if [ ! -b "${STATE_DEV}" ]; then
-    echo "Failed to find stateful partition."
-    exit 1
+  if [ -n "${shopfloor_url}" ]; then
+    "${INFORM_SHOPFLOOR_SCRIPT}" "${shopfloor_url}" "factory_reset" || exit 1
   fi
 
-  preserve_crx_cache
+  local args=""
+  [ -n "${cutoff_method}" ] && args="--method ${cutoff_method}"
+  [ -n "${cutoff_ac_state}" ] && args="${args} --check-ac ${cutoff_ac_state}"
+  [ -n "${min_battery_percent}" ] &&
+    args="${args} --min-battery-percent ${min_battery_percent}"
+  [ -n "${max_battery_percent}" ] &&
+    args="${args} --max-battery-percent ${max_battery_percent}"
+  [ -n "${min_battery_voltage}" ] &&
+    args="${args} --min-battery-voltage ${min_battery_voltage}"
+  [ -n "${max_battery_voltage}" ] &&
+    args="${args} --max-battery-voltage ${max_battery_voltage}"
 
-  # Just wipe the start of the partition and remake the fs on
-  # the stateful partition.
-  dd bs=4M count=1 if=/dev/zero of=${STATE_DEV}
-  /sbin/mkfs.ext4 "${STATE_DEV}"
+  "${CUTOFF_SCRIPT}" ${args}
+}
 
-  restore_crx_cache
-fi
+main() {
+  if [ "$#" -lt 1 ]; then
+    usage
+  fi
 
-# TODO(hungte) Remove all the checks below since cutoff now reads its own
-# config.
-local cutoff_method=""
-local cutoff_ac_state=""
-local min_battery_percent="" max_battery_percent=""
-local min_battery_voltage="" max_battery_voltage=""
-local shopfloor_url=""
+  DEV="$1"
+  if [ ! -b "${DEV}" ]; then
+    echo "Invalid root disk ${DEV}."
+    exit 1
+  fi
+  STATE_DEV=$(make_partition_dev "${DEV}" "1")
+  DEV_SIZE=$(blockdev --getsize64 "${DEV}")
+  shift
 
-cutoff_method="$(findLSBValue CUTOFF_METHOD)"
-cutoff_ac_state="$(findLSBValue CUTOFF_AC_STATE)"
-min_battery_percent="$(findLSBValue CUTOFF_BATTERY_MIN_PERCENTAGE)"
-max_battery_percent="$(findLSBValue CUTOFF_BATTERY_MAX_PERCENTAGE)"
-min_battery_voltage="$(findLSBValue CUTOFF_BATTERY_MIN_VOLTAGE)"
-max_battery_voltage="$(findLSBValue CUTOFF_BATTERY_MAX_VOLTAGE)"
-shopfloor_url="$(findLSBValue SHOPFLOOR_URL)"
+  # Tcsd will bring up the tpm and de-own it,
+  # as we are in developer/recovery mode.
+  start tcsd || true
 
-if [ -n "${shopfloor_url}" ]; then
-  "${INFORM_SHOPFLOOR_SCRIPT}" "${shopfloor_url}" "factory_reset" || exit 1
-fi
+  if [ $# -eq 1 ]; then
+    case "$1" in
+      wipe)
+        # Nuke the disk.
+        pv -etpr -s ${DEV_SIZE} -B 8M /dev/zero |
+          dd bs=8M of="${DEV}" oflag=dsync iflag=fullblock
+        ;;
+      secure)
+        # Erase using firmware feature first.
+        secure_erase ${DEV} || exit 1
+        perform_fio_op "${DEV}" "${DEV_SIZE}" "write" || exit 1
+        ;;
+      verify)
+        perform_fio_op "${DEV}" "${DEV_SIZE}" "verify" || exit 1
+        ;;
+      *)
+        usage
+    esac
+  else
+    echo "Factory reset"
+    if [ ! -b "${STATE_DEV}" ]; then
+      echo "Failed to find stateful partition."
+      exit 1
+    fi
 
-local args=""
-[ -n "${cutoff_method}" ] && args="--method ${cutoff_method}"
-[ -n "${cutoff_ac_state}" ] && args="${args} --check-ac ${cutoff_ac_state}"
-[ -n "${min_battery_percent}" ] &&
-  args="${args} --min-battery-percent ${min_battery_percent}"
-[ -n "${max_battery_percent}" ] &&
-  args="${args} --max-battery-percent ${max_battery_percent}"
-[ -n "${min_battery_voltage}" ] &&
-  args="${args} --min-battery-voltage ${min_battery_voltage}"
-[ -n "${max_battery_voltage}" ] &&
-  args="${args} --max-battery-voltage ${max_battery_voltage}"
+    # TODO(hungte) This should do same thing as what clobber-state did.
+    preserve_crx_cache
+    # Just wipe the start of the partition and remake the fs on
+    # the stateful partition.
+    dd bs=4M count=1 if=/dev/zero of=${STATE_DEV}
+    /sbin/mkfs.ext4 "${STATE_DEV}"
 
-"${CUTOFF_SCRIPT}" ${args}
+    restore_crx_cache
+  fi
 
-echo "Done"
+  do_cutoff
+  echo "Done"
+}
+main "$@"
