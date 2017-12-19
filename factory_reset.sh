@@ -111,9 +111,9 @@ do_cutoff() {
   max_battery_voltage="$(findLSBValue CUTOFF_BATTERY_MAX_VOLTAGE)"
   shopfloor_url="$(findLSBValue SHOPFLOOR_URL)"
 
-  if [ -n "${shopfloor_url}" ]; then
-    "${INFORM_SHOPFLOOR_SCRIPT}" "${shopfloor_url}" "factory_reset" || exit 1
-  fi
+  # inform_shopfloor will load right shopfloor URL if not given, or ignore the
+  # request if none set.
+  "${INFORM_SHOPFLOOR_SCRIPT}" "${shopfloor_url}" "factory_reset" || exit 1
 
   local args=""
   [ -n "${cutoff_method}" ] && args="--method ${cutoff_method}"
