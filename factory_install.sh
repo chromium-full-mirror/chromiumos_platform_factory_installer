@@ -651,7 +651,7 @@ enlarge_partition() {
 
   # Try to allocate 1G if possible.
   if [ "${minimal}" -gt 0 ] && [ "${block_size}" -gt 0 ]; then
-    e2fsck -f "${dev}"
+    e2fsck -f -y "${dev}"
     resize2fs "${dev}" "$((minimal + (1024 * 1048576 / block_size)))" || true
   fi
 }
