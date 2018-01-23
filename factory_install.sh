@@ -95,6 +95,23 @@ colorize() {
   set -x
 }
 
+# Checks if 'cros_debug' is enabled.
+is_allow_debug() {
+  grep -qw "cros_debug" /proc/cmdline
+}
+
+# Checks if the system has been boot by Ctrl-U.
+is_dev_firmware() {
+  crossystem "mainfw_type?developer" 2>/dev/null
+}
+
+explain_cros_debug() {
+  log "To debug with a shell, boot factory shim in developer firmware (Ctrl-U)
+   or add 'cros_debug' to your kernel command line:
+    - Factory shim: Add cros_debug into --boot_args or make_dev_ssd
+    - Netboot: Change kernel command line config file on TFTP."
+}
+
 # Error message for any unexpected error.
 on_die() {
   set +x
@@ -111,12 +128,10 @@ on_die() {
   fi
 
   # Open a terminal if the kernel command line allows debugging.
-  if grep -qw "cros_debug" /proc/cmdline 2>/dev/null; then
+  if is_allow_debug; then
     while true; do sh; done
   else
-    log "To debug with a shell, add 'cros_debug' to your kernel command line."
-    log " - Factory netboot: Change kernel command line config file on TFTP."
-    log " - Factory install shim: Add cros_debug into --boot_args."
+    explain_cros_debug
   fi
 
   exit 1
@@ -947,9 +962,10 @@ action_r() {
 
 # S = Shell.
 action_s() {
-  if ! crossystem "mainfw_type?developer" 2>/dev/null; then
+  if ! is_allow_debug && ! is_dev_firmware; then
     colorize red
-    echo "Developer firmware is not enabled; unable to open a shell."
+    echo "Cannot open a shell (need devfw [Ctrl-U] or cros_debug build)."
+    explain_cros_debug
     return
   fi
 
