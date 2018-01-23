@@ -17,8 +17,11 @@ export LOG_TTY=""
 export INFO_TTY=""
 export DEBUG_TTY=""
 
-: ${FRECON_PATH:=/usr/sbin/frecon-lite}
+: ${FRECON_LITE_PATH:=/sbin/frecon-lite}
+: ${FRECON_PATH:=/sbin/frecon}
 : ${FRECON_TTY:=/run/frecon/vt0}
+: ${FRECON_PID:=/run/frecon/pid}
+: ${FRECON_EXTRA_TTY:=/run/frecon/vt1}
 : ${FBDEV:=/sys/class/graphics/fb0}
 : ${FBCON:=/sys/class/graphics/fbcon}
 
@@ -48,11 +51,25 @@ tty_is_valid() {
   [ -c "$1" ] && (echo "" >"$1") 2>/dev/null
 }
 
+# Kills running frecon sessions.
+kill_frecon() {
+  kill "$(cat "${FRECON_PID}")" || true
+  killall frecon-lite || true
+  killall frecon || true
+}
+
 # Starts the 'frecon' daemon.
 tty_start_frecon() {
   if [ -e "${FRECON_TTY}" ]; then
-    kernel_msg "Reuse existing Frecon instance."
-    return
+    # Some devices may have frecon "failed" after switch_root, so we do want to
+    # make sure the frecon TTYs are "good". Can't trust FRECON_TTY since it's
+    # always "valid" even if there's nothing on screen...
+    if tty_is_valid "${FRECON_EXTRA_TTY}"; then
+      kernel_msg "Reuse existing Frecon instance."
+      return
+    fi
+    # frecon[-lite] seems broken, let's try to restart again.
+    kill_frecon
   fi
 
   kernel_msg "Starting frecon..."
@@ -60,8 +77,8 @@ tty_start_frecon() {
   udevd --daemon
   udevadm trigger
   udevadm settle
-  frecon-lite --enable-vt1 --daemon --no-login --enable-vts --pre-create-vts \
-    --num-vts=8 --enable-gfx
+  "${FRECON_PATH}" --enable-vt1 --daemon --no-login --enable-vts \
+    --pre-create-vts --num-vts=8 --enable-gfx
 
   local loop_time=30
   while [ ! -e "${FRECON_TTY}" -a ${loop_time} -gt 0 ]; do
@@ -111,10 +128,15 @@ tty_init() {
   TTY=""
   LOG_TTY=""
 
+  # Always use frecon-lite if possible.
+  if [ -x "${FRECON_LITE_PATH}" ]; then
+    FRECON_PATH="${FRECON_LITE_PATH}"
+  fi
+
   # /dev/tty1 should be tried earlier if the device has fbdev and fbcon.
-  if [ -e ${FBDEV} -a -e ${FBCON} ]; then
+  if [ -e ${FBDEV} ] && [ -e ${FBCON} ]; then
     ttys="${ttys} tty1"
-  elif [ -e ${FRECON_TTY} -o -x ${FRECON_PATH} ]; then
+  elif [ -e ${FRECON_TTY} ] || [ -x ${FRECON_PATH} ]; then
     tty_start_frecon
     local frecon_tty="$(readlink -f ${FRECON_TTY})"
     ttys="${ttys} ${frecon_tty#/dev/}"
