@@ -52,7 +52,7 @@ NETBOOT_RAMFS=""
 INSTALL_FROM_OMAHA="1"
 
 # Supported actions (a set of lowercase characters)
-SUPPORTED_ACTIONS=cdirsvyz
+SUPPORTED_ACTIONS=cdirstvyz
 
 # Each action x is implemented in an action_$x handler (e.g.,
 # action_i); see the handlers for more information about what
@@ -1167,6 +1167,7 @@ menu() {
               "Performs full storage erase, write a verification pattern"
   menu_line Y "VerifY erase" \
               "Verifies the storage has been erased with option C"
+  menu_line T "Reset TPM" "Call chromeos-tpm-recovery"
 
   echo
   read -p 'action> ' ACTION
@@ -1531,5 +1532,9 @@ action_y() {
   factory_disk_action verify
 }
 
+# T = Reset TPM
+action_t() {
+  chromeos-tpm-recovery
+}
 
 main "$@"
