@@ -61,7 +61,7 @@ DST_STATE_PART=1
 # Each action x is implemented in an action_$x handler (e.g.,
 # action_i); see the handlers for more information about what
 # each option is.
-SUPPORTED_ACTIONS=cdeirstuvyz
+SUPPORTED_ACTIONS=cdeiprstuvyz
 
 # Define our own logging function.
 log() {
@@ -808,6 +808,8 @@ menu() {
 
   menu_line I "Install" "Performs a network or USB install"
   menu_line R "Reset" "Performs a factory reset; finalized devices only"
+  menu_line P "Prepare for install" \
+              "Reset ChromeOS device to prepare for 'Install' command."
   menu_line S "Shell" "Opens bash; available only with developer firmware"
   menu_line V "View configuration" "Shows crossystem, VPD, etc."
   menu_line D "Debug info and logs" \
@@ -935,6 +937,20 @@ action_r() {
 
   reset_chromeos_device
   factory_reset
+}
+
+# P = Prepare
+action_p() {
+  reset_chromeos_device
+
+  log "Preparation for Factory Installer Complete."
+  log "System is going to shutdown."
+  trap - EXIT
+  sync
+  sleep 3
+  shutdown -h now
+  # sleep indefinitely to avoid re-spawning rather than shutting down
+  sleep 1d
 }
 
 # S = Shell.
