@@ -941,7 +941,17 @@ action_r() {
 
 # P = Prepare
 action_p() {
-  reset_chromeos_device
+  log "Checking for Firmware Write Protection"
+  # Check for physical firmware write protection. We'll only
+  # clear this stuff if the case is open.
+  if [ "$(crossystem wpsw_cur)" = "0" ]; then
+    # Clear software firmware write protection.
+    clear_fwwp
+  else
+    die "Hardware write protection is still enabled, so unable to clear " \
+        "software write protection."
+  fi
+  ensure_fwwp_consistency
 
   log "Preparation for Factory Installer Complete."
   log "System is going to shutdown."
