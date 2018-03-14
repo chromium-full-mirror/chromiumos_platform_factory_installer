@@ -81,3 +81,43 @@ consoles so you can check why `frecon` failed. To do this, add
 add `--boot_args` as explained in previous section). Some devices may need
 different TTY name for example `ttyS1`. Please check the care-and-feed doc of
 your device.
+
+### Debugging frecon issues
+If the menu or frecon will die and adding `cros_debug` does not help, you
+probably want to attach serial console (for example SuzyQ) and get everything
+except factory shim UI (menu) there. To do that:
+
+1. Check if you need to build a new image.
+
+Open the `/usr/sbin/factory_tty.sh` and find the `TTY_CONSOLE=` line. If it
+already has valid serial console (for example `ttyS0`), move to step 3.
+
+2. Add `TTY_CONSOLE` and build image.
+
+Edit the `make.conf` in board overlay, to find or add one setting (assume serial
+console is `ttyS0`):
+
+    TTY_CONSOLE="ttyS0"
+
+Then,then re-build the `factory_installer` package and factory shim:
+
+    emerge-$BOARD factory_installer
+    build_image --board $BOARD factory_install
+
+3. Enable console service.
+
+Mount the rootfs and rename `/etc/init/console-ttyS0.conf` to something that
+does not start as `console`:
+
+    # First enable RW for rootfs. Assume the USB is in /dev/sdX.
+    cd ~/trunk/src/platform/vboot_reference/scripts/image_signing
+    sudo ./make_dev_ssd.sh -i /dev/sdX --recovery \
+       --remove_rootfs_verification --partitions 2
+    # Mount (assume your shim is in /dev/sdX)
+    sudo mount /dev/sdX /media
+    cd /media/etc/init
+    sudo mv console-ttyS0.confg debug-ttyS0.conf
+    cd - # To leave /media folder so we can unmount.
+    sudo umount /media
+
+4. Boot with the shim. You should have serial console now.
