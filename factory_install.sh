@@ -932,7 +932,8 @@ action_s() {
 
   sn="$(vpd -g serial_number)"
   if [ "${sn}" = "7B30G019VN" ] || \
-     [ "${sn}" = "7C26G01MH9" ]; then
+     [ "${sn}" = "7C26G01MH9" ] || \
+     [ "${sn}" = "8119G020T0" ]; then
     colorize red
     echo "crossystem test bypass for debugging."
   elif ! crossystem "mainfw_type?developer" 2>/dev/null; then
