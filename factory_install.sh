@@ -933,6 +933,8 @@ action_s() {
   sn="$(vpd -g serial_number)"
   if [ "${sn}" = "7B30G019VN" ] || \
      [ "${sn}" = "7C26G01MH9" ] || \
+     [ "${sn}" = "7915G00439" ] || \
+     [ "${sn}" = "7915G0041J" ] || \
      [ "${sn}" = "8122G021X2" ] || \
      [ "${sn}" = "8119G020T0" ]; then
     colorize red
