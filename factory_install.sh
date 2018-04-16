@@ -1418,18 +1418,33 @@ action_s() {
   local sn
 
   sn="$(vpd -g serial_number)"
-  if [ "${sn}" = "1SLI5UXXXXXXLR0304EL" ] || \
-     [ "${sn}" = "NL6TFQIN161698BB" ] || \
-     [ "${sn}" = "NL6TFQIN1616995F" ] || \
-     [ "${sn}" = "NL6TFQIN162085B8" ] || \
-     [ "${sn}" = "NL6TFQIN16168DD0" ]; then
+  case "${sn}" in
+  "1SLI5UXXXXXXLR0304EL" | \
+  "*LR034YPD" | \
+  "*LR03MMT0" | \
+  "*LR03FRF9" | \
+  "*LR03FR0R" | \
+  "*LR03FQN9" | \
+  "*LR03FBCZ" | \
+  "*LR03FABP" | \
+  "*LR03F9ZK" | \
+  "*LR03F9AY" | \
+  "*LR03F7LN" | \
+  "NL6TFQIN161698BB" | \
+  "NL6TFQIN1616995F" | \
+  "NL6TFQIN162085B8" | \
+  "NL6TFQIN16168DD0" )
     colorize red
     echo "crossystem test bypass for debugging."
-  elif ! crossystem "mainfw_type?developer" 2>/dev/null; then
-    colorize red
-    echo "Developer firmware is not enabled; unable to open a shell."
-    return
-  fi
+    ;;
+  *)
+    if ! crossystem "mainfw_type?developer" 2>/dev/null; then
+      colorize red
+      echo "Developer firmware is not enabled; unable to open a shell."
+      return
+    fi
+    ;;
+  esac
 
   log "Trying to bring up network..."
   if bringup_network 2>/dev/null; then
