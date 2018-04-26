@@ -17,7 +17,7 @@ OVERLORD_READY=1
 : "${INITRAMFS_LOG_FILE:=/log/factory_initramfs.log}"
 export TTY_FILE LOG_FILE OVERLORD_READY
 
-. "$(dirname "$0")/ping_shopfloor.sh"
+. "$(dirname "$0")/factory_common.sh"
 . "$(dirname "$0")/factory_tty.sh"
 
 main() {
