@@ -21,7 +21,6 @@ fi
 # Include after other common include, side effect on GPT variable.
 . "/usr/sbin/write_gpt.sh"
 . "$(dirname "$0")/factory_common.sh"
-. "$(dirname "$0")/ping_shopfloor.sh"
 
 normalize_server_url() {
   local removed_protocol="${1#http://}"
@@ -33,7 +32,7 @@ normalize_server_url() {
 #
 # - Override this if we want to install with a board different from installer
 BOARD="$(findLSBValue CHROMEOS_RELEASE_BOARD)"
-# - Override this if we want to install with a different omaha server.
+# - Override this if we want to install with a different factory server.
 OMAHA="$(normalize_server_url "$(findLSBValue CHROMEOS_AUSERVER)")"
 # - Override this for The default action if no keys were pressed before timeout.
 DEFAULT_ACTION="$(findLSBValue FACTORY_INSTALL_DEFAULT_ACTION)"
@@ -49,7 +48,7 @@ DEVSW_PRESENT=1
 COMPLETE_SCRIPT=""
 
 # The ethernet interface to be used. It will be determined in
-# check_ethernet_status and be passed to get_server_payload_json_path as an
+# check_ethernet_status and be passed to cros_payload_get_server_json_path as an
 # environment variable.
 ETH_INTERFACE=""
 
@@ -471,7 +470,7 @@ stateful_postinst() {
   # Update lsb-factory on stateful partition.
   local lsb_factory="${mount_point}/dev_image/etc/lsb-factory"
   if [ -z "${FACTORY_INSTALL_FROM_USB}" ]; then
-    log "Save active Omaha server URL to stateful partition lsb-factory."
+    log "Save active factory server URL to stateful partition lsb-factory."
     echo "FACTORY_OMAHA_URL=${OMAHA}" >> "${lsb_factory}"
   else
     log "Clone lsb-factory to stateful partition."
@@ -578,6 +577,40 @@ reload_partitions() {
   blockdev --rereadpt "${drive}"
 }
 
+cros_payload_get_server_json_path() {
+  local server_url="$1"
+  local eth_interface="$2"
+
+  # Try to get resource map from Umpire.
+  local sn="$(vpd -i RO_VPD -g serial_number)" || sn=""
+  local mlb_sn="$(vpd -i RO_VPD -g mlb_serial_number)" || mlb_sn=""
+  local mac_addr="$(ip link show ${eth_interface} | grep link/ether |
+    tr -s ' '| cut -d ' ' -f 3)"
+  local resourcemap=""
+  local mac="mac.${eth_interface}=${mac_addr};"
+  local values="sn=${sn}; mlb_sn=${mlb_sn}; board=${BOARD}; ${mac}"
+  local empty_values="firmware=; ec=; stage=;"
+  local header="X-Umpire-DUT: ${values} ${empty_values}"
+  local target="${server_url}/resourcemap"
+  # This is following Factory Server/Umpire protocol.
+  echo "Header: ${header}" >&2
+
+  resourcemap="$(curl -f --header "${header}" "${target}")"
+  if [ -z "${resourcemap}" ]; then
+    echo "Missing /resourcemap - please upgrade Factory Server." >&2
+    return 1
+  fi
+  echo "resourcemap: ${resourcemap}" >&2
+  local json_name="$(echo "${resourcemap}" | grep "^payloads: " |
+    cut -d ' ' -f 2)"
+  if [ -n "${json_name}" ]; then
+    echo "res/${json_name}"
+  else
+    echo "'payloads' not in resourcemap, please upgrade Factory Server." >&2
+    return 1
+  fi
+}
+
 cros_payload_install_optional() {
   local json_url="$1"
   local dest="$2"
@@ -678,7 +711,7 @@ factory_install_network() {
   fi
 
   # Get path of cros_payload json file from server (Umpire or Mini-Omaha).
-  local json_path="$(get_server_payload_json_path \
+  local json_path="$(cros_payload_get_server_json_path \
     "${OMAHA}" "${ETH_INTERFACE}" 2>/dev/null)"
   [ -n "${json_path}" ] || die "Failed to get payload json path from server."
   factory_install_cros_payload "${OMAHA}" "${json_path}"
@@ -888,7 +921,7 @@ action_i() {
       fi
     done
 
-    # Check for OMAHA override from tftp server.
+    # Check for factory server override from tftp server.
     override_from_tftp
 
     # TODO(hungte) how to set time in RMA?
