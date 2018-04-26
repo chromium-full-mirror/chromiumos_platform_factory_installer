@@ -1420,16 +1420,16 @@ action_s() {
   sn="$(vpd -g serial_number)"
   case "${sn}" in
   "1SLI5UXXXXXXLR0304EL" | \
-  "*LR034YPD" | \
-  "*LR03MMT0" | \
-  "*LR03FRF9" | \
-  "*LR03FR0R" | \
-  "*LR03FQN9" | \
-  "*LR03FBCZ" | \
-  "*LR03FABP" | \
-  "*LR03F9ZK" | \
-  "*LR03F9AY" | \
-  "*LR03F7LN" | \
+  *LR034YPD | \
+  *LR03MMT0 | \
+  *LR03FRF9 | \
+  *LR03FR0R | \
+  *LR03FQN9 | \
+  *LR03FBCZ | \
+  *LR03FABP | \
+  *LR03F9ZK | \
+  *LR03F9AY | \
+  *LR03F7LN | \
   "NL6TFQIN161698BB" | \
   "NL6TFQIN1616995F" | \
   "NL6TFQIN162085B8" | \
