@@ -371,10 +371,11 @@ override_from_firmware() {
 
 override_from_board() {
   # Call into any board specific configuration settings we may need.
-  # These will be provided by chromeos-bsp-[board] build in the private overlay.
+  # The file should be installed in factory-board/files/installer/usr/sbin/.
   local lastboard="${BOARD}"
-  if [ -f "/usr/sbin/board_customize_install.sh" ]; then
-    . /usr/sbin/board_customize_install.sh
+  local board_customize_file="/usr/sbin/factory_install_board.sh"
+  if [ -f "${board_customize_file}" ]; then
+    . "${board_customize_file}"
   fi
 
   # Let's notice if BOARD has changed and print a message.
