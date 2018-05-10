@@ -184,7 +184,7 @@ ensure_fwwp_consistency() {
 # Checks if firmware software write protection is enabled.
 # Args
 #   target: a "flashrom -p" descriptor. Defaults to "host".
-check_fwwp() {
+check_fw_swwp() {
   local target="${1:-host}"
   # Note "crossystem sw_wpsw_boot" only works on Baytrail systems, so we have to
   # use flashrom for better compatibility.
@@ -252,14 +252,6 @@ reset_chromeos_device() {
     return
   fi
 
-  log "Checking for Firmware Write Protect"
-  # Check for physical firmware write protect. We'll only
-  # clear this stuff if the case is open.
-  if [ "$(crossystem wpsw_cur)" = "0" ]; then
-    # Clear software firmware write protect.
-    clear_fwwp
-  fi
-
   log "Request to clear TPM owner at next boot."
   # No matter if whole TPM (see below) is cleared or not, we always
   # want to clear TPM ownership (safe and easy) so factory test program and
@@ -295,7 +287,6 @@ reset_chromeos_device() {
     # Alert for a while
     sleep 3
   fi
-  ensure_fwwp_consistency
 }
 
 get_dst_drive() {
@@ -744,10 +735,10 @@ print_device_info() {
     echo -n "Dev mode: $(crossystem_on_or_off devsw_boot); "
     echo -n "Recovery mode: $(crossystem_on_or_off recoverysw_boot); "
     echo -n "HW write protect: $(crossystem_on_or_off wpsw_boot); "
-    echo "SW write protect: $(command_to_yes_or_no check_fwwp host)"
+    echo "SW write protect: $(command_to_yes_or_no check_fw_swwp host)"
     echo -n "EC present: $(bool_to_yes_or_no "${EC_PRESENT}"); "
     if [ "${EC_PRESENT}" = "1" ]; then
-      echo -n "EC SW write protect: $(command_to_yes_or_no check_fwwp ec); "
+      echo -n "EC SW write protect: $(command_to_yes_or_no check_fw_swwp ec); "
     fi
     echo "Dev switch present: $(bool_to_yes_or_no "${DEVSW_PRESENT}")"
     echo
@@ -852,6 +843,15 @@ action_f() {
 action_i() {
   reset_chromeos_device
 
+  log "Checking for Firmware Write Protect"
+  # Check for physical firmware write protect. We'll only
+  # clear this stuff if the case is open.
+  if [ "$(crossystem wpsw_cur)" = "0" ]; then
+    # Clear software firmware write protect.
+    clear_fwwp
+  fi
+  ensure_fwwp_consistency
+
   if [ -z "${FACTORY_INSTALL_FROM_USB}" ]; then
 
     colorize yellow
@@ -940,6 +940,9 @@ action_r() {
     log "Unable to perform factory reset."
     return
   fi
+
+  check_fw_swwp host && check_fw_swwp ec || \
+    die "SW write protect is not enabled."
 
   reset_chromeos_device
   factory_reset
