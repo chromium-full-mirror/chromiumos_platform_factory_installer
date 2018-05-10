@@ -221,9 +221,32 @@ perform_fio_op() {
       return 1
   esac
 
+  local fio_script="$(mktemp fio_config_XXXXXX)"
+  cat >"${fio_script}" <<HERE
+; Copyright 2014 The Chromium Authors. All rights reserved.
+; Use of this source code is governed by a BSD-style license that can be
+; found in the LICENSE file.
+;
+; Erase the drive with a pattern, except for the begining and the end.
+;
+[secure]
+filename=\${FIO_DEV}
+ioengine=libaio
+iodepth=32
+direct=1
+readwrite=write
+bs=256k
+
+offset=1m
+size=\${FIO_DEV_MAIN_AREA_SIZE}
+do_verify=1
+verify=md5
+verify_only=\${FIO_VERIFY_ONLY}
+HERE
   # Write a pattern on the media for future verification.
   # fio configuration file use DEV, DEV_MAIN_AREA_SIZE and VERIFY_ONLY
-  fio /root/factory_verify.fio --output "${fio_output}"
+  fio "${fio_script}" --output "${fio_output}"
+  rm -f "${fio_script}"
   fio_err=$(sed -nr "${fio_regex}" "${fio_output}")
   if [ -z "${fio_err}" ]; then
     echo "-- output of fio not understood --"

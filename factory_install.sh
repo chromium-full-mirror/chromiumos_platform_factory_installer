@@ -36,6 +36,9 @@ BOARD="$(findLSBValue CHROMEOS_RELEASE_BOARD)"
 OMAHA="$(normalize_server_url "$(findLSBValue CHROMEOS_AUSERVER)")"
 # - Override this for The default action if no keys were pressed before timeout.
 DEFAULT_ACTION="$(findLSBValue FACTORY_INSTALL_DEFAULT_ACTION)"
+# - Override this to 'false' to prevent waiting for prompt after installation.
+COMPLETE_PROMPT="$(findLSBValue FACTORY_INSTALL_COMPLETE_PROMPT |
+                   tr 'A-Z' 'a-z')"
 
 # Variables prepared by image_tool or netboot initramfs code.
 NETBOOT_RAMFS="$(findLSBValue NETBOOT_RAMFS)"
@@ -290,6 +293,34 @@ config_tty() {
   setterm -blank 0 -powersave off -powerdown 0
 }
 
+echo_huge_ok() {
+  cat <<HERE
+
+               ######                     ######         ######
+         ##################               ######        ######
+        ####################              ######       ######
+      #########      #########            ######      ######
+    ########            ########          ######     ######
+   #######                #######         ######    ######
+   ######                  ######         ######   ######
+   ######                  ######         ######  ######
+   ######                  ######         ###### ######
+   ######                  ######         ############
+   ######                  ######         ############
+   ######                  ######         ############
+   ######                  ######         ###### ######
+   ######                  ######         ######  ######
+   ######                  ######         ######   ######
+   #######                #######         ######    ######
+    ########            ########          ######     ######
+      #########      #########            ######      ######
+        ####################              ######       ######
+         ##################               ######        ######
+               ######                     ######         ######
+
+HERE
+}
+
 clear_fwwp() {
   log "Firmware Write Protect disabled, clearing status registers."
   if [ ${EC_PRESENT} -eq 1 ]; then
@@ -397,6 +428,7 @@ reset_chromeos_device() {
   log "Checking if TPM should be recovered (for version and owner)"
   # To clear TPM, we need it unlocked (only in recovery boot).
   # Booting with USB in developer mode (Ctrl-U) does not work.
+
   if crossystem "mainfw_type?recovery"; then
     if ! chromeos-tpm-recovery; then
       colorize yellow
@@ -1073,19 +1105,25 @@ action_i() {
     factory_install_network
   fi
 
-  log "Factory Installer Complete."
   sync
-  sleep 3
   factory_on_complete
-
   # Some installation procedure may clear or reset NVdata, so we want to ensure
   # TPM will be cleared again.
   crossystem clear_tpm_owner_request=1 || true
 
+  colorize green
+  echo_huge_ok
+  log "Factory Installer Complete."
+  sync
+  if [ "${COMPLETE_PROMPT}" != "false" ] && [ "${TTY}" != /dev/null ]; then
+    printf "Press Enter to restart... "
+    head -c 1 >/dev/null
+  else
+    sleep 3
+  fi
+
   # Default action after installation: reboot.
   trap - EXIT
-  sync
-  sleep 3
 
   # Cr50 factory mode can only be enabled when hardware write protection is
   # disabled. Assume we only do netboot in factory, so that in netboot
