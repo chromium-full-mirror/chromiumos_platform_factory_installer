@@ -603,11 +603,12 @@ factory_install_cros_payload() {
   # before installing toolkit (which may be huge).
   enlarge_partition "$(make_partition_dev "${DST_DRIVE}" "${DST_STATE_PART}")"
 
-  cros_payload install "${json_url}" "${DST_DRIVE}" \
-    toolkit release_image.crx_cache
+  cros_payload install "${json_url}" "${DST_DRIVE}" toolkit
 
   # Install optional components.
   local remote="$(cros_payload list "${json_url}")"
+  cros_payload_install_optional "${json_url}" "${DST_DRIVE}" \
+    release_image.crx_cache "${remote}"
   cros_payload_install_optional "${json_url}" "${DST_DRIVE}" hwid "${remote}"
   cros_payload_install_optional "${json_url}" "${tmp_dir}" firmware "${remote}"
   cros_payload_install_optional "${json_url}" "${tmp_dir}" complete "${remote}"
