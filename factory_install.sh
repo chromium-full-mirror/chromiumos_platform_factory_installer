@@ -147,6 +147,23 @@ die() {
   exit 1
 }
 
+is_pvt_phase() {
+  # If there is any error then pvt phase is returned as a safer default
+  # option.
+  output=$(gsctool -a -i 2>&1) || return 0
+
+  board_id="$(echo "${output}" | awk '/Board ID/ {gsub(/.*: /,""); print}')"
+  board_flags="0x$(echo "${board_id}" | sed 's/.*://')"
+
+  # If board phase is not 0x0 then this is a development board.
+  pre_pvt=$(( board_flags & 0x7F ))
+  if (( pre_pvt > 0 )); then
+    return ${pre_pvt}
+  fi
+
+  return 0
+}
+
 config_tty() {
   stty opost
 
@@ -941,8 +958,8 @@ action_r() {
     return
   fi
 
-  check_fw_swwp host && check_fw_swwp ec || \
-    die "SW write protect is not enabled."
+  check_fw_swwp host && check_fw_swwp ec || ! is_pvt_phase || \
+    die "SW write protect is not enabled in the device with PVT phase."
 
   reset_chromeos_device
   factory_reset
