@@ -61,14 +61,10 @@ kill_frecon() {
 # Starts the 'frecon' daemon.
 tty_start_frecon() {
   if [ -e "${FRECON_TTY}" ]; then
-    # Some devices may have frecon "failed" after switch_root, so we do want to
-    # make sure the frecon TTYs are "good". Can't trust FRECON_TTY since it's
-    # always "valid" even if there's nothing on screen...
-    if tty_is_valid "${FRECON_EXTRA_TTY}"; then
-      kernel_msg "Reuse existing Frecon instance."
-      return
-    fi
-    # frecon[-lite] seems broken, let's try to restart again.
+    # There is a limitation about frecon-lite (created in initramfs stage)
+    # can't detect new input device by udev monitor after switch_root is called.
+    # The workaround is to re-create frecon in new rootfs so udev monitor can be
+    # re-started again. Finally new input device can be detected.
     kill_frecon
   fi
 
