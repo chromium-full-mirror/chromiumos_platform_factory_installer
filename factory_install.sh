@@ -61,7 +61,9 @@ DST_STATE_PART=1
 # Each action x is implemented in an action_$x handler (e.g.,
 # action_i); see the handlers for more information about what
 # each option is.
-SUPPORTED_ACTIONS=cdeiprstuvyz
+SUPPORTED_ACTIONS=cdeimprstuvyz
+
+GSCTOOL="gsctool"
 
 # Define our own logging function.
 log() {
@@ -145,10 +147,31 @@ die() {
   exit 1
 }
 
+enable_cr50_factory_mode() {
+  if crossystem 'wpsw_cur?1' 2>/dev/null; then
+    die "The hardware write protection should be disabled first."
+  fi
+
+  log "Starting to enable factory mode and will reboot automatically."
+  ret=0
+  ${GSCTOOL} -a -F enable 2>&1 || ret=$?
+
+  if [ ${ret} != 0 ]; then
+    ver=$(${GSCTOOL} -a -f)
+    die "Failed to enable factory mode; cr50 version:
+      ${ver}"
+  fi
+
+  # Once enabling factory mode, system should reboot automatically.
+  log "Successfully to enable factory mode and should reboot soon."
+  # sleep indefinitely to avoid re-spawning rather than reboot.
+  sleep 1d
+}
+
 is_pvt_phase() {
   # If there is any error then pvt phase is returned as a safer default
   # option.
-  output=$(gsctool -a -i 2>&1) || return 0
+  output=$(${GSCTOOL} -a -i 2>&1) || return 0
 
   board_id="$(echo "${output}" | awk '/Board ID/ {gsub(/.*: /,""); print}')"
   board_flags="0x$(echo "${board_id}" | sed 's/.*://')"
@@ -831,6 +854,7 @@ menu() {
   menu_line U "Update Cr50" \
               "Update Cr50 fw from STATEFUL_PARTITION/cr50.bin.prod"
   menu_line E "Reset Cr50" "Perform a Cr50 reset"
+  menu_line M "Cr50 factory mode" "Enable Cr50 factory mode"
 
   echo
   read -p 'action> ' ACTION
@@ -914,15 +938,10 @@ action_i() {
   trap - EXIT
   sync
   sleep 3
-  if [ -n "${NETBOOT_RAMFS}" ]; then
-    # There is no 'shutdown' and 'init' in initramfs.
-    busybox reboot -f
-  else
-    shutdown -r now
-  fi
 
-  # sleep indefinitely to avoid re-spawning rather than shutting down
-  sleep 1d
+  # enabling cr50 factory mode would trigger a reboot automatically and be halt
+  # inside this function until reboots.
+  enable_cr50_factory_mode
 }
 
 # R = Factory reset.
@@ -1182,6 +1201,11 @@ action_u() {
 # E = Reset Cr50
 action_e() {
   /usr/share/cros/cr50-reset.sh
+}
+
+# M = Enable Cr50 factory mode
+action_m() {
+  enable_cr50_factory_mode
 }
 
 main() {
