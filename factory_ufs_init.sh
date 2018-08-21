@@ -77,22 +77,12 @@ EMPTY="00 00 00 00 00 00 00 00 00 0C 00 00 00 00 00 00"
 CONFIG_DESCRIPTOR="${HEADER} ${UNIT0} ${EMPTY} ${EMPTY} ${EMPTY} ${EMPTY}\
  ${EMPTY} ${EMPTY} ${EMPTY}"
 
-# TODO(evgreen): I've created both the ASCII and binary versions of this.
-# Remove one of them depending on how upstream kernel support
-# shakes out.
-
-# Create the ASCII version.
+# Create an ASCII representation of the bytes
 CONFIG_ASCII="$(echo "0x${CONFIG_DESCRIPTOR}" | sed 's/ / 0x/g')"
 
-# Create a binary version of the config descriptor.
-CONFIG_BINARY="$(echo " ${CONFIG_DESCRIPTOR}" | sed 's/ /\\x/g')"
-
-# TODO(evgreen): Send the output to the kernel, which might look something like:
-# printf "${CONFIG_BINARY}" >\
-# /path/to/configfs/ufshc.80400000/sys_provision
-# But for now, just spit it to standard out.
-# Dash's built-in printf doesnt support \x, so use the external one.
-$(which printf) "${CONFIG_BINARY}" | od -tx1 -Ax
+# Write the descriptor out to the configfs provisioning file.
+CONFIG_PROVISION="/sys/kernel/config/$(basename ${UFS_DEV})/ufs_provision"
+echo "${CONFIG_ASCII}" >"${CONFIG_PROVISION}"
 
 # Perform a SCSI rescan to bring the device online
 echo "- - -" >"${UFS_DEV}"/host0/scsi_host/host0/scan
