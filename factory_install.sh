@@ -375,6 +375,13 @@ prepare_disk() {
   log "Done preparing disk"
 }
 
+ufs_init() {
+  local ufs_init_file="/usr/sbin/factory_ufs_init.sh"
+  if [ -x "${ufs_init_file}" ]; then
+    ${ufs_init_file}
+  fi
+}
+
 select_board() {
   # Prompt the user if USER_SELECT is true.
   local user_select="$(findLSBValue USER_SELECT | tr '[:upper:]' '[:lower:]')"
@@ -972,6 +979,7 @@ action_i() {
 
   colorize green
   get_dst_drive
+  ufs_init
   prepare_disk
   select_board
 
