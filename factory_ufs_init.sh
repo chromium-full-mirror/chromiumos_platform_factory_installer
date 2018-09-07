@@ -19,6 +19,11 @@ if [ -s "${DIRNAME}/factory_ufs_config.sh" ]; then
   . "${DIRNAME}/factory_ufs_config.sh"
 fi
 
+if [ -z "${UFS_DEV}" ]; then
+  echo "No UFS devices present."
+  exit 0
+fi
+
 if ! [ -d "${UFS_DEV}" ]; then
   echo "Error: No UFS host controller found at: ${UFS_DEV}"
   exit 1
