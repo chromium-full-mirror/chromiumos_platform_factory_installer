@@ -91,3 +91,7 @@ echo "${CONFIG_ASCII}" >"${CONFIG_PROVISION}"
 
 # Perform a SCSI rescan to bring the device online
 echo "- - -" >"${UFS_DEV}"/host0/scsi_host/host0/scan
+
+# Sync write and partprobe
+sync
+partprobe

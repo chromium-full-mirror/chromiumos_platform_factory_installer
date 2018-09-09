@@ -978,8 +978,8 @@ action_i() {
   fi
 
   colorize green
-  get_dst_drive
   ufs_init
+  get_dst_drive
   prepare_disk
   select_board
 
