@@ -163,6 +163,18 @@ die() {
   exit 1
 }
 
+is_cr50_factory_mode_enabled() {
+  # The pattern of output is:
+  # State: Locked
+  # Password: None
+  # Flags: 000000
+  # Capabilities, current and default:
+  # ...
+  # CCD caps bitmap: 0x1ffff
+  ${GSCTOOL} -a -I 2>/dev/null | grep '^CCD caps bitmap: 0x1ffff$' >/dev/null
+  return $?
+}
+
 enable_cr50_factory_mode() {
   if crossystem 'wpsw_cur?1' 2>/dev/null; then
     die "The hardware write protection should be disabled first."
@@ -1003,9 +1015,23 @@ action_i() {
   sync
   sleep 3
 
-  # enabling cr50 factory mode would trigger a reboot automatically and be halt
-  # inside this function until reboots.
-  enable_cr50_factory_mode
+  # Cr50 factory mode can only be enabled when hardware write protection is
+  # disabled.
+  if [ ! is_cr50_factory_mode_enabled && "$(crossystem wpsw_cur)" = "0" ]; then
+    # Enabling cr50 factory mode would trigger a reboot automatically and be
+    # halt inside this function until reboots.
+    enable_cr50_factory_mode
+  fi
+
+  if [ -n "${NETBOOT_RAMFS}" ]; then
+    # There is no 'shutdown' and 'init' in initramfs.
+    busybox reboot -f
+  else
+    shutdown -r now
+  fi
+
+  # sleep indefinitely to avoid re-spawning rather than shutting down
+  sleep 1d
 }
 
 # R = Factory reset.
@@ -1246,7 +1272,11 @@ action_e() {
 
 # M = Enable Cr50 factory mode
 action_m() {
-  enable_cr50_factory_mode
+  if is_cr50_factory_mode_enabled; then
+    log "Factory mode was already enabled."
+  else
+    enable_cr50_factory_mode
+  fi
 }
 
 main() {
