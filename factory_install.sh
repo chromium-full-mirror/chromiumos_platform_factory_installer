@@ -1240,58 +1240,7 @@ action_v() {
 
 # D = Debug info and logs.
 action_d() {
-  (
-    echo "## Information in this command:"
-    echo "##   dev_debug_vboot"
-    echo "##     date"
-    echo "##     crossystem --all"
-    echo "##     rootdev -s"
-    echo "##     la -aCF /root"
-    echo "##     ls -aCF /mnt/stateful_partition"
-    local devs=$(awk \
-        '/(mmcblk[0-9])$|(sd[a-z])$|(nvme[0-9]+n[0-9]+)$/ {print "/dev/"$4}' \
-        /proc/partitions)
-    for dev in ${devs}; do
-      echo "##     cgpt show ${dev}"
-    done
-    echo "##     etc..."
-    echo "##   firmware event log"
-    echo "##   /sys/firmware/log"
-    echo "##   kernel log"
-    echo "##   Storage Information"
-    echo "##   checksums"
-
-    echo
-    echo "## dev_debug_vboot:"
-    dev_debug_vboot || true
-
-    echo
-    echo "## debug_vboot_noisy.log:"
-    cat /var/log/debug_vboot_noisy.log || true
-
-    echo
-    echo "## firmware event log:"
-    mosys eventlog list || true
-
-    echo
-    echo "## /sys/firmware/log:"
-    cat /sys/firmware/log || true
-
-    echo
-    echo "## kernel log:"
-    dmesg || true
-
-    echo
-    echo "## Storage information:"
-    get_storage_info || true
-
-    echo
-    echo "## checksums:"
-    local parts=$(sed -n 's/.* \([^ ]*[^0-9][24]$\)/\1/p' /proc/partitions)
-    for part in ${parts}; do
-      md5sum "/dev/${part}" || true
-    done
-  ) 2>&1 | secure_less.sh
+  /usr/sbin/factory_debug.sh
 }
 
 # Confirm and erase the fixed drive.
