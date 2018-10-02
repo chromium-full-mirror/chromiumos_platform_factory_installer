@@ -953,7 +953,7 @@ action_i() {
 
   # Cr50 factory mode can only be enabled when hardware write protection is
   # disabled.
-  if [ ! is_cr50_factory_mode_enabled && "$(crossystem wpsw_cur)" = "0" ]; then
+  if ! is_cr50_factory_mode_enabled && [ "$(crossystem wpsw_cur)" = "0" ]; then
     # Enabling cr50 factory mode would trigger a reboot automatically and be
     # halt inside this function until reboots.
     enable_cr50_factory_mode
