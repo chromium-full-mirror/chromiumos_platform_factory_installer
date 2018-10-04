@@ -198,7 +198,14 @@ is_cr50_factory_mode_enabled() {
   # Capabilities, current and default:
   # ...
   # CCD caps bitmap: 0x1ffff
-  ${GSCTOOL} -a -I 2>/dev/null | grep '^CCD caps bitmap: 0x1ffff$' >/dev/null
+  #
+  # TODO(b/117200472) The current way to query factory mode is done by checking
+  # CCD caps bitmap but this value will be changed if new CCD capability is
+  # introduced. For example, bitpmap becomes 0x7ffff started from 0.4.10. The
+  # long term plan is to ask gsctool/cr50 to report factory mode status directly
+  # ; for short term plan 0x?ffff would be checked.
+  ${GSCTOOL} -a -I 2>/dev/null | \
+    grep '^CCD caps bitmap: 0x[0-9a-z]ffff$' >/dev/null
   return $?
 }
 
