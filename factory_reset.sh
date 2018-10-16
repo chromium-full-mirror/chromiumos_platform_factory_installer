@@ -110,24 +110,31 @@ do_cutoff() {
   min_battery_voltage="$(findLSBValue CUTOFF_BATTERY_MIN_VOLTAGE)"
   max_battery_voltage="$(findLSBValue CUTOFF_BATTERY_MAX_VOLTAGE)"
   shopfloor_url="$(findLSBValue SHOPFLOOR_URL)"
+  check_battery_limit_before_shopfloor="$(findLSBValue \
+    CHECK_BATTERY_LIMIT_BEFORE_SHOPFLOOR)"
+
+  local cutoff_args=""
+  [ -n "${cutoff_method}" ] && cutoff_args="--method ${cutoff_method}"
+  [ -n "${cutoff_ac_state}" ] &&
+    cutoff_args="${cutoff_args} --check-ac ${cutoff_ac_state}"
+  [ -n "${min_battery_percent}" ] &&
+    cutoff_args="${cutoff_args} --min-battery-percent ${min_battery_percent}"
+  [ -n "${max_battery_percent}" ] &&
+    cutoff_args="${cutoff_args} --max-battery-percent ${max_battery_percent}"
+  [ -n "${min_battery_voltage}" ] &&
+    cutoff_args="${cutoff_args} --min-battery-voltage ${min_battery_voltage}"
+  [ -n "${max_battery_voltage}" ] &&
+    cutoff_args="${cutoff_args} --max-battery-voltage ${max_battery_voltage}"
+
+  if [ -n "${check_battery_limit_before_shopfloor}" ]; then
+    "${CUTOFF_SCRIPT}" ${cutoff_args} --check-battery-limit-only
+  fi
 
   # inform_shopfloor will load right shopfloor URL if not given, or ignore the
   # request if none set.
   "${INFORM_SHOPFLOOR_SCRIPT}" "${shopfloor_url}" "factory_reset" || exit 1
 
-  local args=""
-  [ -n "${cutoff_method}" ] && args="--method ${cutoff_method}"
-  [ -n "${cutoff_ac_state}" ] && args="${args} --check-ac ${cutoff_ac_state}"
-  [ -n "${min_battery_percent}" ] &&
-    args="${args} --min-battery-percent ${min_battery_percent}"
-  [ -n "${max_battery_percent}" ] &&
-    args="${args} --max-battery-percent ${max_battery_percent}"
-  [ -n "${min_battery_voltage}" ] &&
-    args="${args} --min-battery-voltage ${min_battery_voltage}"
-  [ -n "${max_battery_voltage}" ] &&
-    args="${args} --max-battery-voltage ${max_battery_voltage}"
-
-  "${CUTOFF_SCRIPT}" ${args}
+  "${CUTOFF_SCRIPT}" ${cutoff_args}
 }
 
 main() {
