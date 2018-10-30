@@ -952,8 +952,12 @@ action_i() {
   sleep 3
 
   # Cr50 factory mode can only be enabled when hardware write protection is
-  # disabled.
-  if ! is_cr50_factory_mode_enabled && [ "$(crossystem wpsw_cur)" = "0" ]; then
+  # disabled. Assume we only do netboot in factory, so that in netboot
+  # environment we don't need to enable factory mode because the device should
+  # already be in factory mode.
+  # TODO(chenghan) Figure out the use case of netboot besides factory process.
+  if [ -z "${NETBOOT_RAMFS}" ] && ! is_cr50_factory_mode_enabled \
+                               && [ "$(crossystem wpsw_cur)" = "0" ]; then
     # Enabling cr50 factory mode would trigger a reboot automatically and be
     # halt inside this function until reboots.
     enable_cr50_factory_mode
