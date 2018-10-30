@@ -92,6 +92,11 @@ DST_STATE_PART=1
 # each option is.
 SUPPORTED_ACTIONS=cdefimrstuvyz
 
+# Supported actions when RSU is required.
+# We only support [e] RMA unlock to do RSU, and [u] Update Cr50 in case a device
+# has an older Cr50 version that doesn't support RSU.
+SUPPORTED_ACTIONS_RSU_REQUIRED=eu
+
 GSCTOOL="gsctool"
 PROD_CR50_PATH="opt/google/cr50/firmware/cr50.bin.prod"
 
@@ -175,6 +180,80 @@ die() {
   log "ERROR: $*"
   kill_bg_jobs
   exit 1
+}
+
+is_rsu_required() {
+  log "Waiting for cryptohome service"
+  gdbus wait --system org.chromium.Cryptohome
+
+  log "Checking if RSU is required."
+  local flags
+  local FWMP_DEV_DISABLE_CCD_UNLOCK="0x40"
+
+  flags="$(cryptohome --action=get_firmware_management_parameters |
+           grep -o "flags=0x[0-9a-f]\+" | cut -d = -f 2)"
+
+  # FWMP_DEV_DISABLE_CCD_UNLOCK (0x40) is set during enterprise enrollment if
+  # dev mode is blocked by the policy. We can use this flag to determine whether
+  # RSU required.
+  #
+  # According to platform/cr50/board/cr50/factory_mode.c, Cr50 allows factory
+  # mode when the following conditions are met:
+  #   - HWWP signal is deasserted (battery disconnected, or pins shorted)
+  #   - FWMP allows CCD unlock. FWMP_DEV_DISABLE_CCD_UNLOCK (0x40) is not set
+  #   - CCD password is not set
+  #
+  # Assuming that CCD password is not set, if FWMP_DEV_DISABLE_CCD_UNLOCK is not
+  # set, RSU is not required and we can enter factory mode by disconnecting the
+  # battery or shorting pins.
+  if [ -z "${flags}" ] ||
+     [ $(( flags & FWMP_DEV_DISABLE_CCD_UNLOCK )) -eq 0 ]; then
+    return 1
+  fi
+  return 0
+}
+
+# Checks if hardware write protection is enabled.
+check_hwwp() {
+  crossystem 'wpsw_cur?1' 2>/dev/null
+}
+
+# Checks if firmware software write protection is enabled.
+# Args
+#   target: a "flashrom -p" descriptor. Defaults to "host".
+check_fw_swwp() {
+  local target="${1:-host}"
+  # Note "crossystem sw_wpsw_boot" only works on Baytrail systems, so we have to
+  # use flashrom for better compatibility.
+  flashrom -p "${target}" --wp-status 2>/dev/null |
+    grep -q "write protect is enabled"
+}
+
+clear_fwwp() {
+  log "Firmware Write Protect disabled, clearing status registers."
+  if [ "${EC_PRESENT}" -eq 1 ]; then
+    flashrom -p ec --wp-disable
+  fi
+  flashrom -p host --wp-disable --wp-range 0 0
+  log "WP registers should be cleared now"
+}
+
+ensure_fwwp_consistency() {
+  local ec_wp main_wp
+
+  if [ "${EC_PRESENT}" -eq 0 ]; then
+    return
+  fi
+
+  ec_wp="$(flashrom -p ec --wp-status 2>/dev/null)" || return
+  main_wp="$(flashrom -p host --wp-status 2>/dev/null)"
+  ec_wp="$(echo "${ec_wp}" | sed -nr 's/WP.*(disabled|enabled).$/\1/pg')"
+  main_wp="$(echo "${main_wp}" | sed -nr 's/WP.*(disabled|enabled).$/\1/pg')"
+  if [ "${ec_wp}" != "${main_wp}" ]; then
+    die "Inconsistent firmware write protection status: " \
+        "main=${main_wp}, ec=${ec_wp}." \
+        "Please disable Hardware Write Protection and restart again."
+  fi
 }
 
 copy_prod_cr50_firmware() {
@@ -263,7 +342,7 @@ is_cr50_factory_mode_enabled() {
 }
 
 enable_cr50_factory_mode() {
-  if crossystem 'wpsw_cur?1' 2>/dev/null; then
+  if check_hwwp; then
     die "The hardware write protection should be disabled first."
   fi
 
@@ -301,44 +380,6 @@ config_tty() {
 
   # Turn off VESA blanking
   setterm -blank 0 -powersave off -powerdown 0
-}
-
-clear_fwwp() {
-  log "Firmware Write Protect disabled, clearing status registers."
-  if [ ${EC_PRESENT} -eq 1 ]; then
-    flashrom -p ec --wp-disable
-  fi
-  flashrom -p host --wp-disable
-  log "WP registers should be cleared now"
-}
-
-ensure_fwwp_consistency() {
-  local ec_wp main_wp
-
-  if [ ${EC_PRESENT} -eq 0 ]; then
-    return
-  fi
-
-  ec_wp="$(flashrom -p ec --wp-status 2>/dev/null)" || return
-  main_wp="$(flashrom -p host --wp-status 2>/dev/null)"
-  ec_wp="$(echo "${ec_wp}" | sed -nr 's/WP.*(disabled|enabled).$/\1/pg')"
-  main_wp="$(echo "${main_wp}" | sed -nr 's/WP.*(disabled|enabled).$/\1/pg')"
-  if [ "${ec_wp}" != "${main_wp}" ]; then
-    die "Inconsistent firmware write protection status: " \
-        "main=${main_wp}, ec=${ec_wp}." \
-        "Please disable Hardware Write Protection and restart again."
-  fi
-}
-
-# Checks if firmware software write protection is enabled.
-# Args
-#   target: a "flashrom -p" descriptor. Defaults to "host".
-check_fw_swwp() {
-  local target="${1:-host}"
-  # Note "crossystem sw_wpsw_boot" only works on Baytrail systems, so we have to
-  # use flashrom for better compatibility.
-  flashrom -p "${target}" --wp-status 2>/dev/null |
-    grep -q "write protect is enabled"
 }
 
 set_time() {
@@ -914,26 +955,9 @@ is_valid_action() {
   echo "$1" | grep -q "^[${SUPPORTED_ACTIONS}]$"
 }
 
-check_devmode_is_allowed() {
-  # Check block_devmode flag
-  echo "Checking block_devmode flags"
-  if crossystem 'block_devmode?1' 'wpsw_boot?1' 2>/dev/null; then
-    echo
-    echo "crossystem flag 'block_devmode' is set on a write protected device."
-    echo
-    echo "You need to disable hardware write protection to bypass this check."
-    echo
-
-    # Run cr50-reset.sh if available
-    if command -v /usr/share/cros/cr50-reset.sh >/dev/null; then
-      echo "Defaulting to RMA reset"
-      sleep 2
-      # Perform an RMA reset
-      action_e
-    fi
-    return 1
-  fi
-  return 0
+# Checks if the given action is valid and supported if RSU is required.
+is_valid_action_when_rsu_required() {
+  echo "$1" | grep -q "^[${SUPPORTED_ACTIONS_RSU_REQUIRED}]$"
 }
 
 # Displays a menu, saving the action (one of ${SUPPORTED_ACTIONS}, always
@@ -998,7 +1022,7 @@ action_i() {
   log "Checking for Firmware Write Protect"
   # Check for physical firmware write protect. We'll only
   # clear this stuff if the case is open.
-  if [ "$(crossystem wpsw_cur)" = "0" ]; then
+  if ! check_hwwp; then
     # Clear software firmware write protect.
     clear_fwwp
   fi
@@ -1062,7 +1086,7 @@ action_i() {
   # already be in factory mode.
   # TODO(chenghan) Figure out the use case of netboot besides factory process.
   if [ -z "${NETBOOT_RAMFS}" ] && ! is_cr50_factory_mode_enabled \
-                               && [ "$(crossystem wpsw_cur)" = "0" ]; then
+                               && ! check_hwwp; then
     # Enabling cr50 factory mode would trigger a reboot automatically and be
     # halt inside this function until reboots.
     enable_cr50_factory_mode
@@ -1350,17 +1374,18 @@ main() {
     log "Netbooting. Set default action to (I) Install."
     DEFAULT_ACTION=i
   elif [ "${RMA_AUTORUN}" = "true" ]; then
-    if crossystem 'wpsw_cur?1' 2>/dev/null; then
-      log "Hardware write protect on."
-      if check_need_update_cr50; then
-        log "Cr50 version is old. Set default action to (U) Update Cr50."
-        DEFAULT_ACTION=u
-      else
-        log "Do not need to update cr50. Set default action to (E) Reset Cr50."
-        DEFAULT_ACTION=e
-      fi
+    if check_need_update_cr50; then
+      log "Cr50 version is old. Set default action to (U) Update Cr50."
+      DEFAULT_ACTION=u
+    elif is_rsu_required; then
+      log "RSU is required. " \
+          "Set default action to (E) Perform RSU."
+      DEFAULT_ACTION=e
+    elif check_hwwp; then
+      log "Hardware write protection on. Set default action to (E) Reset Cr50."
+      DEFAULT_ACTION=e
     else
-      log "Hardware write protect off. Set default action to (I) Install."
+      log "Hardware write protection off. Set default action to (I) Install."
       DEFAULT_ACTION=i
     fi
   fi
@@ -1368,7 +1393,14 @@ main() {
   # Sanity check default action
   if [ -n "${DEFAULT_ACTION}" ]; then
     log "Default action: [${DEFAULT_ACTION}]."
-    if ! is_valid_action "${DEFAULT_ACTION}"; then
+    if is_rsu_required &&
+       ! is_valid_action_when_rsu_required "${DEFAULT_ACTION}"; then
+      log "Action [${DEFAULT_ACTION}] is invalid when RSU is required."
+      log "Only support ${SUPPORTED_ACTIONS_RSU_REQUIRED}."
+      log "Will fallback to normal menu..."
+      DEFAULT_ACTION=""
+      sleep 3
+    elif ! is_valid_action "${DEFAULT_ACTION}"; then
       log "Action [${DEFAULT_ACTION}] is invalid."
       log "Only support ${SUPPORTED_ACTIONS}. Will fallback to normal menu..."
       DEFAULT_ACTION=""
@@ -1403,10 +1435,23 @@ main() {
       # Default action is set and no key pressed: perform the default action.
       action_${DEFAULT_ACTION}
     else
-      # Display the menu for the user to select an option.
-      if check_devmode_is_allowed; then
+      if is_rsu_required; then
+        # RSU is required.
+        colorize yellow
+        echo
+        echo "This device has FWMP and blocks developer mode."
+        echo "It is possibly a managed device."
+        echo "Please ask the admin to deprovision the device or perform"
+        echo "RSU (RMA Server Unlock)."
+        echo
+        colorize white
+        # Perform RSU.
+        echo "Defaulting to RSU"
+        sleep 2
+        action_e
+      else
+        # Display the menu for the user to select an option.
         menu
-
         if [ -n "${ACTION}" ]; then
           # Perform the selected action.
           "action_${ACTION}"
