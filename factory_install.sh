@@ -912,7 +912,7 @@ menu() {
   menu_line Y "VerifY erase" \
               "Verifies the storage has been erased with option C"
   menu_line T "Reset TPM" "Call chromeos-tpm-recovery"
-  menu_line F "Update TPM Firmware" "Call tmp-firmware-update-factory"
+  menu_line F "Update TPM Firmware" "Call tpm-firmware-update-factory"
   menu_line U "Update Cr50" \
               "Update Cr50 fw from STATEFUL_PARTITION/cr50.bin.prod"
   menu_line E "Reset Cr50" "Perform a Cr50 reset"
