@@ -37,9 +37,10 @@ OMAHA="$(normalize_server_url "$(findLSBValue CHROMEOS_AUSERVER)")"
 # - Override this for The default action if no keys were pressed before timeout.
 DEFAULT_ACTION="$(findLSBValue FACTORY_INSTALL_DEFAULT_ACTION)"
 
-# Variables prepared by make_factory_package or netboot initramfs code.
+# Variables prepared by image_tool or netboot initramfs code.
 NETBOOT_RAMFS="$(findLSBValue NETBOOT_RAMFS)"
 FACTORY_INSTALL_FROM_USB="$(findLSBValue FACTORY_INSTALL_FROM_USB)"
+RMA_AUTORUN="$(findLSBValue RMA_AUTORUN)"
 
 # Global variables
 DST_DRIVE=""
@@ -1330,8 +1331,16 @@ main() {
 
   # Read default options
   if [ "${NETBOOT_RAMFS}" = 1 ]; then
-    log "Netbooting. Set default action to (I)nstall."
+    log "Netbooting. Set default action to (I) Install."
     DEFAULT_ACTION=i
+  elif [ "${RMA_AUTORUN}" = "true" ]; then
+    if crossystem 'wpsw_cur?1' 2>/dev/null; then
+      log "Hardware write protect on. Set default action to (E) Reset Cr50."
+      DEFAULT_ACTION=e
+    else
+      log "Hardware write protect off. Set default action to (I) Install."
+      DEFAULT_ACTION=i
+    fi
   fi
 
   # Sanity check default action
