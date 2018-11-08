@@ -92,6 +92,7 @@ DST_STATE_PART=1
 SUPPORTED_ACTIONS=cdefimrstuvyz
 
 GSCTOOL="gsctool"
+PROD_CR50_PATH="opt/google/cr50/firmware/cr50.bin.prod"
 
 # Define our own logging function.
 log() {
@@ -190,8 +191,55 @@ die() {
   exit 1
 }
 
+copy_prod_cr50_firmware() {
+  # Create a copy of prod cr50 firmware in rootfs to a temporary file.
+  # The caller is responsible for deleting the temp file.
+  local real_usb_dev="$(findLSBValue REAL_USB_DEV)"
+  [ -n "${real_usb_dev}" ] ||
+    die "Unknown media source. Please define REAL_USB_DEV."
+  local rootfs_dev=${real_usb_dev%[0-9]*}3
+  local mount_point="$(mktemp -d)"
+  local firmware_path="${mount_point}/${PROD_CR50_PATH}"
+  local temp_firmware="$(mktemp)"
+
+  mount -o ro "${rootfs_dev}" "${mount_point}"
+  cp "${firmware_path}" "${temp_firmware}"
+  umount "${rootfs_dev}"
+  rmdir "${mount_point}"
+
+  echo "${temp_firmware}"
+}
+
 get_cr50_rw_version() {
   ${GSCTOOL} -a -f | grep '^RW' | grep -oE '[0-9]+\.[0-9]+\.[0-9]+'
+}
+
+get_cr50_image_rw_version() {
+  local image="$1"
+  ${GSCTOOL} -b "$image" | grep -oE 'RW_A:[0-9]+\.[0-9]+\.[0-9]+' | cut -c6-
+}
+
+check_need_update_cr50() {
+  # Check that cr50 is prod and version is older than prod cr50 in install shim.
+  # We should make sure that we use prod cr50 to update, because MP devices
+  # will fail to update to prepvt cr50. Devices with prepvt cr50 will also fail
+  # to update to prod cr50, so we also check that the device is running prod
+  # cr50.
+  local device_version="$(get_cr50_rw_version)"
+  if ! [[ "${device_version}" = '0.3.'* ]]; then
+    return 1
+  fi
+
+  local temp_firmware="$(copy_prod_cr50_firmware)"
+  local image_version="$(get_cr50_image_rw_version "${temp_firmware}")"
+  rm "${temp_firmware}"
+  if ! [[ "${image_version}" = '0.3.'* ]]; then
+    return 1
+  fi
+
+  local device_version_minor=$(echo "${device_version}" | cut -d '.' -f 3)
+  local image_version_minor=$(echo "${image_version}" | cut -d '.' -f 3)
+  [ "${device_version_minor}" -lt "${image_version_minor}" ]
 }
 
 is_cr50_factory_mode_enabled() {
@@ -962,7 +1010,7 @@ menu() {
   menu_line T "Reset TPM" "Call chromeos-tpm-recovery"
   menu_line F "Update TPM Firmware" "Call tpm-firmware-update-factory"
   menu_line U "Update Cr50" \
-              "Update Cr50 fw from STATEFUL_PARTITION/cr50.bin.prod"
+              "Update Cr50 fw from ROOTFS_PARTITION/${PROD_CR50_PATH}"
   menu_line E "Reset Cr50" "Perform a Cr50 reset"
   menu_line M "Cr50 factory mode" "Enable Cr50 factory mode"
 
@@ -1276,18 +1324,7 @@ action_t() {
 
 # U = Update Cr50
 action_u() {
-  local real_usb_dev="$(findLSBValue REAL_USB_DEV)"
-  [ -n "${real_usb_dev}" ] ||
-    die "Unknown media source. Please define REAL_USB_DEV."
-  stateful_dev=${real_usb_dev%[0-9]*}1
-  local mount_point="$(mktemp -d)"
-  local firmware_path="${mount_point}/cr50.bin.prod"
-  local temp_firmware="$(mktemp)"
-
-  mount -o ro "${stateful_dev}" "${mount_point}"
-  cp "${firmware_path}" "${temp_firmware}"
-  umount "${stateful_dev}"
-  rmdir "${mount_point}"
+  local temp_firmware="$(copy_prod_cr50_firmware)"
 
   stop trunksd || true
   local result=0
@@ -1351,8 +1388,14 @@ main() {
     DEFAULT_ACTION=i
   elif [ "${RMA_AUTORUN}" = "true" ]; then
     if crossystem 'wpsw_cur?1' 2>/dev/null; then
-      log "Hardware write protect on. Set default action to (E) Reset Cr50."
-      DEFAULT_ACTION=e
+      log "Hardware write protect on."
+      if check_need_update_cr50; then
+        log "Cr50 version is old. Set default action to (U) Update Cr50."
+        DEFAULT_ACTION=u
+      else
+        log "Do not need to update cr50. Set default action to (E) Reset Cr50."
+        DEFAULT_ACTION=e
+      fi
     else
       log "Hardware write protect off. Set default action to (I) Install."
       DEFAULT_ACTION=i
