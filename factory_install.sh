@@ -163,7 +163,20 @@ die() {
   exit 1
 }
 
+get_cr50_rw_version() {
+  echo "$(${GSCTOOL} -a -f | grep 'RW' | grep -oE '[0-9]+.[0-9]+.[0-9]+')"
+}
+
 is_cr50_factory_mode_enabled() {
+  # If the cr50 RW version is 0.0.*, the device is booted to install shim
+  # straight from factory. The cr50 firmware does not support '-I' option and
+  # factory mode, so we treat it as factory mode enabled to avoid turning on
+  # factory mode.
+  local rw_version="$(get_cr50_rw_version)"
+  if [[ "${rw_version}" = '0.0.'* ]]; then
+    echo "Cr50 version is ${rw_version}. Assume factory mode enabled."
+    return 0
+  fi
   # The pattern of output is:
   # State: Locked
   # Password: None
