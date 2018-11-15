@@ -1047,11 +1047,13 @@ action_i() {
     enable_cr50_factory_mode
   fi
 
+  # Try to do EC reboot. If it fails, do normal reboot.
   if [ -n "${NETBOOT_RAMFS}" ]; then
     # There is no 'shutdown' and 'init' in initramfs.
-    busybox reboot -f
+    ectool reboot_ec cold at-shutdown && busybox poweroff -f ||
+      busybox reboot -f
   else
-    shutdown -r now
+    ectool reboot_ec cold at-shutdown && shutdown -h now || shutdown -r now
   fi
 
   # sleep indefinitely to avoid re-spawning rather than shutting down
