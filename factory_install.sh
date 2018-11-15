@@ -191,7 +191,7 @@ die() {
 }
 
 get_cr50_rw_version() {
-  echo "$(${GSCTOOL} -a -f | grep 'RW' | grep -oE '[0-9]+.[0-9]+.[0-9]+')"
+  ${GSCTOOL} -a -f | grep '^RW' | grep -oE '[0-9]+\.[0-9]+\.[0-9]+'
 }
 
 is_cr50_factory_mode_enabled() {
