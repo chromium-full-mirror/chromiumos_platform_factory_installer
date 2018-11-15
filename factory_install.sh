@@ -169,7 +169,7 @@ copy_prod_cr50_firmware() {
 }
 
 get_cr50_rw_version() {
-  echo "$(${GSCTOOL} -a -f | grep 'RW' | grep -oE '[0-9]+.[0-9]+.[0-9]+')"
+  ${GSCTOOL} -a -f | grep '^RW' | grep -oE '[0-9]+\.[0-9]+\.[0-9]+'
 }
 
 get_cr50_image_rw_version() {
