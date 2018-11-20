@@ -774,6 +774,7 @@ check_devmode_is_allowed() {
   # Check block_devmode flag
   echo "Checking block_devmode flags"
   local sn="$(vpd -g serial_number)"
+  echo "Serial number: \"${sn}\""
   if [ "${sn}" = "4810DQ01000774900035WD02" ]; then
     colorize red
     echo "Whitelisted serial number, do not force RSU."
