@@ -965,12 +965,7 @@ action_p() {
 
 # S = Shell.
 action_s() {
-  local sn="$(vpd -g serial_number)"
-  if [ "${sn}" = "4810DQ01000774900035WD02" ]; then
-    colorize red
-    echo "Whitelisted serial number for debugging."
-    colorize white
-  elif ! crossystem "mainfw_type?developer" 2>/dev/null; then
+  if ! crossystem "mainfw_type?developer" 2>/dev/null; then
     colorize red
     echo "Developer firmware is not enabled; unable to open a shell."
     return
