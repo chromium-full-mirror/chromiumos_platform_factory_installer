@@ -773,12 +773,7 @@ is_valid_action() {
 check_devmode_is_allowed() {
   # Check block_devmode flag
   echo "Checking block_devmode flags"
-  local sn="$(vpd -g serial_number)"
-  if [ "${sn}" = "4810DQ01000774900035WD02" ]; then
-    colorize red
-    echo "Whitelisted serial number, do not force RSU."
-    colorize white
-  elif crossystem 'block_devmode?1' 'wpsw_boot?1' 2>/dev/null; then
+  if crossystem 'block_devmode?1' 'wpsw_boot?1' 2>/dev/null; then
     echo
     echo "crossystem flag 'block_devmode' is set on a write protected device."
     echo
