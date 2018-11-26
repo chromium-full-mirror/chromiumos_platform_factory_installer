@@ -1333,21 +1333,31 @@ action_t() {
 action_u() {
   local temp_firmware="$(copy_prod_cr50_firmware)"
 
-  stop trunksd || true
   local result=0
-  usb_updater -s -u "${temp_firmware}" || result="$?"
+  "${GSCTOOL}" -a -u "${temp_firmware}" || result="$?"
 
   rm "${temp_firmware}"
 
   # Allow 0(no-op), 1(all_updated), 2(rw_updated), other return values are
   # considered fail.
-  # See trunk/src/platform/ec/extra/usb_updater/usb_updater.c for more detail.
+  # See trunk/src/platform/ec/extra/usb_updater/gsctool.h for more detail.
   case "${result}" in
-    "0" | "1" | "2" )
+    "0" )
+      log "Cr50 not updated. Returning to shim menu."
+      # sleep for a while to show the messages
+      sleep 3
+      return 0
+      ;;
+    "1" | "2" )
+      log "Cr50 updated. System will reboot shortly."
+      # sleep for a while to show the messages
+      sleep 3
+      reboot
+      sleep 1d
       return 0
       ;;
     *)
-      die "usb_updater execution failed as ${result}."
+      die "gsctool execution failed as ${result}."
       ;;
   esac
 }
