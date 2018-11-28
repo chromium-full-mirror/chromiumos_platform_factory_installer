@@ -164,7 +164,7 @@ die() {
 }
 
 get_cr50_rw_version() {
-  ${GSCTOOL} -a -f | grep '^RW' | grep -oE '[0-9]+\.[0-9]+\.[0-9]+'
+  ${GSCTOOL} -a -f -M | grep '^RW_FW_VER' | sed 's/RW_FW_VER=//g'
 }
 
 is_cr50_factory_mode_enabled() {
@@ -201,13 +201,12 @@ enable_cr50_factory_mode() {
   fi
 
   log "Starting to enable factory mode and will reboot automatically."
-  ret=0
+  local ret=0
   ${GSCTOOL} -a -F enable 2>&1 || ret=$?
 
   if [ ${ret} != 0 ]; then
-    ver=$(${GSCTOOL} -a -f)
-    die "Failed to enable factory mode; cr50 version:
-      ${ver}"
+    local ver="$(get_cr50_rw_version)"
+    die "Failed to enable factory mode; cr50 version: ${ver}"
   fi
 
   # Once enabling factory mode, system should reboot automatically.
@@ -219,13 +218,11 @@ enable_cr50_factory_mode() {
 is_pvt_phase() {
   # If there is any error then pvt phase is returned as a safer default
   # option.
-  output=$(${GSCTOOL} -a -i 2>&1) || return 0
-
-  board_id="$(echo "${output}" | awk '/Board ID/ {gsub(/.*: /,""); print}')"
-  board_flags="0x$(echo "${board_id}" | sed 's/.*://')"
+  local bid_flags="0x$(${GSCTOOL} -a -i -M | grep '^BID_FLAGS' |
+    sed 's/BID_FLAGS=//g')"
 
   # If board phase is not 0x0 then this is a development board.
-  pre_pvt=$(( board_flags & 0x7F ))
+  local pre_pvt=$(( bid_flags & 0x7F ))
   if (( pre_pvt > 0 )); then
     return ${pre_pvt}
   fi
