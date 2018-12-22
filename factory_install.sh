@@ -221,26 +221,30 @@ get_cr50_image_rw_version() {
 }
 
 check_need_update_cr50() {
-  # Check that cr50 is prod and version is older than prod cr50 in install shim.
-  # We should make sure that we use prod cr50 to update, because MP devices
-  # will fail to update to prepvt cr50. Devices with prepvt cr50 will also fail
-  # to update to prod cr50, so we also check that the device is running prod
-  # cr50.
-  local device_version="$(get_cr50_rw_version)"
-  if ! [[ "${device_version}" = '0.3.'* ]]; then
-    return 1
-  fi
-
   local temp_firmware="$(copy_prod_cr50_firmware)"
   local image_version="$(get_cr50_image_rw_version "${temp_firmware}")"
+  local image_version_major=$(echo "${image_version}" | cut -d '.' -f 2)
+  local image_version_minor=$(echo "${image_version}" | cut -d '.' -f 3)
   rm "${temp_firmware}"
-  if ! [[ "${image_version}" = '0.3.'* ]]; then
+
+  local device_version="$(get_cr50_rw_version)"
+  local device_version_major=$(echo "${device_version}" | cut -d '.' -f 2)
+  local device_version_minor=$(echo "${device_version}" | cut -d '.' -f 3)
+
+  # Update only if the cr50 in install shim has version 0.3.*
+  if ! [ "${image_version_major}" -eq "3" ]; then
     return 1
   fi
 
-  local device_version_minor=$(echo "${device_version}" | cut -d '.' -f 3)
-  local image_version_minor=$(echo "${image_version}" | cut -d '.' -f 3)
-  [ "${device_version_minor}" -lt "${image_version_minor}" ]
+  # Update only if cr50 version on the device is smaller than the cr50 version
+  # in install shim. Some older devices may have cr50 version 0.0.*, 0.1.* or
+  # 0.2.*, and we also update these devices to 0.3.*.
+  # See go/cr50-release-notes for more information.
+  if [ "${device_version_major}" -ne "${image_version_major}" ]; then
+    [ "${device_version_major}" -lt "${image_version_major}" ]
+  else
+    [ "${device_version_minor}" -lt "${image_version_minor}" ]
+  fi
 }
 
 is_cr50_factory_mode_enabled() {
