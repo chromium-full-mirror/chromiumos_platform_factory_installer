@@ -684,6 +684,37 @@ cros_payload_install_optional() {
   log "Optional component ${component} does not exist, ignored."
 }
 
+check_ro_firmware_hash() {
+  local tmp_dir="$(mktemp -d)"
+
+  # Read out each subsection of RO_SECTION.
+  for section in FMAP RO_FRID RO_FRID_PAD GBB COREBOOT; do
+    flashrom -r -i "${section}:${tmp_dir}/${section}"
+  done
+
+  # Size of GBB section, in bytes.
+  local gbb_size="$(stat --printf '%s' "${tmp_dir}/GBB")"
+
+  # Zeroize GBB section
+  dd if=/dev/zero of="${tmp_dir}/GBB" bs=1 count="${gbb_size}" 2>/dev/null
+
+  local ro_hash="$(
+    cat \
+      <(sed 's/\xff\+$//' ${tmp_dir}/FMAP) \
+      ${tmp_dir}/FMAP \
+      ${tmp_dir}/RO_FRID \
+      ${tmp_dir}/RO_FRID_PAD \
+      ${tmp_dir}/GBB \
+      ${tmp_dir}/COREBOOT | \
+    sha256sum | cut -d' ' -f1)"
+  local expected="836cba50a3cfa0bdd6a24eb0757f6ad717bf9ef0c29f48e319527b8ee3c31bc1"
+
+  if [ "${ro_hash}" != "${expected}" ]; then
+    die "RO section mismatched."
+  fi
+  return 0
+}
+
 factory_install_cros_payload() {
   local src_media="$1"
   local json_path="$2"
@@ -735,8 +766,16 @@ factory_install_cros_payload() {
 
   if [ -s "${tmp_dir}/firmware" ]; then
     log "Found firmware updater."
-    # TODO(hungte) Check if we need to run --mode=recovery if WP is enabled.
-    sh "${tmp_dir}/firmware" --force --mode=factory_install ||
+
+    local mode="factory_install"
+    if check_fw_swwp host; then
+      # SWWP is enabled
+      check_ro_firmware_hash || die "Invalid RO firmware."
+      # RO is valid.  Update RW sections only.
+      # TODO(b/142143316): Revert this logic when we no longer needs this.
+      mode="recovery"
+    fi
+    sh "${tmp_dir}/firmware" --force --mode="${mode}" ||
       die "Firmware updating failed."
   fi
   if [ -s "${tmp_dir}/complete" ]; then
