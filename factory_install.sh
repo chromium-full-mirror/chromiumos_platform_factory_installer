@@ -65,7 +65,7 @@ DST_STATE_PART=1
 # Each action x is implemented in an action_$x handler (e.g.,
 # action_i); see the handlers for more information about what
 # each option is.
-SUPPORTED_ACTIONS=cdefimrstuvyz
+SUPPORTED_ACTIONS=cdefimrstuvwyz
 
 GSCTOOL="gsctool"
 PROD_CR50_PATH="opt/google/cr50/firmware/cr50.bin.prod"
@@ -1010,6 +1010,7 @@ menu() {
               "Update Cr50 fw from ROOTFS_PARTITION/${PROD_CR50_PATH}"
   menu_line E "Reset Cr50" "Perform a Cr50 reset"
   menu_line M "Cr50 factory mode" "Enable Cr50 factory mode"
+  menu_line W "Flash UEFI firmware"
 
   echo
   read -p 'action> ' ACTION
@@ -1371,6 +1372,47 @@ action_m() {
   if is_cr50_factory_mode_enabled; then
     log "Factory mode was already enabled."
   else
+    enable_cr50_factory_mode
+  fi
+}
+
+# W = Flash UEFI firmware
+action_w() {
+  # TODO(stimim): download from factory server?
+  local usb_dev="$(findLSBValue REAL_USB_DEV)"
+  [ -n "${usb_dev}" ] || usb_dev="$(rootdev -s 2>/dev/null)"
+  [ -n "${usb_dev}" ] ||
+    die "Unknown media source. Please define REAL_USB_DEV."
+
+  local stateful_dev="$(echo "${usb_dev}" | sed 's/[0-9]\+$/1/')"
+
+  local mount_point=/tmp/stateful
+  mkdir -p "${mount_point}"
+  mount -o ro "${stateful_dev}" "${mount_point}"
+
+  local model="$(mosys platform model)"
+  local uefi_fw_path="${mount_point}/third_party/uefi-${model}.bin"
+
+  if [ ! -f "${uefi_fw_path}" ]; then
+    die "Cannot find UEFI firmware at ${uefi_fw_path}"
+  fi
+
+  # delete partition 12 and 13 if they are there
+  cgpt add -i 12 -t unused "${DST_DRIVE}" || true
+  cgpt add -i 13 -t unused "${DST_DRIVE}" || true
+
+  flashrom -p host -i SI_BIOS -i SI_EC -i SI_ME -i SI_DESC \
+    -w "${uefi_fw_path}" ||
+    die "Failed to flash UEFI firmware"
+
+  echo "Done flashing UEFI firmware, shutdown now"
+
+  echo 00 f0 f6 >/sys/kernel/debug/wilco_ec/raw
+
+  if is_cr50_factory_mode_enabled; then
+    reboot
+  else
+    # this might fail if hardware write protection is on.
     enable_cr50_factory_mode
   fi
 }
