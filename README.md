@@ -34,16 +34,63 @@ There's no need to emerge `chromeos-initramfs` because it's always re-built in
 `build_image` stage.
 
 ## Using factory shim
-The factory shims were signed in a special way for security reasons. It needs to
+Factory shims are signed in a special way for security reasons. It needs to
 boot with "developer switch turned on" and "boot in recovery mode".
 
-If you have a signed factory shim, follow the steps to boot:
-1. Enter recovery mode (`Esc-F3-Power`)
-2. `Ctrl-D` to request turn on developer switch, and `ENTER` to confirm.
-3. Enter recovery mode again and insert factory shim.
+### Boot from install shim (clamshells / convertibles)
+  1. Press `ESC + F3(REFRESH) + POWER` to enter recovery mode
+  2. Press `CTRL + D` to turn on developer switch
+  3. Press `ENTER` to confirm
+  4. Press `ESC + F3(REFRESH) + POWER` to enter recovery mode again (no need to
+     wait for wiping)
+  5. Insert and boot from USB stick with `rma_image.bin`
 
-If you boot factory shim in developer mode (`Ctrl-U`), few functions won't work,
-for example recovering TPM.
+### Boot from install shim (tablets / detachables)
+  1. Press `POWER + VOL_UP + VOL_DOWN` for at least 10 seconds, and release them
+     to enter recovery mode
+  2. Press `VOL_UP + VOL_DOWN` to show recovery menu
+  3. Press `VOL_UP` or `VOL_DOWN` to move the cursor to "Confirm Disabling OS
+     Verification", and press `POWER` to select it
+  4. Press `POWER + VOL_UP + VOL_DOWN` for at least 10 seconds, and release them
+     to enter recovery mode again (no need to wait for wiping)
+  5. Insert and boot from USB stick with `rma_image.bin`
+
+If you boot factory shim in developer mode (`Ctrl-U`), some functions won't
+work, such as recovering TPM.
+
+## Factory shim menu
+If you boot into a factory shim successfully, you will see a shim menu, followed
+by a prompt to select an action.
+
+    Please select an action and press Enter.
+
+      I Install              Performs a network or USB install
+      R Reset                Performs a factory reset; finalized devices only
+      S Shell                Opens bash; available only with developer firmware
+      V View configuration   Shows crossystem, VPD, etc.
+      D Debug info and logs  Shows useful debugging information and kernel/firmware logs
+      Z Zero (wipe) storage  Makes device completely unusable
+      C SeCure erase         Performs full storage erase, write a verification pattern
+      Y VerifY erase         Verifies the storage has been erased with option C
+      T Reset TPM            Call chromeos-tpm-recovery
+      F Update TPM Firmware  Call tpm-firmware-update-factory
+      U Update Cr50          Update Cr50 fw from ROOTFS_PARTITION/opt/google/cr50/firmware/cr50.bin.prod
+      E Reset Cr50           Perform a Cr50 reset
+      M Cr50 factory mode    Enable Cr50 factory mode
+
+    action>
+
+The install shim also checks `/etc/lsb-factory` for flags that decides the
+default action of the shim menu (listed from high priority to low priority).
+  1. `NETBOOT_RAMFS=1`: This flag is automatically set when using netboot
+     firmware. The install shim will set the default action to **(I) Install**.
+  2. `RMA_AUTORUN=true`: This flag is set by `image_tool` when creating an RMA
+     shim. Please see
+     [RMA shim README](https://chromium.googlesource.com/chromiumos/platform/factory/+/HEAD/setup/RMA_SHIM.md)
+     for the behavior of this parameter.
+  3. `DEFAULT_ACTION=<action>`: This flag directly sets the default action
+     to **<action>**. For instance, `DEFAULT_ACTION=i` sets the default action
+     to **(I) Install**.
 
 ## Debugging a factory shim
 Factory shims do not provide shells by default for security reason. If you can
