@@ -780,6 +780,8 @@ factory_install_cros_payload() {
   cros_payload_install_optional "${json_url}" "${DST_DRIVE}" \
     release_image.crx_cache "${remote}"
   cros_payload_install_optional "${json_url}" "${DST_DRIVE}" hwid "${remote}"
+  cros_payload_install_optional "${json_url}" "${DST_DRIVE}" \
+    toolkit_config "${remote}"
   cros_payload_install_optional "${json_url}" "${tmp_dir}" firmware "${remote}"
   cros_payload_install_optional "${json_url}" "${tmp_dir}" complete "${remote}"
 
