@@ -27,6 +27,32 @@ normalize_server_url() {
   echo "http://${removed_path}"
 }
 
+# Patch dev_image/etc/lsb-factory using lsb_factory payload.
+patch_lsb_factory() {
+  local real_usb_dev="$(findLSBValue REAL_USB_DEV)"
+  [ -n "${real_usb_dev}" ] || return
+  local stateful_dev=${real_usb_dev%[0-9]*}1
+  local mount_point="$(mktemp -d)"
+  local board="$(findLSBValue CHROMEOS_RELEASE_BOARD)"
+  local json_path="${mount_point}/cros_payloads/${board}.json"
+  local temp_lsb_factory="$(mktemp)"
+
+  echo 'Patching lsb-factory...'
+
+  mount -o ro "${stateful_dev}" "${mount_point}"
+  # If the RMA shim doesn't have lsb_factory payload, this command will fail,
+  # leaving temp_lsb_factory empty.
+  cros_payload install "${json_path}" "${temp_lsb_factory}" lsb_factory || true
+  umount "${stateful_dev}"
+  rmdir "${mount_point}"
+
+  # Append to lsb-factory file.
+  cat "${temp_lsb_factory}" >>"${LSB_FACTORY_FILE}"
+  rm "${temp_lsb_factory}"
+}
+
+patch_lsb_factory
+
 # Variables from dev_image/etc/lsb-factory that developers may want to override.
 #
 # - Override this if we want to install with a board different from installer
@@ -568,10 +594,10 @@ stateful_postinst() {
   local lsb_factory="${mount_point}/dev_image/etc/lsb-factory"
   if [ -z "${FACTORY_INSTALL_FROM_USB}" ]; then
     log "Save active Omaha server URL to stateful partition lsb-factory."
-    echo "FACTORY_OMAHA_URL=${OMAHA}" >> "${lsb_factory}"
+    echo "FACTORY_OMAHA_URL=${OMAHA}" >>"${lsb_factory}"
   else
     log "Clone lsb-factory to stateful partition."
-    cat "${FACTORY_LSB_FILE}" >>"${lsb_factory}"
+    cat "${LSB_FACTORY_FILE}" >>"${lsb_factory}"
   fi
 
   umount "${mount_point}" || true
