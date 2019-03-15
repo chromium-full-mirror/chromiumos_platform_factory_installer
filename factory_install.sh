@@ -923,6 +923,7 @@ print_device_info() {
       echo -n "EC SW write protect: $(command_to_yes_or_no check_fw_swwp ec); "
     fi
     echo "Dev switch present: $(bool_to_yes_or_no "${DEVSW_PRESENT}")"
+    echo "Cr50 version: $(get_cr50_rw_version)"
     echo
 }
 
@@ -1402,8 +1403,6 @@ main() {
 
   # Sanity check default action
   if [ -n "${DEFAULT_ACTION}" ]; then
-    clear
-    print_header
     log "Default action: [${DEFAULT_ACTION}]."
     if ! is_valid_action "${DEFAULT_ACTION}"; then
       log "Action [${DEFAULT_ACTION}] is invalid."
@@ -1413,39 +1412,41 @@ main() {
     fi
   fi
 
-  # Automatically perform the default action; but first give the user the chance
-  # to press any key to display the menu.
-  if [ -n "${DEFAULT_ACTION}" ]; then
-    log "Will automatically perform action [${DEFAULT_ACTION}]."
-    log "Or press any key to show menu instead..."
-    local prevent_default_action=false
-    local timeout_secs=3
-    for i in $(seq ${timeout_secs} -1 1); do
-      # Read with timeout doesn't reliably work multiple times without
-      # a sub shell.
-      if ( read -N 1 -p "Press any key within ${i} sec> " -t 1 ); then
-        echo
-        prevent_default_action=true
-        break
-      fi
-      echo
-    done
-    if ! ${prevent_default_action}; then
-      # No key pressed: perform the default action (which should never return)
-      action_${DEFAULT_ACTION}
-    fi
-  fi
-
   while true; do
-    # Display the header and UI.
     clear
     print_header
-    if check_devmode_is_allowed; then
-      menu
 
-      if [ -n "${ACTION}" ]; then
-        # Perform the selected action.
-        "action_${ACTION}"
+    local do_default_option=false
+    if [ -n "${DEFAULT_ACTION}" ]; then
+      do_default_option=true
+      # Give the user the chance to press any key to display the menu.
+      log "Will automatically perform action [${DEFAULT_ACTION}]."
+      log "Or press any key to show menu instead..."
+      local timeout_secs=3
+      for i in $(seq ${timeout_secs} -1 1); do
+        # Read with timeout doesn't reliably work multiple times without
+        # a sub shell.
+        if ( read -N 1 -p "Press any key within ${i} sec> " -t 1 ); then
+          echo
+          do_default_option=false
+          break
+        fi
+        echo
+      done
+    fi
+
+    if ${do_default_option}; then
+      # Default action is set and no key pressed: perform the default action.
+      action_${DEFAULT_ACTION}
+    else
+      # Display the menu for the user to select an option.
+      if check_devmode_is_allowed; then
+        menu
+
+        if [ -n "${ACTION}" ]; then
+          # Perform the selected action.
+          "action_${ACTION}"
+        fi
       fi
     fi
 
