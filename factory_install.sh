@@ -48,7 +48,6 @@ RMA_AUTORUN="$(findLSBValue RMA_AUTORUN)"
 # Global variables
 DST_DRIVE=""
 EC_PRESENT=0
-DEVSW_PRESENT=1
 COMPLETE_SCRIPT=""
 
 # The ethernet interface to be used. It will be determined in
@@ -663,24 +662,8 @@ factory_on_complete() {
   log "Completion script executed successfully."
 }
 
-disable_dev_switch() {
-  # Turn off developer mode on devices without physical developer switch.
-  if [ ${DEVSW_PRESENT} -eq 0 ]; then
-    crossystem disable_dev_request=1
-  # When physical switch exists, force user to turn it off.
-  elif [ ${DEVSW_PRESENT} -eq 1 -a "$(crossystem devsw_cur)" = "1" ]; then
-    while [ "$(crossystem devsw_cur)" = "1" ]; do
-      log "Please turn off developer switch to continue"
-      sleep 5
-    done
-  fi
-}
-
 factory_reset() {
-  # Turn off developer mode on devices without physical developer switch.
-  if [ ${DEVSW_PRESENT} -eq 0 ]; then
-    crossystem disable_dev_request=1
-  fi
+  crossystem disable_dev_request=1
 
   log "Performing factory reset"
   if ! /usr/sbin/factory_reset.sh "${DST_DRIVE}"; then
@@ -891,17 +874,6 @@ test_ec_flash_presence() {
   fi
 }
 
-test_devsw_presence() {
-  local VBSD_HONOR_VIRT_DEV_SWITCH="0x400"
-  local vdat_flags="$(crossystem vdat_flags || echo 0)"
-
-  if [ "$((vdat_flags & VBSD_HONOR_VIRT_DEV_SWITCH))" = "0" ]; then
-    DEVSW_PRESENT=1
-  else
-    DEVSW_PRESENT=0
-  fi
-}
-
 # Echoes "on" or "off" based on the value of a crossystem Boolean flag.
 crossystem_on_or_off() {
   local value
@@ -961,7 +933,6 @@ print_device_info() {
     if [ "${EC_PRESENT}" = "1" ]; then
       echo -n "EC SW write protect: $(command_to_yes_or_no check_fw_swwp ec); "
     fi
-    echo "Dev switch present: $(bool_to_yes_or_no "${DEVSW_PRESENT}")"
     echo -n "Cr50 version: $(get_cr50_rw_version); "
     echo "Board ID flags: 0x$(get_cr50_board_id_flags)"
     echo
@@ -1422,7 +1393,6 @@ main() {
   clear
 
   test_ec_flash_presence
-  test_devsw_presence
 
   # Check for any configuration overrides.
   overrides
