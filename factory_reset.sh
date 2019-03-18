@@ -95,39 +95,11 @@ restore_crx_cache() {
 }
 
 do_cutoff() {
-  # TODO(hungte) Remove all the checks below since cutoff now reads its own
-  # config.
-  local cutoff_method=""
-  local cutoff_ac_state=""
-  local min_battery_percent="" max_battery_percent=""
-  local min_battery_voltage="" max_battery_voltage=""
-  local shopfloor_url=""
+  # inform_shopfloor will load shopfloor URL from lsb-factory, and ignore the
+  # request if SHOPFLOOR_URL is not set.
+  "${INFORM_SHOPFLOOR_SCRIPT}" "" "factory_reset" || exit 1
 
-  cutoff_method="$(findLSBValue CUTOFF_METHOD)"
-  cutoff_ac_state="$(findLSBValue CUTOFF_AC_STATE)"
-  min_battery_percent="$(findLSBValue CUTOFF_BATTERY_MIN_PERCENTAGE)"
-  max_battery_percent="$(findLSBValue CUTOFF_BATTERY_MAX_PERCENTAGE)"
-  min_battery_voltage="$(findLSBValue CUTOFF_BATTERY_MIN_VOLTAGE)"
-  max_battery_voltage="$(findLSBValue CUTOFF_BATTERY_MAX_VOLTAGE)"
-  shopfloor_url="$(findLSBValue SHOPFLOOR_URL)"
-
-  # inform_shopfloor will load right shopfloor URL if not given, or ignore the
-  # request if none set.
-  "${INFORM_SHOPFLOOR_SCRIPT}" "${shopfloor_url}" "factory_reset" || exit 1
-
-  local args=""
-  [ -n "${cutoff_method}" ] && args="--method ${cutoff_method}"
-  [ -n "${cutoff_ac_state}" ] && args="${args} --check-ac ${cutoff_ac_state}"
-  [ -n "${min_battery_percent}" ] &&
-    args="${args} --min-battery-percent ${min_battery_percent}"
-  [ -n "${max_battery_percent}" ] &&
-    args="${args} --max-battery-percent ${max_battery_percent}"
-  [ -n "${min_battery_voltage}" ] &&
-    args="${args} --min-battery-voltage ${min_battery_voltage}"
-  [ -n "${max_battery_voltage}" ] &&
-    args="${args} --max-battery-voltage ${max_battery_voltage}"
-
-  "${CUTOFF_SCRIPT}" ${args}
+  "${CUTOFF_SCRIPT}"
 }
 
 main() {
