@@ -210,13 +210,22 @@ copy_prod_cr50_firmware() {
   echo "${temp_firmware}"
 }
 
+get_cr50_output_value() {
+  local output="$1"
+  local key="$2"
+  echo "${output}" | grep "^${key}" | sed "s/${key}=//g"
+}
+
+get_cr50_board_id_flags() {
+  get_cr50_output_value "$(${GSCTOOL} -a -i -M)" 'BID_FLAGS'
+}
+
 get_cr50_rw_version() {
-  ${GSCTOOL} -a -f -M | grep '^RW_FW_VER' | sed 's/RW_FW_VER=//g'
+  get_cr50_output_value "$(${GSCTOOL} -a -f -M)" 'RW_FW_VER'
 }
 
 get_cr50_image_rw_version() {
-  local image="$1"
-  ${GSCTOOL} -b "$image" | grep -oE 'RW_A:[0-9]+\.[0-9]+\.[0-9]+' | cut -c6-
+  get_cr50_output_value "$(${GSCTOOL} -b -M "$1")" 'IMAGE_RW_FW_VER'
 }
 
 check_need_update_cr50() {
@@ -297,8 +306,7 @@ enable_cr50_factory_mode() {
 is_pvt_phase() {
   # If there is any error then pvt phase is returned as a safer default
   # option.
-  local bid_flags="0x$(${GSCTOOL} -a -i -M | grep '^BID_FLAGS' |
-    sed 's/BID_FLAGS=//g')"
+  local bid_flags="0x$(get_cr50_board_id_flags)"
 
   # If board phase is not 0x0 then this is a development board.
   local pre_pvt=$(( bid_flags & 0x7F ))
@@ -939,7 +947,8 @@ print_device_info() {
       echo -n "EC SW write protect: $(command_to_yes_or_no check_fw_swwp ec); "
     fi
     echo "Dev switch present: $(bool_to_yes_or_no "${DEVSW_PRESENT}")"
-    echo "Cr50 version: $(get_cr50_rw_version)"
+    echo -n "Cr50 version: $(get_cr50_rw_version); "
+    echo "Board ID flags: 0x$(get_cr50_board_id_flags)"
     echo
 }
 
