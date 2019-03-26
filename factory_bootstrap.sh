@@ -55,7 +55,8 @@ patch_new_root() {
   # syslog is disabled because it expects rsyslogd exists,
   # but we don't have rsyslogd in factory shim.
   local disabled_jobs
-  disabled_jobs="arc-oemcrypto powerd swap syslog tpm-probe ui update-engine"
+  disabled_jobs="arc-oemcrypto powerd swap syslog tpm-probe ui update-engine
+                 journald"
 
   for job in ${disabled_jobs}; do
     file="${new_root}/etc/init/${job}.conf"
