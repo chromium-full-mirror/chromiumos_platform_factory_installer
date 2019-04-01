@@ -52,11 +52,14 @@ patch_new_root() {
   fi
 
   # Disable upstart jobs that will block execution for factory shim environment.
-  # syslog is disabled because it expects rsyslogd exists,
-  # but we don't have rsyslogd in factory shim.
+  # syslog: it expects rsyslogd exists, but we don't have rsyslogd in factory
+  #     shim.
+  # journald: it expects systemd-journald exists, which is not available in
+  #     factory shim.
+  # cr50-update: we want to update cr50 explicitly in factory_installer.sh.
   local disabled_jobs
   disabled_jobs="arc-oemcrypto powerd swap syslog tpm-probe ui update-engine
-                 journald"
+                 journald cr50-update"
 
   for job in ${disabled_jobs}; do
     file="${new_root}/etc/init/${job}.conf"
