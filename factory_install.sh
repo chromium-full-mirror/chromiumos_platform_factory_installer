@@ -1398,6 +1398,7 @@ action_w() {
   fi
 
   # delete partition 12 and 13 if they are there
+  get_dst_drive  # this will fail if fixed drive not found
   cgpt add -i 12 -t unused "${DST_DRIVE}" || true
   cgpt add -i 13 -t unused "${DST_DRIVE}" || true
 
@@ -1410,7 +1411,7 @@ action_w() {
   echo 00 f0 f6 >/sys/kernel/debug/wilco_ec/raw
 
   if is_cr50_factory_mode_enabled; then
-    reboot
+    shutdown -h now
   else
     # this might fail if hardware write protection is on.
     enable_cr50_factory_mode
