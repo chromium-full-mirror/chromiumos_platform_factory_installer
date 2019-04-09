@@ -1010,7 +1010,7 @@ menu() {
               "Update Cr50 fw from ROOTFS_PARTITION/${PROD_CR50_PATH}"
   menu_line E "Reset Cr50" "Perform a Cr50 reset"
   menu_line M "Cr50 factory mode" "Enable Cr50 factory mode"
-  menu_line W "Flash UEFI firmware"
+  menu_line W "Reset modem access authority and flash UEFI firmware"
 
   echo
   read -p 'action> ' ACTION
@@ -1376,8 +1376,14 @@ action_m() {
   fi
 }
 
-# W = Flash UEFI firmware
+# W = Reset modem access authority and flash UEFI firmware
 action_w() {
+  local reset_modem_path="/usr/sbin/reset_modem_security.sh"
+  if [ ! -f "${reset_modem_path}" ]; then
+    die "Cannot find reset modem security script at ${reset_modem_path}"
+  fi
+  "${reset_modem_path}"
+
   # TODO(stimim): download from factory server?
   local usb_dev="$(findLSBValue REAL_USB_DEV)"
   [ -n "${usb_dev}" ] || usb_dev="$(rootdev -s 2>/dev/null)"
