@@ -717,7 +717,12 @@ reload_partitions() {
 
   # Reference: src/platform2/installer/chromeos-install#reload_partitions
   udevadm settle || true  # Netboot environment may not have udev.
-  blockdev --rereadpt "${drive}"
+  for delay in 0 1 2 4 8; do
+    sleep "${delay}"
+    blockdev --rereadpt "${drive}" && return ||
+      log "Failed to reload partitions on ${drive}"
+  done
+  die "Continually failed to reload partitions on ${drive}"
 }
 
 cros_payload_get_server_json_path() {
