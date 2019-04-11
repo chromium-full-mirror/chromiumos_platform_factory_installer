@@ -127,7 +127,7 @@ do_cutoff() {
   [ -n "${max_battery_voltage}" ] &&
     args="${args} --max-battery-voltage ${max_battery_voltage}"
 
-  "${CUTOFF_SCRIPT}" ${args}
+  "${CUTOFF_SCRIPT}" ${args} --confirmation false
 }
 
 main() {
