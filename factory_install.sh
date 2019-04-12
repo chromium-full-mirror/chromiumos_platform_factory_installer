@@ -1419,12 +1419,12 @@ action_w() {
 
   echo "Done flashing UEFI firmware, shutdown now"
 
-  echo 00 f0 f6 >/sys/kernel/debug/wilco_ec/raw
-
   if is_cr50_factory_mode_enabled; then
-    shutdown -h now
+    # this will reboot the device.
+    echo 00 f0 f6 >/sys/kernel/debug/wilco_ec/raw
   else
     # this might fail if hardware write protection is on.
+    # this will reboot the device if succeed.
     enable_cr50_factory_mode
   fi
 }
