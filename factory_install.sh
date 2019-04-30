@@ -1407,13 +1407,27 @@ action_m() {
   fi
 }
 
+update_touchscreen_firmware() {
+  local mount_point="$1"
+  local tmp_dir="$(mktemp -d)"
+  local touchscreen_dir="${mount_point}/third_party/touchscreen/"
+
+  if [ -d "${touchscreen_dir}" ]; then
+    cp -r "${touchscreen_dir}/"* "${tmp_dir}"
+    if [ -e "${touchscreen_dir}/run.sh" ]; then
+      (cd "${tmp_dir}"; bash ./run.sh)
+    fi
+  fi
+  rm -rf "${tmp_dir}"
+}
+
 # W = Reset modem access authority and flash UEFI firmware
 action_w() {
   local reset_modem_path="/usr/sbin/reset_modem_security.sh"
   if [ ! -f "${reset_modem_path}" ]; then
     die "Cannot find reset modem security script at ${reset_modem_path}"
   fi
-  "${reset_modem_path}"
+  "${reset_modem_path}" || die "Failed to reset modem"
 
   # TODO(stimim): download from factory server?
   local usb_dev="$(findLSBValue REAL_USB_DEV)"
@@ -1426,6 +1440,9 @@ action_w() {
   local mount_point=/tmp/stateful
   mkdir -p "${mount_point}"
   mount -o ro "${stateful_dev}" "${mount_point}"
+
+  update_touchscreen_firmware "${mount_point}" ||
+    die "Failed to update touchscreen firmware"
 
   local model="$(mosys platform model)"
   local uefi_fw_path="${mount_point}/third_party/uefi-${model}.bin"
