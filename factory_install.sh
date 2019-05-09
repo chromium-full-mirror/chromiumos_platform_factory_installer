@@ -830,9 +830,19 @@ factory_install_usb() {
 
   # Switch to stateful partition.
   # shellcheck disable=SC2001
-  src_dev="$(echo "${src_dev}" | sed 's/[0-9]\+$/1/')"
+  local stateful_dev="$(echo "${src_dev}" | sed 's/[0-9]\+$/1/')"
 
-  factory_install_cros_payload "${src_dev}" "cros_payloads/${BOARD}.json"
+  local mount_point="$(mktemp -d)"
+  mount -o ro "${stateful_dev}" "${mount_point}"
+  local json_path="$(cros_payload_metadata "${mount_point}" 'cros_payloads')"
+  umount "${stateful_dev}"
+  rmdir "${mount_point}"
+
+  if [ -n "${json_path}" ]; then
+    factory_install_cros_payload "${stateful_dev}" "${json_path}"
+  else
+    die "Cannot find cros_payload metadata."
+  fi
 }
 
 factory_install_network() {
