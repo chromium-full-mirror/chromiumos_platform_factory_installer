@@ -31,7 +31,7 @@ normalize_server_url() {
 # Patch dev_image/etc/lsb-factory using lsb_factory payload.
 patch_lsb_factory() {
   local real_usb_dev="$(findLSBValue REAL_USB_DEV)"
-  [ -n "${real_usb_dev}" ] || return
+  [ -n "${real_usb_dev}" ] || return 0
   local stateful_dev=${real_usb_dev%[0-9]*}1
   local mount_point="$(mktemp -d)"
   local board="$(findLSBValue CHROMEOS_RELEASE_BOARD)"
