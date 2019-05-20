@@ -276,9 +276,7 @@ check_need_update_cr50() {
   local device_version_minor=$(echo "${device_version}" | cut -d '.' -f 3)
 
   # Update only if the cr50 in install shim has version 0.3.*
-  if ! [ "${image_version_major}" -eq "3" ]; then
-    return 1
-  fi
+  [ "${image_version_major}" -eq 3 ] || return 1
 
   # Update only if cr50 version on the device is smaller than the cr50 version
   # in install shim. Some older devices may have cr50 version 0.0.*, 0.1.* or
@@ -387,7 +385,7 @@ HERE
 
 clear_fwwp() {
   log "Firmware Write Protect disabled, clearing status registers."
-  if [ ${EC_PRESENT} -eq 1 ]; then
+  if [ "${EC_PRESENT}" -eq 1 ]; then
     flashrom -p ec --wp-disable
   fi
   flashrom -p host --wp-disable --wp-range 0 0
@@ -397,7 +395,7 @@ clear_fwwp() {
 ensure_fwwp_consistency() {
   local ec_wp main_wp
 
-  if [ ${EC_PRESENT} -eq 0 ]; then
+  if [ "${EC_PRESENT}" -eq 0 ]; then
     return
   fi
 
@@ -992,7 +990,7 @@ print_device_info() {
     echo -n "HW write protect: $(crossystem_on_or_off wpsw_boot); "
     echo "SW write protect: $(command_to_yes_or_no check_fw_swwp host)"
     echo -n "EC present: $(bool_to_yes_or_no "${EC_PRESENT}"); "
-    if [ "${EC_PRESENT}" = "1" ]; then
+    if [ "${EC_PRESENT}" -eq 1 ]; then
       echo -n "EC SW write protect: $(command_to_yes_or_no check_fw_swwp ec); "
     fi
     echo -n "Cr50 version: $(get_cr50_rw_version); "
@@ -1464,7 +1462,7 @@ main() {
 
     if ${do_default_option}; then
       # Default action is set and no key pressed: perform the default action.
-      action_${DEFAULT_ACTION}
+      "action_${DEFAULT_ACTION}"
     else
       # Display the menu for the user to select an option.
       if check_devmode_is_allowed; then
