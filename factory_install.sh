@@ -227,6 +227,49 @@ die() {
   exit 1
 }
 
+# Checks if hardware write protection is enabled.
+check_hwwp() {
+  crossystem 'wpsw_cur?1' 2>/dev/null
+}
+
+# Checks if firmware software write protection is enabled.
+# Args
+#   target: a "flashrom -p" descriptor. Defaults to "host".
+check_fw_swwp() {
+  local target="${1:-host}"
+  # Note "crossystem sw_wpsw_boot" only works on Baytrail systems, so we have to
+  # use flashrom for better compatibility.
+  flashrom -p "${target}" --wp-status 2>/dev/null |
+    grep -q "write protect is enabled"
+}
+
+clear_fwwp() {
+  log "Firmware Write Protect disabled, clearing status registers."
+  if [ "${EC_PRESENT}" -eq 1 ]; then
+    flashrom -p ec --wp-disable
+  fi
+  flashrom -p host --wp-disable --wp-range 0 0
+  log "WP registers should be cleared now"
+}
+
+ensure_fwwp_consistency() {
+  local ec_wp main_wp
+
+  if [ "${EC_PRESENT}" -eq 0 ]; then
+    return
+  fi
+
+  ec_wp="$(flashrom -p ec --wp-status 2>/dev/null)" || return
+  main_wp="$(flashrom -p host --wp-status 2>/dev/null)"
+  ec_wp="$(echo "${ec_wp}" | sed -nr 's/WP.*(disabled|enabled).$/\1/pg')"
+  main_wp="$(echo "${main_wp}" | sed -nr 's/WP.*(disabled|enabled).$/\1/pg')"
+  if [ "${ec_wp}" != "${main_wp}" ]; then
+    die "Inconsistent firmware write protection status: " \
+        "main=${main_wp}, ec=${ec_wp}." \
+        "Please disable Hardware Write Protection and restart again."
+  fi
+}
+
 copy_prod_cr50_firmware() {
   # Create a copy of prod cr50 firmware in rootfs to a temporary file.
   # The caller is responsible for deleting the temp file.
@@ -314,7 +357,7 @@ is_cr50_factory_mode_enabled() {
 }
 
 enable_cr50_factory_mode() {
-  if crossystem 'wpsw_cur?1' 2>/dev/null; then
+  if check_hwwp; then
     die "The hardware write protection should be disabled first."
   fi
 
@@ -380,44 +423,6 @@ echo_huge_ok() {
                ######                     ######         ######
 
 HERE
-}
-
-clear_fwwp() {
-  log "Firmware Write Protect disabled, clearing status registers."
-  if [ "${EC_PRESENT}" -eq 1 ]; then
-    flashrom -p ec --wp-disable
-  fi
-  flashrom -p host --wp-disable --wp-range 0 0
-  log "WP registers should be cleared now"
-}
-
-ensure_fwwp_consistency() {
-  local ec_wp main_wp
-
-  if [ "${EC_PRESENT}" -eq 0 ]; then
-    return
-  fi
-
-  ec_wp="$(flashrom -p ec --wp-status 2>/dev/null)" || return
-  main_wp="$(flashrom -p host --wp-status 2>/dev/null)"
-  ec_wp="$(echo "${ec_wp}" | sed -nr 's/WP.*(disabled|enabled).$/\1/pg')"
-  main_wp="$(echo "${main_wp}" | sed -nr 's/WP.*(disabled|enabled).$/\1/pg')"
-  if [ "${ec_wp}" != "${main_wp}" ]; then
-    die "Inconsistent firmware write protection status: " \
-        "main=${main_wp}, ec=${ec_wp}." \
-        "Please disable Hardware Write Protection and restart again."
-  fi
-}
-
-# Checks if firmware software write protection is enabled.
-# Args
-#   target: a "flashrom -p" descriptor. Defaults to "host".
-check_fw_swwp() {
-  local target="${1:-host}"
-  # Note "crossystem sw_wpsw_boot" only works on Baytrail systems, so we have to
-  # use flashrom for better compatibility.
-  flashrom -p "${target}" --wp-status 2>/dev/null |
-    grep -q "write protect is enabled"
 }
 
 set_time() {
@@ -1100,7 +1105,7 @@ action_i() {
   log "Checking for Firmware Write Protect"
   # Check for physical firmware write protect. We'll only
   # clear this stuff if the case is open.
-  if [ "$(crossystem wpsw_cur)" = "0" ]; then
+  if ! check_hwwp; then
     # Clear software firmware write protect.
     clear_fwwp
   fi
@@ -1171,7 +1176,7 @@ action_i() {
   # already be in factory mode.
   # TODO(chenghan) Figure out the use case of netboot besides factory process.
   if [ -z "${NETBOOT_RAMFS}" ] && ! is_cr50_factory_mode_enabled \
-                               && [ "$(crossystem wpsw_cur)" = "0" ]; then
+                               && ! check_hwwp; then
     # Enabling cr50 factory mode would trigger a reboot automatically and be
     # halt inside this function until reboots.
     enable_cr50_factory_mode
@@ -1410,7 +1415,7 @@ main() {
     log "Netbooting. Set default action to (I) Install."
     DEFAULT_ACTION=i
   elif [ "${RMA_AUTORUN}" = "true" ]; then
-    if crossystem 'wpsw_cur?1' 2>/dev/null; then
+    if check_hwwp; then
       log "Hardware write protect on."
       if check_need_update_cr50; then
         log "Cr50 version is old. Set default action to (U) Update Cr50."
