@@ -230,10 +230,9 @@ die() {
 copy_prod_cr50_firmware() {
   # Create a copy of prod cr50 firmware in rootfs to a temporary file.
   # The caller is responsible for deleting the temp file.
-  local real_usb_dev="$(findLSBValue REAL_USB_DEV)"
-  [ -n "${real_usb_dev}" ] ||
+  local rootfs_dev="$(findLSBValue REAL_USB_DEV)"
+  [ -n "${rootfs_dev}" ] ||
     die "Unknown media source. Please define REAL_USB_DEV."
-  local rootfs_dev=${real_usb_dev%[0-9]*}3
   local mount_point="$(mktemp -d)"
   local firmware_path="${mount_point}/${PROD_CR50_PATH}"
   local temp_firmware="$(mktemp)"
