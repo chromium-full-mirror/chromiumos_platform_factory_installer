@@ -91,7 +91,7 @@ DST_STATE_PART=1
 # Each action x is implemented in an action_$x handler (e.g.,
 # action_i); see the handlers for more information about what
 # each option is.
-SUPPORTED_ACTIONS=cdefimrstuvwyz
+SUPPORTED_ACTIONS=cdefimprstuvwyz
 
 GSCTOOL="gsctool"
 PROD_CR50_PATH="opt/google/cr50/firmware/cr50.bin.prod"
@@ -1041,7 +1041,8 @@ menu() {
               "Update Cr50 fw from ROOTFS_PARTITION/${PROD_CR50_PATH}"
   menu_line E "Reset Cr50" "Perform a Cr50 reset"
   menu_line M "Cr50 factory mode" "Enable Cr50 factory mode"
-  menu_line W "Reset modem access authority and flash UEFI firmware"
+  menu_line W "Rollback" "Reset modem access authority and flash UEFI firmware"
+  menu_line P "Project Commands" "Customized project commands"
 
   echo
   read -p 'action> ' ACTION
@@ -1470,6 +1471,30 @@ action_w() {
     # this will reboot the device if succeed.
     enable_cr50_factory_mode
   fi
+}
+
+action_p() {
+  menu_line B "Backup" "Backup data to PDR section"
+  menu_line R "Restore" "Restore data from PDR section"
+
+  echo
+  read -p 'action> ' ACTION
+  echo
+
+  ACTION="$(echo "${ACTION}" | tr 'A-Z' 'a-z')"
+
+  case "${ACTION}" in
+    "b" )
+      /usr/sbin/backup_vpd.sh || die "Failed to back up VPD."
+      ;;
+    "r" )
+      /usr/sbin/restore_vpd.sh || die "Failed to restore VPD."
+      ;;
+    *)
+      echo "Invalid action."
+      return
+      ;;
+  esac
 }
 
 main() {
