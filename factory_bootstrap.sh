@@ -56,10 +56,9 @@ patch_new_root() {
   #     shim.
   # journald: it expects systemd-journald exists, which is not available in
   #     factory shim.
-  # cr50-update: we want to update cr50 explicitly in factory_installer.sh.
   local disabled_jobs
   disabled_jobs="arc-oemcrypto powerd swap syslog tpm-probe ui update-engine
-                 journald cr50-update"
+                 journald"
 
   for job in ${disabled_jobs}; do
     file="${new_root}/etc/init/${job}.conf"
@@ -73,7 +72,9 @@ patch_new_root() {
   # them to finish.
   # - pre-startup.conf: will mount new /tmp and /run, which we want to preserve.
   # - boot-splash.conf: will try to invoke another frecon instance.
-  local dummy_jobs="pre-startup boot-splash"
+  # - cr50-update.conf: will try to update cr50 firmware, which we want to do
+  #     explicitly (via action_u in factory_install.sh).
+  local dummy_jobs="pre-startup boot-splash cr50-update"
 
   for job in ${dummy_jobs}; do
     file="${new_root}/etc/init/${job}.conf"
