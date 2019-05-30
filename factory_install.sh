@@ -1041,7 +1041,7 @@ menu() {
               "Update Cr50 fw from ROOTFS_PARTITION/${PROD_CR50_PATH}"
   menu_line E "Reset Cr50" "Perform a Cr50 reset"
   menu_line M "Cr50 factory mode" "Enable Cr50 factory mode"
-  menu_line W "Rollback" "Reset modem access authority and flash UEFI firmware"
+  menu_line W "Full Rollback" "Rollback and delete EFI partitions"
   menu_line P "Project Commands" "Customized project commands"
 
   echo
@@ -1424,6 +1424,8 @@ update_touchscreen_firmware() {
 
 # W = Reset modem access authority and flash UEFI firmware
 action_w() {
+  local delete_efi_partition="$1"
+
   local reset_modem_path="/usr/sbin/reset_modem_security.sh"
   if [ ! -f "${reset_modem_path}" ]; then
     die "Cannot find reset modem security script at ${reset_modem_path}"
@@ -1452,10 +1454,12 @@ action_w() {
     die "Cannot find UEFI firmware at ${uefi_fw_path}"
   fi
 
-  # delete partition 12 and 13 if they are there
-  get_dst_drive  # this will fail if fixed drive not found
-  cgpt add -i 12 -t unused "${DST_DRIVE}" || true
-  cgpt add -i 13 -t unused "${DST_DRIVE}" || true
+  if [ "${delete_efi_partition}" != "0" ]; then
+    # delete partition 12 and 13 if they are there
+    get_dst_drive  # this will fail if fixed drive not found
+    cgpt add -i 12 -t unused "${DST_DRIVE}" || true
+    cgpt add -i 13 -t unused "${DST_DRIVE}" || true
+  fi
 
   flashrom -p host -i SI_BIOS -i SI_EC -i SI_ME -i SI_DESC \
     -w "${uefi_fw_path}" ||
@@ -1476,6 +1480,8 @@ action_w() {
 action_p() {
   menu_line B "Backup" "Backup data to PDR section"
   menu_line R "Restore" "Restore data from PDR section"
+  menu_line T "Rollback" "Rollback without delete EFI partitions"
+  menu_line W "Full Rollback" "Rollback and delete EFI partitions"
 
   echo
   read -p 'action> ' ACTION
@@ -1489,6 +1495,12 @@ action_p() {
       ;;
     "r" )
       /usr/sbin/restore_vpd.sh || die "Failed to restore VPD."
+      ;;
+    "t" )
+      action_w "0"
+      ;;
+    "w" )
+      action_w "1"
       ;;
     *)
       echo "Invalid action."
