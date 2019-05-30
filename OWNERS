@@ -1,4 +1,2 @@
-set noparent
-
 # The factory_install is maintained by Chrome OS factory team.
-include ../factory/OWNERS
+include chromiumos/platform/factory:/OWNERS
