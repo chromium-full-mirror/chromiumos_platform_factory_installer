@@ -1426,6 +1426,11 @@ update_touchscreen_firmware() {
 action_w() {
   local delete_efi_partition="$1"
 
+  if ! is_cr50_factory_mode_enabled; then
+    echo "Please enable factory mode first (action 'm')"
+    return
+  fi
+
   local reset_modem_path="/usr/sbin/reset_modem_security.sh"
   if [ ! -f "${reset_modem_path}" ]; then
     die "Cannot find reset modem security script at ${reset_modem_path}"
