@@ -1500,6 +1500,9 @@ action_p() {
       ;;
     "r" )
       /usr/sbin/restore_vpd.sh || die "Failed to restore VPD."
+      gsctool -a --factory disable || die "Failed to disable factory mode."
+      echo "Powering off now..."
+      shutdown -h now
       ;;
     "t" )
       action_w "0"
