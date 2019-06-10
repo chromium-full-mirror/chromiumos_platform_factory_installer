@@ -26,18 +26,20 @@ getLSBValue() {
   echo "${value}"
 }
 
-# Return the value for a given key in the override lsb-release file.
-# If no value is found, checks in the standard lsb-release file.
-findLSBValue()
-{
-  # Check factory LSB file.
+# Returns the value for a given key in lsb-factory file.
+# If no value is found, checks the standard lsb-release file.
+# If the key appears multiple times in a file, use the last occurrence.
+findLSBValue() {
   local key="$1"
-  local value="$(getLSBValue "$(grep "^${key}" "${LSB_FACTORY_FILE}")")"
+  # Check factory LSB file.
+  local value="$(
+    getLSBValue "$(grep "^${key}" "${LSB_FACTORY_FILE}" | tail -1)")"
 
   # TODO(hungte) Support dev_image/etc/lsb-release if needed.
 
+  # Check release LSB file.
   if [ -z "$value" ]; then
-    value="$(getLSBValue "$(grep "^${key}" "${LSB_RELEASE_FILE}")")"
+    value="$(getLSBValue "$(grep "^${key}" "${LSB_RELEASE_FILE}" | tail -1)")"
   fi
 
   echo "${value}"
