@@ -1431,6 +1431,15 @@ action_w() {
     return
   fi
 
+  if [ "$(crossystem wpsw_cur)" = "0" ]; then
+    echo "Clear software write protection"
+    # Clear software firmware write protect.
+    clear_fwwp
+  else
+    die "Hardware write protection is not disabled."
+  fi
+  ensure_fwwp_consistency
+
   local reset_modem_path="/usr/sbin/reset_modem_security.sh"
   if [ ! -f "${reset_modem_path}" ]; then
     die "Cannot find reset modem security script at ${reset_modem_path}"
