@@ -1509,6 +1509,8 @@ action_p() {
       ;;
     "r" )
       /usr/sbin/restore_vpd.sh || die "Failed to restore VPD."
+      # Set serial number to 7 spaces.
+      vpd -s "serial_number" "       "
       gsctool -a --factory disable || die "Failed to disable factory mode."
       echo "Powering off now..."
       shutdown -h now
