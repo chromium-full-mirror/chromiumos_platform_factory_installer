@@ -1491,8 +1491,60 @@ action_w() {
   fi
 }
 
+# Install recovery image
+recovery_install() {
+  local src_dev="$(findLSBValue REAL_USB_DEV)"
+  local tmp_dir="$(mktemp -d)"
+
+  [ -n "${src_dev}" ] || src_dev="$(rootdev -s 2>/dev/null)"
+  [ -n "${src_dev}" ] ||
+    die "Unknown media source. Please define REAL_USB_DEV."
+
+  get_dst_drive
+
+  # Switch to stateful partition.
+  # shellcheck disable=SC2001
+  src_dev="$(echo "${src_dev}" | sed 's/[0-9]\+$/1/')"
+
+  # factory_install_cros_payload "${src_dev}" "cros_payloads/${BOARD}.json"
+  local src_mount="$(mktemp -d)"
+  mount -o ro "${src_dev}" "${src_mount}"
+  local json_url="${src_mount}/cros_payloads/${BOARD}.json"
+
+  cros_payload install "${json_url}" "${DST_DRIVE}" release_image
+  # Install optional components.
+  local remote="$(cros_payload list "${json_url}")"
+  cros_payload_install_optional "${json_url}" "${DST_DRIVE}" \
+    release_image.crx_cache "${remote}"
+  umount "${src_mount}"
+
+  # Disable / destroy test image if it exists.
+  if ! cgpt add -i "${DST_FACTORY_KERNEL_PART}" -P 0 -T 0 -S 0 "${DST_DRIVE}"
+  then
+    echo "Failed to disable factory image, destroy it."
+    dst="$(make_partition_dev "${DST_DRIVE}" "${DST_FACTORY_KERNEL_PART}")"
+    dd if=/dev/zero of="${dst}" bs=1M count=1
+  fi
+  reload_partitions "${DST_DRIVE}"
+  # Enable release image.
+  if ! cgpt add -i "${DST_RELEASE_KERNEL_PART}" -P 1 -T 0 -S 1 "${DST_DRIVE}"
+  then
+    echo "Failed to enabled release image."
+    dst="$(make_partition_dev "${DST_DRIVE}" "${DST_RELEASE_KERNEL_PART}")"
+    dd if=/dev/zero of="${dst}" bs=1M count=1
+    die "Failed to enable release image."
+  fi
+  # cgpt changed partition table, so we have to make sure it's notified.
+  reload_partitions "${DST_DRIVE}"
+
+  # In the end, reset device, this should also reset stateful partition.
+  reset_chromeos_device
+  factory_reset
+}
+
 action_p() {
   menu_line B "Backup" "Backup data to PDR section"
+  menu_line I "Install Recovery" "Install recovery image"
   menu_line R "Restore" "Restore data from PDR section"
   menu_line T "Rollback" "Rollback without delete EFI partitions"
   menu_line W "Full Rollback" "Rollback and delete EFI partitions"
@@ -1506,6 +1558,10 @@ action_p() {
   case "${ACTION}" in
     "b" )
       /usr/sbin/backup_vpd.sh || die "Failed to back up VPD."
+      ;;
+    "i" )
+      # This function will poweroff the device.
+      recovery_install
       ;;
     "r" )
       /usr/sbin/restore_vpd.sh || die "Failed to restore VPD."
