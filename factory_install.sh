@@ -20,38 +20,13 @@ fi
 . "/usr/sbin/write_gpt.sh"
 . "$(dirname "$0")/factory_common.sh"
 . "$(dirname "$0")/ping_shopfloor.sh"
+. "$(dirname "$0")/factory_cros_payload.sh"
 
 normalize_server_url() {
   local removed_protocol="${1#http://}"
   local removed_path="${removed_protocol%%/*}"
   echo "http://${removed_path}"
 }
-
-# Patch dev_image/etc/lsb-factory using lsb_factory payload.
-patch_lsb_factory() {
-  local real_usb_dev="$(findLSBValue REAL_USB_DEV)"
-  [ -n "${real_usb_dev}" ] || return 0
-  local stateful_dev=${real_usb_dev%[0-9]*}1
-  local mount_point="$(mktemp -d)"
-  local board="$(findLSBValue CHROMEOS_RELEASE_BOARD)"
-  local json_path="${mount_point}/cros_payloads/${board}.json"
-  local temp_lsb_factory="$(mktemp)"
-
-  echo 'Patching lsb-factory...'
-
-  mount -o ro "${stateful_dev}" "${mount_point}"
-  # If the RMA shim doesn't have lsb_factory payload, this command will fail,
-  # leaving temp_lsb_factory empty.
-  cros_payload install "${json_path}" "${temp_lsb_factory}" lsb_factory || true
-  umount "${stateful_dev}"
-  rmdir "${mount_point}"
-
-  # Append to lsb-factory file.
-  cat "${temp_lsb_factory}" >>"${LSB_FACTORY_FILE}"
-  rm "${temp_lsb_factory}"
-}
-
-patch_lsb_factory
 
 # Variables from dev_image/etc/lsb-factory that developers may want to override.
 #

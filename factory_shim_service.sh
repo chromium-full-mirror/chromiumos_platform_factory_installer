@@ -19,6 +19,7 @@ export TTY_FILE LOG_FILE OVERLORD_READY
 
 . "$(dirname "$0")/ping_shopfloor.sh"
 . "$(dirname "$0")/factory_tty.sh"
+. "$(dirname "$0")/factory_cros_payload.sh"
 
 main() {
   tty_init
@@ -52,6 +53,9 @@ main() {
     setsid sh -c \
       "script -afqc '${LOG_VIEWER_COMMAND}' /dev/null <${LOG_TTY} >${LOG_TTY}" &
   fi
+
+  # Patch lsb-factory.
+  cros_payload_patch_lsb_factory
 
   # Use the System-V way to specify controlling TTY (CTTY): create a new session
   # (setsid) and the first opened TTY will be CTTY. 'script' is used (instead of
