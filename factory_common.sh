@@ -11,7 +11,7 @@ LSB_FACTORY_FILE=/mnt/stateful_partition/dev_image/etc/lsb-factory
 # Returns the key for "key=value" format string.
 getLSBKey() {
   local key=""
-  if [[ "$1" == ?*'='* ]]; then
+  if echo "$1" | grep -qE '.+=.*'; then
     key="$(echo "$1" | cut -d = -f 1)"
   fi
   echo "${key}"
@@ -20,7 +20,7 @@ getLSBKey() {
 # Returns the value for "key=value" format string.
 getLSBValue() {
   local value=""
-  if [[ "$1" == ?*'='* ]]; then
+  if echo "$1" | grep -qE '.+=.*'; then
     value="$(echo "$1" | cut -d = -f 2-)"
   fi
   echo "${value}"
