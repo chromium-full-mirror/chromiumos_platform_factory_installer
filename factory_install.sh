@@ -795,22 +795,6 @@ cros_payload_get_server_json_path() {
   fi
 }
 
-cros_payload_install_optional() {
-  local json_url="$1"
-  local dest="$2"
-  local component="$3"
-  local remote="$4"
-  local remote_component
-
-  for remote_component in ${remote}; do
-    if [ "${remote_component}" = "${component}" ]; then
-      cros_payload install "${json_url}" "${dest}" "${component}"
-      return
-    fi
-  done
-  log "Optional component ${component} does not exist, ignored."
-}
-
 factory_install_cros_payload() {
   local src_media="$1"
   local json_path="$2"
@@ -840,14 +824,9 @@ factory_install_cros_payload() {
   cros_payload install "${json_url}" "${DST_DRIVE}" toolkit
 
   # Install optional components.
-  local remote="$(cros_payload list "${json_url}")"
-  cros_payload_install_optional "${json_url}" "${DST_DRIVE}" \
-    release_image.crx_cache "${remote}"
-  cros_payload_install_optional "${json_url}" "${DST_DRIVE}" hwid "${remote}"
-  cros_payload_install_optional "${json_url}" "${DST_DRIVE}" \
-    toolkit_config "${remote}"
-  cros_payload_install_optional "${json_url}" "${tmp_dir}" firmware "${remote}"
-  cros_payload_install_optional "${json_url}" "${tmp_dir}" complete "${remote}"
+  cros_payload install_optional "${json_url}" "${DST_DRIVE}" \
+    release_image.crx_cache hwid toolkit_config
+  cros_payload install_optional "${json_url}" "${tmp_dir}" firmware complete
 
   if [ -n "${src_mount}" ]; then
     umount "${src_mount}"
