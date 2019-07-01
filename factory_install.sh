@@ -1491,7 +1491,24 @@ action_w() {
   fi
 }
 
-# Install recovery image
+get_partition_dev() {
+  local base="$1"; shift
+
+  case "${base}" in
+    *[0-9])
+      # /dev/mmcblk0 => /dev/mmcblk0p1
+      echo "${base}p$*"
+      ;;
+    "")
+      die "Invalid dev path."
+      ;;
+    *)
+      echo "${base}$*"
+      ;;
+  esac
+}
+
+# Install recovery image (firmware is not changed).
 recovery_install() {
   local src_dev="$(findLSBValue REAL_USB_DEV)"
   local tmp_dir="$(mktemp -d)"
@@ -1500,7 +1517,11 @@ recovery_install() {
   [ -n "${src_dev}" ] ||
     die "Unknown media source. Please define REAL_USB_DEV."
 
+  # Prepare for installation, copied from action_i
+  ufs_init
   get_dst_drive
+  prepare_disk
+  select_board
 
   # Switch to stateful partition.
   # shellcheck disable=SC2001
@@ -1511,7 +1532,11 @@ recovery_install() {
   mount -o ro "${src_dev}" "${src_mount}"
   local json_url="${src_mount}/cros_payloads/${BOARD}.json"
 
+  # Install most partitions of release image (except 1, 2, 3).
   cros_payload install "${json_url}" "${DST_DRIVE}" release_image
+  # Install stateful partition (partition 1) of release image.
+  cros_payload install "${json_url}" \
+    "$(get_partition_dev "${DST_DRIVE}" 1)" release_image.part1
   # Install optional components.
   local remote="$(cros_payload list "${json_url}")"
   cros_payload_install_optional "${json_url}" "${DST_DRIVE}" \
