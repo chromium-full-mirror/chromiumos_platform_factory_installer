@@ -70,6 +70,11 @@ DST_STATE_PART=1
 # each option is.
 SUPPORTED_ACTIONS=bcdefimrstuvyz
 
+# Supported actions when the device is enrolled.
+# We only support [e] RMA unlock to do RSU, and [u] Update Cr50 in case a device
+# has an older Cr50 version that doesn't support RSU.
+SUPPORTED_ACTIONS_ENROLLED=eu
+
 GSCTOOL="gsctool"
 PROD_CR50_PATH="opt/google/cr50/firmware/cr50.bin.prod"
 
@@ -177,6 +182,23 @@ die() {
   log "ERROR: $*"
   kill_bg_jobs
   exit 1
+}
+
+is_enrolled() {
+  log "Checking enrollment."
+  local flags
+  local FLAG_DEVELOPER_DISABLE_BOOT="0x1"
+
+  # Check if FWMP is present and has DEVELOPER_DISABLE_BOOT flag.
+  # When FWMP is not present, from coreboot's point of view, all flags are zero
+  # and the result is consistent (device not enrolled).
+  flags="$(cryptohome --action=get_firmware_management_parameters |
+           grep -o "flags: [[:digit:]]\+" | sed 's/flags: //g')"
+  if [ -z "${flags}" ] ||
+     [ $(( flags & FLAG_DEVELOPER_DISABLE_BOOT )) -eq 0 ]; then
+    return 1
+  fi
+  return 0
 }
 
 # Checks if hardware write protection is enabled.
@@ -947,26 +969,9 @@ is_valid_action() {
   echo "$1" | grep -q "^[${SUPPORTED_ACTIONS}]$"
 }
 
-check_devmode_is_allowed() {
-  # Check block_devmode flag
-  echo "Checking block_devmode flags"
-  if crossystem 'block_devmode?1' 'wpsw_boot?1' 2>/dev/null; then
-    echo
-    echo "crossystem flag 'block_devmode' is set on a write protected device."
-    echo
-    echo "You need to disable hardware write protection to bypass this check."
-    echo
-
-    # Run cr50-reset.sh if available
-    if command -v /usr/share/cros/cr50-reset.sh >/dev/null; then
-      echo "Defaulting to RMA reset"
-      sleep 2
-      # Perform an RMA reset
-      action_e
-    fi
-    return 1
-  fi
-  return 0
+# Checks if the given action is valid and supported on an enrolled device.
+is_valid_action_when_enrolled() {
+  echo "$1" | grep -q "^[${SUPPORTED_ACTIONS_ENROLLED}]$"
 }
 
 # Displays a menu, saving the action (one of ${SUPPORTED_ACTIONS}, always
@@ -1353,6 +1358,10 @@ main() {
     if check_need_update_cr50; then
       log "Cr50 version is old. Set default action to (U) Update Cr50."
       DEFAULT_ACTION=u
+    elif is_enrolled; then
+      log "Device is enrolled. " \
+          "Set default action to (E) Perform RSU."
+      DEFAULT_ACTION=e
     elif check_hwwp; then
       log "Hardware write protection on. Set default action to (E) Reset Cr50."
       DEFAULT_ACTION=e
@@ -1365,7 +1374,13 @@ main() {
   # Sanity check default action
   if [ -n "${DEFAULT_ACTION}" ]; then
     log "Default action: [${DEFAULT_ACTION}]."
-    if ! is_valid_action "${DEFAULT_ACTION}"; then
+    if is_enrolled && ! is_valid_action_when_enrolled "${DEFAULT_ACTION}"; then
+      log "Action [${DEFAULT_ACTION}] is invalid when device is enrolled."
+      log "Only support ${SUPPORTED_ACTIONS_ENROLLED}."
+      log "Will fallback to normal menu..."
+      DEFAULT_ACTION=""
+      sleep 3
+    elif ! is_valid_action "${DEFAULT_ACTION}"; then
       log "Action [${DEFAULT_ACTION}] is invalid."
       log "Only support ${SUPPORTED_ACTIONS}. Will fallback to normal menu..."
       DEFAULT_ACTION=""
@@ -1402,10 +1417,23 @@ main() {
       # Default action is set and no key pressed: perform the default action.
       "action_${DEFAULT_ACTION}"
     else
-      # Display the menu for the user to select an option.
-      if check_devmode_is_allowed; then
+      if is_enrolled; then
+        # Device is enrolled. Do RSU first.
+        colorize yellow
+        echo
+        echo "This device has FWMP and blocks developer mode."
+        echo "It is possibly a managed device."
+        echo "Please ask the admin to deprovision the device or perform"
+        echo "RSU (RMA Server Unlock)."
+        echo
+        colorize white
+        # Perform RSU.
+        echo "Defaulting to RSU"
+        sleep 2
+        action_e
+      else
+        # Display the menu for the user to select an option.
         menu
-
         if [ -n "${ACTION}" ]; then
           # Perform the selected action.
           "action_${ACTION}"
