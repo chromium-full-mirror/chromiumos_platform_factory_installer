@@ -90,6 +90,11 @@ DST_STATE_PART=1
 # each option is.
 SUPPORTED_ACTIONS=cdeimprstuvyz
 
+# Supported actions when the device is enrolled.
+# We only support [e] RMA unlock to do RSU, and [u] Update Cr50 in case a device
+# has an older Cr50 version that doesn't support RSU.
+SUPPORTED_ACTIONS_ENROLLED=eu
+
 GSCTOOL="gsctool"
 PROD_CR50_PATH="opt/google/cr50/firmware/cr50.bin.prod"
 
@@ -175,8 +180,9 @@ die() {
   exit 1
 }
 
-has_fwmp() {
-  log "Checking FWMP."
+is_enrolled() {
+  log "Checking enrollment."
+  # Check if FWMP is present.
   local ret=0
   stop trunksd
   tpmc getp 0x100a >/dev/null 2>&1 || ret=$?
@@ -937,26 +943,9 @@ is_valid_action() {
   echo "$1" | grep -q "^[${SUPPORTED_ACTIONS}]$"
 }
 
-check_devmode_is_allowed() {
-  # Check block_devmode flag
-  echo "Checking block_devmode flags"
-  if crossystem 'block_devmode?1' 'wpsw_boot?1' 2>/dev/null; then
-    echo
-    echo "crossystem flag 'block_devmode' is set on a write protected device."
-    echo
-    echo "You need to disable hardware write protection to bypass this check."
-    echo
-
-    # Run cr50-reset.sh if available
-    if command -v /usr/share/cros/cr50-reset.sh >/dev/null; then
-      echo "Defaulting to RMA reset"
-      sleep 2
-      # Perform an RMA reset
-      action_e
-    fi
-    return 1
-  fi
-  return 0
+# Checks if the given action is valid and supported on an enrolled device.
+is_valid_action_when_enrolled() {
+  echo "$1" | grep -q "^[${SUPPORTED_ACTIONS_ENROLLED}]$"
 }
 
 # Displays a menu, saving the action (one of ${SUPPORTED_ACTIONS}, always
@@ -1358,7 +1347,12 @@ action_u() {
 
 # E = Reset Cr50
 action_e() {
-  /usr/share/cros/cr50-reset.sh
+  local cr50_reset_script='/usr/share/cros/cr50-reset.sh'
+  if command -v "${cr50_reset_script}" >/dev/null; then
+    "${cr50_reset_script}"
+  else
+    die "Cannot find ${cr50_reset_script}."
+  fi
 }
 
 # M = Enable Cr50 factory mode
@@ -1398,8 +1392,8 @@ main() {
     log "Netbooting. Set default action to (I) Install."
     DEFAULT_ACTION=i
   elif [ "${RMA_AUTORUN}" = "true" ]; then
-    if crossystem 'wpsw_cur?1' 2>/dev/null; then
-      log "Hardware write protect on."
+    if is_enrolled || crossystem 'wpsw_cur?1' 2>/dev/null; then
+      log "Device enrolled or hardware write protect on."
       if check_need_update_cr50; then
         log "Cr50 version is old. Set default action to (U) Update Cr50."
         DEFAULT_ACTION=u
@@ -1418,7 +1412,15 @@ main() {
     log "Default action: [${DEFAULT_ACTION}]."
     if ! is_valid_action "${DEFAULT_ACTION}"; then
       log "Action [${DEFAULT_ACTION}] is invalid."
-      log "Only support ${SUPPORTED_ACTIONS}. Will fallback to normal menu..."
+      log "Only support ${SUPPORTED_ACTIONS}."
+      log "Will fallback to normal menu..."
+      DEFAULT_ACTION=""
+      sleep 3
+    elif is_enrolled &&
+         ! is_valid_action_when_enrolled "${DEFAULT_ACTION}"; then
+      log "Action [${DEFAULT_ACTION}] is invalid on an enrolled device."
+      log "Only support ${SUPPORTED_ACTIONS_ENROLLED}."
+      log "Will fallback to normal menu..."
       DEFAULT_ACTION=""
       sleep 3
     fi
@@ -1451,10 +1453,22 @@ main() {
       # Default action is set and no key pressed: perform the default action.
       action_${DEFAULT_ACTION}
     else
-      # Display the menu for the user to select an option.
-      if check_devmode_is_allowed; then
+      if is_enrolled; then
+        # Device is enrolled. Do RSU first.
+        colorize yellow
+        echo
+        echo "This is an enterprise enrolled device."
+        echo "Please ask the admin to deprovision the device or perform"
+        echo "RSU (RMA Server Unlock) to bypass this check."
+        echo
+        colorize white
+        # Perform RSU.
+        echo "Defaulting to RSU"
+        sleep 2
+        action_e
+      else
+        # Display the menu for the user to select an option.
         menu
-
         if [ -n "${ACTION}" ]; then
           # Perform the selected action.
           "action_${ACTION}"
