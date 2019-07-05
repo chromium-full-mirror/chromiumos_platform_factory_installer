@@ -1567,6 +1567,11 @@ recovery_install() {
   factory_reset
 }
 
+backup_vpd() {
+  echo "Backup VPD to PDR section."
+  /usr/sbin/backup_vpd.sh || die "Failed to back up VPD."
+}
+
 action_p() {
   menu_line B "Backup" "Backup data to PDR section"
   menu_line I "Install Recovery" "Install recovery image"
@@ -1582,7 +1587,7 @@ action_p() {
 
   case "${ACTION}" in
     "b" )
-      /usr/sbin/backup_vpd.sh || die "Failed to back up VPD."
+      backup_vpd
       ;;
     "i" )
       # This function will poweroff the device.
@@ -1597,6 +1602,7 @@ action_p() {
       shutdown -h now
       ;;
     "t" )
+      backup_vpd
       action_w "0"
       ;;
     "w" )
