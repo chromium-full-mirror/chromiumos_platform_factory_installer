@@ -1569,7 +1569,6 @@ recovery_install() {
 
 action_p() {
   menu_line B "Backup" "Backup data to PDR section"
-  menu_line C "RTC reset" "Reset RTC"
   menu_line I "Install Recovery" "Install recovery image"
   menu_line R "Restore" "Restore data from PDR section"
   menu_line T "Rollback" "Rollback without delete EFI partitions"
@@ -1584,11 +1583,6 @@ action_p() {
   case "${ACTION}" in
     "b" )
       /usr/sbin/backup_vpd.sh || die "Failed to back up VPD."
-      ;;
-    "c" )
-      echo "Reset RTC"
-      echo 00 f0 88 00 05 >/sys/kernel/debug/wilco_ec/raw
-      # System will reboot.
       ;;
     "i" )
       # This function will poweroff the device.
