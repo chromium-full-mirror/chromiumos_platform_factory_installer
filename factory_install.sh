@@ -503,15 +503,6 @@ ufs_init() {
   fi
 }
 
-select_board() {
-  # Prompt the user if USER_SELECT is true.
-  local user_select="$(findLSBValue USER_SELECT | tr '[:upper:]' '[:lower:]')"
-  if [ "${user_select}" = "true" ]; then
-    echo -n "Enter the board you want to install (ex: x86-mario): "
-    read BOARD
-  fi
-}
-
 find_var() {
   # Check kernel commandline for a specific key value pair.
   # Usage: omaha=$(find_var omahaserver)
@@ -1062,7 +1053,6 @@ action_i() {
   ufs_init
   get_dst_drive
   prepare_disk
-  select_board
 
   if [ -n "${FACTORY_INSTALL_FROM_USB}" ]; then
     factory_install_usb
