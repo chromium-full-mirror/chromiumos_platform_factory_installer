@@ -180,6 +180,10 @@ check_hwwp() {
 #   target: a "flashrom -p" descriptor. Defaults to "host".
 check_fw_swwp() {
   local target="${1:-host}"
+  if [ "${target}" = "ec" ] && [ "${EC_PRESENT}" -eq 0 ]; then
+    echo "There is no EC, skip checking EC SWWP"
+    return 0
+  fi
   # Note "crossystem sw_wpsw_boot" only works on Baytrail systems, so we have to
   # use flashrom for better compatibility.
   flashrom -p "${target}" --wp-status 2>/dev/null |
