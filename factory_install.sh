@@ -175,6 +175,40 @@ die() {
   exit 1
 }
 
+is_cryptohome_ready() {
+  dbus-send --system --dest=org.freedesktop.DBus --type=method_call \
+    --print-reply /org/freedesktop/DBus org.freedesktop.DBus.ListNames \
+    | grep -q org.chromium.Cryptohome
+}
+
+has_fwmp() {
+  cryptohome --action=get_firmware_management_parameters >/dev/null
+}
+
+clear_fwmp() {
+  # cryptohome might take a few seconds to be ready.
+  while ! is_cryptohome_ready; do
+    sleep 1
+  done
+  # If FWMP is set, we should own the TPM and clear FWMP.
+  if has_fwmp; then
+    if cryptohome --action=tpm_status | grep -q 'TPM Owned: true'; then
+      # TPM is already owned. Clear ownership and reboot.
+      echo "TPM is owned. Clearing ownership and reboot."
+      crossystem clear_tpm_owner_request=1
+      reboot
+      sleep 1d
+    else
+      # TPM is not owned. Take ownership and clear FWMP.
+      echo "Taking TPM ownership and clearing FWMP."
+      tpm_manager_client take_ownership >/dev/null
+      cryptohome --action=remove_firmware_management_parameters
+      # Check that FWMP is actually cleared.
+      ! has_fwmp || die "FWMP is not cleared by cryptohome."
+    fi
+  fi
+}
+
 copy_prod_cr50_firmware() {
   # Create a copy of prod cr50 firmware in rootfs to a temporary file.
   # The caller is responsible for deleting the temp file.
@@ -987,6 +1021,11 @@ menu() {
 
 # I = Install.
 action_i() {
+  # Clear FWMP before installation.
+  # TODO(chenghan) This is just a short term solution for b/135658832. Long term
+  #   solution is tracked in b/138385402.
+  clear_fwmp
+
   reset_chromeos_device
 
   log "Checking for Firmware Write Protect"
