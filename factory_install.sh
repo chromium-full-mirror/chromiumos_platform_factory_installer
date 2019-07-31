@@ -60,8 +60,10 @@ patch_lsb_factory
 BOARD="$(findLSBValue CHROMEOS_RELEASE_BOARD)"
 # - Override this if we want to install with a different factory server.
 OMAHA="$(normalize_server_url "$(findLSBValue CHROMEOS_AUSERVER)")"
-# - Override this for The default action if no keys were pressed before timeout.
+# - Override this for the default action if no keys are pressed before timeout.
 DEFAULT_ACTION="$(findLSBValue FACTORY_INSTALL_DEFAULT_ACTION)"
+# - Override this to enable/disable the countdown before doing default action.
+ACTION_COUNTDOWN="$(findLSBValue FACTORY_INSTALL_ACTION_COUNTDOWN)"
 # - Override this to 'false' to prevent waiting for prompt after installation.
 COMPLETE_PROMPT="$(findLSBValue FACTORY_INSTALL_COMPLETE_PROMPT |
                    tr 'A-Z' 'a-z')"
@@ -1676,26 +1678,28 @@ main() {
     clear
     print_header
 
-    local do_default_option=false
+    local do_default_action=false
     if [ -n "${DEFAULT_ACTION}" ]; then
-      do_default_option=true
-      # Give the user the chance to press any key to display the menu.
+      do_default_action=true
       log "Will automatically perform action [${DEFAULT_ACTION}]."
-      log "Or press any key to show menu instead..."
-      local timeout_secs=3
-      for i in $(seq ${timeout_secs} -1 1); do
-        # Read with timeout doesn't reliably work multiple times without
-        # a sub shell.
-        if ( read -N 1 -p "Press any key within ${i} sec> " -t 1 ); then
+      if [ "${ACTION_COUNTDOWN}" = "true" ]; then
+        # Give the user the chance to press any key to display the menu.
+        log "Press any key to show menu instead..."
+        local timeout_secs=3
+        for i in $(seq ${timeout_secs} -1 1); do
+          # Read with timeout doesn't reliably work multiple times without
+          # a sub shell.
+          if ( read -N 1 -p "Press any key within ${i} sec> " -t 1 ); then
+            echo
+            do_default_action=false
+            break
+          fi
           echo
-          do_default_option=false
-          break
-        fi
-        echo
-      done
+        done
+      fi
     fi
 
-    if ${do_default_option}; then
+    if ${do_default_action}; then
       # Default action is set and no key pressed: perform the default action.
       action_${DEFAULT_ACTION}
     else
