@@ -989,7 +989,7 @@ menu() {
   menu_line F "Update TPM Firmware" "Call tpm-firmware-update-factory"
   menu_line U "Update Cr50" \
               "Update Cr50 fw from ROOTFS_PARTITION/${PROD_CR50_PATH}"
-  menu_line E "Reset Cr50" "Perform a Cr50 reset"
+  menu_line E "Reset Cr50" "Perform RSU (RMA Server Unlock)"
   menu_line M "Cr50 factory mode" "Enable Cr50 factory mode"
 
   echo
