@@ -176,13 +176,16 @@ die() {
 }
 
 is_cryptohome_ready() {
-  dbus-send --system --dest=org.freedesktop.DBus --type=method_call \
-    --print-reply /org/freedesktop/DBus org.freedesktop.DBus.ListNames \
-    | grep -q org.chromium.Cryptohome
+  echo "waiting for cryptohome to be ready"
+  local names="$(dbus-send --system --dest=org.freedesktop.DBus \
+    --type=method_call --print-reply /org/freedesktop/DBus \
+    org.freedesktop.DBus.ListNames)"
+  echo "names = ${names}"
+  echo "${names}" | grep -q org.chromium.Cryptohome
 }
 
 has_fwmp() {
-  cryptohome --action=get_firmware_management_parameters >/dev/null
+  cryptohome --action=get_firmware_management_parameters
 }
 
 clear_fwmp() {
@@ -201,7 +204,7 @@ clear_fwmp() {
     else
       # TPM is not owned. Take ownership and clear FWMP.
       echo "Taking TPM ownership and clearing FWMP."
-      tpm_manager_client take_ownership >/dev/null
+      tpm_manager_client take_ownership
       cryptohome --action=remove_firmware_management_parameters
       # Check that FWMP is actually cleared.
       ! has_fwmp || die "FWMP is not cleared by cryptohome."
