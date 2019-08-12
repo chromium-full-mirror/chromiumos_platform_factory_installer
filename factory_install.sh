@@ -1430,8 +1430,6 @@ update_touchscreen_firmware() {
 
 # W = Reset modem access authority and flash UEFI firmware
 action_w() {
-  local delete_efi_partition="$1"
-
   if ! is_cr50_factory_mode_enabled; then
     echo "Please enable factory mode first (action 'm')"
     return
@@ -1474,12 +1472,10 @@ action_w() {
     die "Cannot find UEFI firmware at ${uefi_fw_path}"
   fi
 
-  if [ "${delete_efi_partition}" != "0" ]; then
-    # delete partition 12 and 13 if they are there
-    get_dst_drive  # this will fail if fixed drive not found
-    cgpt add -i 12 -t unused "${DST_DRIVE}" || true
-    cgpt add -i 13 -t unused "${DST_DRIVE}" || true
-  fi
+  # delete partition 12 and 13 if they are there
+  get_dst_drive  # this will fail if fixed drive not found
+  cgpt add -i 12 -t unused "${DST_DRIVE}" || true
+  cgpt add -i 13 -t unused "${DST_DRIVE}" || true
 
   flashrom -p host -i SI_BIOS -i SI_EC -i SI_ME -i SI_DESC \
     -w "${uefi_fw_path}" ||
@@ -1578,11 +1574,17 @@ backup_vpd() {
   /usr/sbin/backup_vpd.sh || die "Failed to back up VPD."
 }
 
+restore_vpd() {
+  /usr/sbin/restore_vpd.sh || die "Failed to restore VPD."
+  # Set serial number to 7 spaces.
+  vpd -s "serial_number"="       "
+}
+
 action_p() {
   menu_line B "Backup" "Backup data to PDR section"
   menu_line I "Install Recovery" "Install recovery image"
   menu_line R "Restore" "Restore data from PDR section"
-  menu_line T "Rollback" "Rollback without delete EFI partitions"
+  menu_line T "Full Rollback" "Rollback and delete EFI partitions"
   menu_line W "Full Rollback" "Rollback and delete EFI partitions"
 
   echo
@@ -1596,23 +1598,24 @@ action_p() {
       backup_vpd
       ;;
     "i" )
+      restore_vpd
+      gsctool -a --factory disable || die "Failed to disable factory mode."
       # This function will poweroff the device.
       recovery_install
       ;;
     "r" )
-      /usr/sbin/restore_vpd.sh || die "Failed to restore VPD."
-      # Set serial number to 7 spaces.
-      vpd -s "serial_number"="       "
+      restore_vpd
       gsctool -a --factory disable || die "Failed to disable factory mode."
       echo "Powering off now..."
       shutdown -h now
       ;;
-    "t" )
+    "t" )  # Same as action_w.
       backup_vpd
-      action_w "0"
+      action_w
       ;;
     "w" )
-      action_w "1"
+      backup_vpd
+      action_w
       ;;
     *)
       echo "Invalid action."
