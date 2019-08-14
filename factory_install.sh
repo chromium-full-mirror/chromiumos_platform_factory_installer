@@ -193,6 +193,8 @@ clear_fwmp() {
   while ! is_cryptohome_ready; do
     sleep 1
   done
+  # Show tpm status.
+  cryptohome --action=tpm_status
   # If FWMP is set, we should own the TPM and clear FWMP.
   if has_fwmp; then
     if cryptohome --action=tpm_status | grep -q 'TPM Owned: true'; then
