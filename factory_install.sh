@@ -175,42 +175,28 @@ die() {
   exit 1
 }
 
-is_cryptohome_ready() {
-  echo "waiting for cryptohome to be ready"
-  local names="$(dbus-send --system --dest=org.freedesktop.DBus \
-    --type=method_call --print-reply /org/freedesktop/DBus \
-    org.freedesktop.DBus.ListNames)"
-  echo "names = ${names}"
-  echo "${names}" | grep -q org.chromium.Cryptohome
-}
-
 has_fwmp() {
-  cryptohome --action=get_firmware_management_parameters
+  log "Checking FWMP."
+  local ret=0
+  stop trunksd
+  tpmc getp 0x100a >/dev/null 2>&1 || ret=$?
+  start trunksd
+  return ${ret}
 }
 
 clear_fwmp() {
-  # cryptohome might take a few seconds to be ready.
-  while ! is_cryptohome_ready; do
-    sleep 1
-  done
-  # Show tpm status.
-  cryptohome --action=tpm_status
-  # If FWMP is set, we should own the TPM and clear FWMP.
-  if has_fwmp; then
-    if cryptohome --action=tpm_status | grep -q 'TPM Owned: true'; then
-      # TPM is already owned. Clear ownership and reboot.
-      echo "TPM is owned. Clearing ownership and reboot."
-      crossystem clear_tpm_owner_request=1
-      reboot
-      sleep 1d
-    else
-      # TPM is not owned. Take ownership and clear FWMP.
-      echo "Taking TPM ownership and clearing FWMP."
-      tpm_manager_client take_ownership
-      cryptohome --action=remove_firmware_management_parameters
-      # Check that FWMP is actually cleared.
-      ! has_fwmp || die "FWMP is not cleared by cryptohome."
-    fi
+  # FWMP is cleared by cr50-clear-fwmp.sh when TPM is cleared and booted in
+  # recovery mode. If we detect that FWMP exists, we should request to clear
+  # TPM and reboot, so that FWMP can be cleared next time.
+  if crossystem "mainfw_type?recovery" && has_fwmp; then
+    colorize yellow
+    log "Clearing TPM and rebooting to clear FWMP."
+    log "When the device boots up, please boot the factory shim from" \
+        "recovery mode immediately."
+    sleep 3s
+    crossystem clear_tpm_owner_request=1
+    reboot
+    sleep 1d
   fi
 }
 
