@@ -298,7 +298,11 @@ enable_cr50_factory_mode() {
 
   if [ ${ret} != 0 ]; then
     local ver="$(get_cr50_rw_version)"
-    die "Failed to enable factory mode; cr50 version: ${ver}"
+    log "Failed to enable factory mode; cr50 version: ${ver}"
+    log "Try RSU..."
+    action_e || die "Failed to perform RSU..."
+    # action_e should reboot if it succeeds.
+    return 0
   fi
 
   # Once enabling factory mode, system should reboot automatically.
