@@ -190,22 +190,6 @@ is_enrolled() {
   return ${ret}
 }
 
-clear_fwmp() {
-  # FWMP is cleared by cr50-clear-fwmp.sh when TPM is cleared and booted in
-  # recovery mode. If we detect that FWMP exists, we should request to clear
-  # TPM and reboot, so that FWMP can be cleared next time.
-  if crossystem "mainfw_type?recovery" && has_fwmp; then
-    colorize yellow
-    log "Clearing TPM and rebooting to clear FWMP."
-    log "When the device boots up, please boot the factory shim from" \
-        "recovery mode immediately."
-    sleep 3s
-    crossystem clear_tpm_owner_request=1
-    reboot
-    sleep 1d
-  fi
-}
-
 copy_prod_cr50_firmware() {
   # Create a copy of prod cr50 firmware in rootfs to a temporary file.
   # The caller is responsible for deleting the temp file.
@@ -1001,11 +985,6 @@ menu() {
 
 # I = Install.
 action_i() {
-  # Clear FWMP before installation.
-  # TODO(chenghan) This is just a short term solution for b/135658832. Long term
-  #   solution is tracked in b/138385402.
-  clear_fwmp
-
   reset_chromeos_device
 
   log "Checking for Firmware Write Protect"
