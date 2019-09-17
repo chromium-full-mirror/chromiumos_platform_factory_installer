@@ -142,6 +142,10 @@ on_die() {
     explain_cros_debug
   fi
 
+  colorize white
+  read -N 1 -p "Press any key to reboot... "
+  reboot
+
   exit 1
 }
 
