@@ -1585,11 +1585,8 @@ restore_vpd() {
 }
 
 action_p() {
-  menu_line B "Backup" "Backup data to PDR section"
-  menu_line I "Install Recovery" "Install recovery image"
-  menu_line R "Restore" "Restore data from PDR section"
-  menu_line T "Full Rollback" "Rollback and delete EFI partitions"
-  menu_line W "Full Rollback" "Rollback and delete EFI partitions"
+  menu_line A "Revert system back to UEFI" ""
+  menu_line B "Install Chrome OS" ""
 
   echo
   read -p 'action> ' ACTION
@@ -1598,28 +1595,15 @@ action_p() {
   ACTION="$(echo "${ACTION}" | tr 'A-Z' 'a-z')"
 
   case "${ACTION}" in
-    "b" )
+    "a" )
       backup_vpd
+      action_w
       ;;
-    "i" )
+    "b" )
       restore_vpd
       gsctool -a --factory disable || die "Failed to disable factory mode."
       # This function will poweroff the device.
       recovery_install
-      ;;
-    "r" )
-      restore_vpd
-      gsctool -a --factory disable || die "Failed to disable factory mode."
-      echo "Powering off now..."
-      shutdown -h now
-      ;;
-    "t" )  # Same as action_w.
-      backup_vpd
-      action_w
-      ;;
-    "w" )
-      backup_vpd
-      action_w
       ;;
     *)
       echo "Invalid action."
