@@ -65,11 +65,6 @@ DST_STATE_PART=1
 # each option is.
 SUPPORTED_ACTIONS=cdeimprstuvyz
 
-# Supported actions when the device is enrolled.
-# We only support [e] RMA unlock to do RSU, and [u] Update Cr50 in case a device
-# has an older Cr50 version that doesn't support RSU.
-SUPPORTED_ACTIONS_ENROLLED=eu
-
 GSCTOOL="gsctool"
 PROD_CR50_PATH="opt/google/cr50/firmware/cr50.bin.prod"
 
@@ -261,7 +256,8 @@ enable_cr50_factory_mode() {
 
   if [ ${ret} != 0 ]; then
     local ver="$(get_cr50_rw_version)"
-    die "Failed to enable factory mode; cr50 version: ${ver}"
+    echo "Failed to enable factory mode; cr50 version: ${ver}"
+    return
   fi
 
   # Once enabling factory mode, system should reboot automatically.
@@ -912,11 +908,6 @@ is_valid_action() {
   echo "$1" | grep -q "^[${SUPPORTED_ACTIONS}]$"
 }
 
-# Checks if the given action is valid and supported on an enrolled device.
-is_valid_action_when_enrolled() {
-  echo "$1" | grep -q "^[${SUPPORTED_ACTIONS_ENROLLED}]$"
-}
-
 # Displays a menu, saving the action (one of ${SUPPORTED_ACTIONS}, always
 # lowercase) in the "ACTION" variable.  If no valid action is chosen,
 # ACTION will be empty.
@@ -1356,8 +1347,8 @@ main() {
     log "Netbooting. Set default action to (I) Install."
     DEFAULT_ACTION=i
   elif [ "${RMA_AUTORUN}" = "true" ]; then
-    if is_enrolled || crossystem 'wpsw_cur?1' 2>/dev/null; then
-      log "Device enrolled or hardware write protect on."
+    if crossystem 'wpsw_cur?1' 2>/dev/null; then
+      log "Hardware write protect on."
       if check_need_update_cr50; then
         log "Cr50 version is old. Set default action to (U) Update Cr50."
         DEFAULT_ACTION=u
@@ -1377,13 +1368,6 @@ main() {
     if ! is_valid_action "${DEFAULT_ACTION}"; then
       log "Action [${DEFAULT_ACTION}] is invalid."
       log "Only support ${SUPPORTED_ACTIONS}."
-      log "Will fallback to normal menu..."
-      DEFAULT_ACTION=""
-      sleep 3
-    elif is_enrolled &&
-         ! is_valid_action_when_enrolled "${DEFAULT_ACTION}"; then
-      log "Action [${DEFAULT_ACTION}] is invalid on an enrolled device."
-      log "Only support ${SUPPORTED_ACTIONS_ENROLLED}."
       log "Will fallback to normal menu..."
       DEFAULT_ACTION=""
       sleep 3
