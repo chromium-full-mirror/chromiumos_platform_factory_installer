@@ -7,6 +7,7 @@
 
 LSB_RELEASE_FILE=/etc/lsb-release
 LSB_FACTORY_FILE=/mnt/stateful_partition/dev_image/etc/lsb-factory
+DESCRIPTION_FILE=/mnt/stateful_partition/dev_image/etc/description
 
 # Returns the key for "key=value" format string.
 getLSBKey() {
