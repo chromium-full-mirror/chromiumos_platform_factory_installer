@@ -52,7 +52,29 @@ patch_lsb_factory() {
   rm "${temp_lsb_factory}"
 }
 
+# Install dev_image/etc/description from description payload.
+install_description() {
+  local real_usb_dev="$(findLSBValue REAL_USB_DEV)"
+  [ -n "${real_usb_dev}" ] || return 0
+  local stateful_dev=${real_usb_dev%[0-9]*}1
+  local mount_point="$(mktemp -d)"
+  local board="$(findLSBValue CHROMEOS_RELEASE_BOARD)"
+  local json_path="${mount_point}/cros_payloads/${board}.json"
+  local temp_path="$(mktemp)"
+
+  echo 'Installing description...'
+
+  mount -o ro "${stateful_dev}" "${mount_point}"
+  cros_payload install_optional "${json_path}" "${temp_path}" description
+  umount "${stateful_dev}"
+  rmdir "${mount_point}"
+
+  cat "${temp_path}" >"${DESCRIPTION_FILE}"
+  rm "${temp_path}"
+}
+
 patch_lsb_factory
+install_description
 
 # Variables from dev_image/etc/lsb-factory that developers may want to override.
 #
@@ -956,6 +978,12 @@ print_device_info() {
     echo -n "Cr50 version: $(get_cr50_rw_version); "
     echo "Board ID flags: 0x$(get_cr50_board_id_flags)"
     echo
+    local description=""
+    if [ -s "${DESCRIPTION_FILE}" ]; then
+      description="$(cat "${DESCRIPTION_FILE}" 2>/dev/null)"
+      echo "${description}"
+      echo
+    fi
 }
 
 # Displays a line in the menu.  Used in the menu function.
