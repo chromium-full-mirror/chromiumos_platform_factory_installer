@@ -70,9 +70,12 @@ tty_start_frecon() {
 
   kernel_msg "Starting frecon..."
 
-  udevd --daemon
-  udevadm trigger
-  udevadm settle
+  if [ "${FRECON_PATH}" != "${FRECON_LITE_PATH}" ]; then
+    udevd --daemon
+    udevadm trigger
+    udevadm settle
+  fi
+
   "${FRECON_PATH}" --enable-vt1 --daemon --no-login --enable-vts \
     --pre-create-vts --num-vts=8 --enable-gfx
 
