@@ -334,8 +334,12 @@ reset_chromeos_device() {
   log "Checking if TPM should be recovered (for version and owner)"
   # To clear TPM, we need it unlocked (only in recovery boot).
   # Booting with USB in developer mode (Ctrl-U) does not work.
-  if crossystem "mainfw_type?recovery"; then
-    if ! chromeos-tpm-recovery; then
+
+  if check_fw_swwp host; then
+    colorize yellow
+    log " - TPM recovery skipped due to WP enabled."
+  elif crossystem "mainfw_type?recovery"; then
+    if ! chromeos-tpm-recovery ; then
       colorize yellow
       log " - TPM recovery failed.
 
