@@ -1550,10 +1550,6 @@ recovery_install() {
   # Install stateful partition (partition 1) of release image.
   cros_payload install "${json_url}" \
     "$(get_partition_dev "${DST_DRIVE}" 1)" release_image.part1
-  # Install optional components.
-  local remote="$(cros_payload list "${json_url}")"
-  cros_payload_install_optional "${json_url}" "${DST_DRIVE}" \
-    release_image.crx_cache "${remote}"
   umount "${src_mount}"
 
   # Disable / destroy test image if it exists.
