@@ -1601,7 +1601,9 @@ action_p() {
       ;;
     "b" )
       restore_vpd
-      gsctool -a --factory disable || die "Failed to disable factory mode."
+      if is_cr50_factory_mode_enabled; then
+        ${GSCTOOL} -a -F disable || die "Failed to disable factory mode."
+      fi
       # This function will poweroff the device.
       recovery_install
       ;;
