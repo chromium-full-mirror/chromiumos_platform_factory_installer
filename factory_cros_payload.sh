@@ -84,3 +84,26 @@ cros_payload_patch_cutoff_config() {
   rmdir "${mount_point}"
   rm "${temp_config_path}"
 }
+
+# Install dev_image/etc/description from description payload.
+cros_payload_install_description() {
+  local real_usb_dev="$(findLSBValue REAL_USB_DEV)"
+  [ -n "${real_usb_dev}" ] || return 0
+  local stateful_dev=${real_usb_dev%[0-9]*}1
+  local temp_path="$(mktemp)"
+  local mount_point="$(mktemp -d)"
+  mount -o ro "${stateful_dev}" "${mount_point}"
+
+  echo 'Installing description...'
+
+  local json_path="$(cros_payload_metadata "${mount_point}" 'cros_payloads')"
+  local json_url="${mount_point}/${json_path}"
+  if [ -n "${json_url}" ]; then
+    cros_payload install_optional "${json_url}" "${temp_path}" description
+  fi
+  umount "${stateful_dev}"
+  rmdir "${mount_point}"
+
+  cat "${temp_path}" >"${DESCRIPTION_FILE}"
+  rm "${temp_path}"
+}

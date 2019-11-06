@@ -58,6 +58,8 @@ main() {
   cros_payload_patch_lsb_factory
   cros_payload_patch_cutoff_config
 
+  cros_payload_install_description
+
   # Use the System-V way to specify controlling TTY (CTTY): create a new session
   # (setsid) and the first opened TTY will be CTTY. 'script' is used (instead of
   # redirection) to keep input and output stream in terminal type.

@@ -29,29 +29,6 @@ normalize_server_url() {
   echo "http://${removed_path}"
 }
 
-# Install dev_image/etc/description from description payload.
-install_description() {
-  local real_usb_dev="$(findLSBValue REAL_USB_DEV)"
-  [ -n "${real_usb_dev}" ] || return 0
-  local stateful_dev=${real_usb_dev%[0-9]*}1
-  local mount_point="$(mktemp -d)"
-  local board="$(findLSBValue CHROMEOS_RELEASE_BOARD)"
-  local json_path="${mount_point}/cros_payloads/${board}.json"
-  local temp_path="$(mktemp)"
-
-  echo 'Installing description...'
-
-  mount -o ro "${stateful_dev}" "${mount_point}"
-  cros_payload install_optional "${json_path}" "${temp_path}" description
-  umount "${stateful_dev}"
-  rmdir "${mount_point}"
-
-  cat "${temp_path}" >"${DESCRIPTION_FILE}"
-  rm "${temp_path}"
-}
-
-install_description
-
 # Variables from dev_image/etc/lsb-factory that developers may want to override.
 #
 # - Override this if we want to install with a board different from installer
