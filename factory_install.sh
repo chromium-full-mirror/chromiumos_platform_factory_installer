@@ -108,6 +108,11 @@ is_allow_debug() {
   grep -qw "cros_debug" /proc/cmdline
 }
 
+# Checks if complete prompt is disabled.
+is_complete_prompt_disabled() {
+  grep -qw "nocompleteprompt" /proc/cmdline
+}
+
 # Checks if the system has been boot by Ctrl-U.
 is_dev_firmware() {
   crossystem "mainfw_type?developer" 2>/dev/null
@@ -1081,7 +1086,6 @@ action_i() {
   fi
 
   sync
-  factory_on_complete
   # Some installation procedure may clear or reset NVdata, so we want to ensure
   # TPM will be cleared again.
   crossystem clear_tpm_owner_request=1 || true
@@ -1090,11 +1094,15 @@ action_i() {
   echo_huge_ok
   log "Factory Installer Complete."
   sync
-  if [ "${COMPLETE_PROMPT}" != "false" ] && [ "${TTY}" != /dev/null ]; then
+
+  factory_on_complete
+  # Both kernel command line and lsb-factory can disable complete prompt.
+  if is_complete_prompt_disabled || [ "${COMPLETE_PROMPT}" = "false" ] \
+                                 || [ "${TTY}" = /dev/null ]; then
+    sleep 3
+  else
     printf "Press Enter to restart... "
     head -c 1 >/dev/null
-  else
-    sleep 3
   fi
 
   # Default action after installation: reboot.
