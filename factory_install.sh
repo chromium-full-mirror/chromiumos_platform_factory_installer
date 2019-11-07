@@ -69,6 +69,7 @@ DST_STATE_PART=1
 # action_i); see the handlers for more information about what
 # each option is.
 SUPPORTED_ACTIONS=cdefimrstuvyz
+SUPPORTED_ACTIONS_BOARD=
 
 GSCTOOL="gsctool"
 PROD_CR50_PATH="opt/google/cr50/firmware/cr50.bin.prod"
@@ -954,7 +955,7 @@ menu_line() {
 
 # Checks if the given action is valid and supported.
 is_valid_action() {
-  echo "$1" | grep -q "^[${SUPPORTED_ACTIONS}]$"
+  echo "$1" | grep -q "^[${SUPPORTED_ACTIONS}${SUPPORTED_ACTIONS_BOARD}]$"
 }
 
 check_devmode_is_allowed() {
@@ -979,9 +980,14 @@ check_devmode_is_allowed() {
   return 0
 }
 
-# Displays a menu, saving the action (one of ${SUPPORTED_ACTIONS}, always
-# lowercase) in the "ACTION" variable.  If no valid action is chosen,
-# ACTION will be empty.
+# Virtual function to show menu of board-specific actions.
+menu_board() {
+  return 0
+}
+
+# Displays a menu, saving the action (one of ${SUPPORTED_ACTIONS} or
+# ${SUPPORTED_ACTIONS_BOARD}, always lowercase) in the "ACTION" variable. If no
+# valid action is chosen, ACTION will be empty.
 menu() {
   # Clear up terminal
   stty sane echo
@@ -1010,6 +1016,8 @@ menu() {
               "Update Cr50 fw from ROOTFS_PARTITION/${PROD_CR50_PATH}"
   menu_line E "Reset Cr50" "Perform RSU (RMA Server Unlock)"
   menu_line M "Cr50 factory mode" "Enable Cr50 factory mode"
+
+  menu_board
 
   echo
   read -p 'action> ' ACTION
@@ -1373,7 +1381,8 @@ main() {
     log "Default action: [${DEFAULT_ACTION}]."
     if ! is_valid_action "${DEFAULT_ACTION}"; then
       log "Action [${DEFAULT_ACTION}] is invalid."
-      log "Only support ${SUPPORTED_ACTIONS}. Will fallback to normal menu..."
+      log "Only support ${SUPPORTED_ACTIONS}${SUPPORTED_ACTIONS_BOARD}."
+      log "Will fallback to normal menu..."
       DEFAULT_ACTION=""
       sleep 3
     fi
