@@ -92,6 +92,27 @@ default action of the shim menu (listed from high priority to low priority).
      to **<action>**. For instance, `DEFAULT_ACTION=i` sets the default action
      to **(I) Install**.
 
+### Board-specific actions
+
+With technique
+[installer resource](https://chromium.googlesource.com/chromiumos/platform/factory/+/HEAD/resources/README.md#installer-resource)
+in factory-board, you can add some board-specific actions by defining variables
+and functions in `factory_install_board.sh` in private overlay. For example:
+
+```sh
+#!/bin/bash
+
+SUPPORTED_ACTIONS_BOARD=x
+
+menu_board() {
+    menu_line X "Magic Command" "Run magic command"
+}
+
+action_x() {
+    echo "Magic on board ${BOARD}."
+}
+```
+
 ## Debugging a factory shim
 Factory shims do not provide shells by default for security reason. If you can
 still see virtual terminal consoles, try VT0, VT1, VT2, VT3 - there are lots of
