@@ -423,10 +423,10 @@ clear_block_devmode() {
 }
 
 reset_chromeos_device() {
-  log "Clearing NVData."
-  if ! mosys nvram clear; then
-    # Not every platforms really need this - OK if nvram is not cleared.
-    log "Warning: NVData not cleared."
+  if [[ -e /dev/nvram ]]; then
+    log "Clearing NVData."
+    dd if=/dev/zero of=/dev/nvram bs=1 count="$(wc -c </dev/nvram)" \
+      status=none conv=nocreat || log "Failed to clear NVData (non-critical)."
   fi
 
   clear_block_devmode
