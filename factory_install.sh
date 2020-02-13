@@ -840,7 +840,7 @@ factory_install_usb() {
 
   local mount_point="$(mktemp -d)"
   mount -o ro "${stateful_dev}" "${mount_point}"
-  local json_path="$(cros_payload_metadata "${mount_point}" 'cros_payloads')"
+  local json_path="$(cros_payload_metadata "${mount_point}")"
   umount "${stateful_dev}"
   rmdir "${mount_point}"
 

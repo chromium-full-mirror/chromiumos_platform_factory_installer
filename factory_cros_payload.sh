@@ -11,7 +11,7 @@
 # Get the cros_payload metadata by searching for model and board names.
 cros_payload_metadata() {
   local src_media="$1"
-  local payloads_dir="$2"
+  local payloads_dir="dev_image/opt/cros_payloads"
   local model="$(mosys platform model)"
   local model_json_path="${payloads_dir}/${model}.json"
   local board="$(findLSBValue CHROMEOS_RELEASE_BOARD)"
@@ -34,7 +34,7 @@ cros_payload_patch_lsb_factory() {
 
   echo 'Patching lsb-factory...'
 
-  local json_path="$(cros_payload_metadata "${mount_point}" 'cros_payloads')"
+  local json_path="$(cros_payload_metadata "${mount_point}")"
   local json_url="${mount_point}/${json_path}"
   if [ -n "${json_url}" ]; then
     # If the RMA shim doesn't have lsb_factory payload, this command will fail,
@@ -61,7 +61,7 @@ cros_payload_patch_cutoff_config() {
 
   echo 'Patching cutoff config...'
 
-  local json_path="$(cros_payload_metadata "${mount_point}" 'cros_payloads')"
+  local json_path="$(cros_payload_metadata "${mount_point}")"
   local json_url="${mount_point}/${json_path}"
   if [ -n "${json_url}" ]; then
     # Get toolkit config in cros_payload.
@@ -96,7 +96,7 @@ cros_payload_install_description() {
 
   echo 'Installing description...'
 
-  local json_path="$(cros_payload_metadata "${mount_point}" 'cros_payloads')"
+  local json_path="$(cros_payload_metadata "${mount_point}")"
   local json_url="${mount_point}/${json_path}"
   if [ -n "${json_url}" ]; then
     cros_payload install_optional "${json_url}" "${temp_path}" description
