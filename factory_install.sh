@@ -194,8 +194,6 @@ check_fw_swwp() {
     echo "There is no EC, skip checking EC SWWP"
     return 0
   fi
-  # Note "crossystem sw_wpsw_boot" only works on Baytrail systems, so we have to
-  # use flashrom for better compatibility.
   flashrom -p "${target}" --wp-status 2>/dev/null |
     grep -q "write protect is enabled"
 }
@@ -966,24 +964,26 @@ is_valid_action() {
 
 check_devmode_is_allowed() {
   # Check block_devmode flag
-  echo "Checking block_devmode flags"
-  if crossystem 'block_devmode?1' 'wpsw_boot?1' 2>/dev/null; then
-    echo
-    echo "crossystem flag 'block_devmode' is set on a write protected device."
-    echo
-    echo "You need to disable hardware write protection to bypass this check."
-    echo
-
-    # Run cr50-reset.sh if available
-    if command -v /usr/share/cros/cr50-reset.sh >/dev/null; then
-      echo "Defaulting to RMA reset"
-      sleep 2
-      # Perform an RMA reset
-      action_e
-    fi
-    return 1
+  echo "Checking block_devmode flag"
+  if crossystem 'block_devmode?0' 2>/dev/null ||
+     crossystem 'wpsw_cur?0' 2>/dev/null; then
+    return 0
   fi
-  return 0
+
+  echo
+  echo "crossystem flag 'block_devmode' is set on a write protected device."
+  echo
+  echo "You need to disable hardware write protection to bypass this check."
+  echo
+
+  # Run cr50-reset.sh if available
+  if command -v /usr/share/cros/cr50-reset.sh >/dev/null; then
+    echo "Defaulting to RMA reset"
+    sleep 2
+    # Perform an RMA reset
+    action_e
+  fi
+  return 1
 }
 
 # Virtual function to show menu of board-specific actions.
