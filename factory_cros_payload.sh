@@ -11,7 +11,7 @@
 # Get the cros_payload metadata by searching for model and board names.
 cros_payload_metadata() {
   local src_media="$1"
-  local payloads_dir="dev_image/opt/cros_payloads"
+  local payloads_dir="$(cros_payload get_cros_payloads_dir)"
   local model="$(mosys platform model)"
   local model_json_path="${payloads_dir}/${model}.json"
   local board="$(findLSBValue CHROMEOS_RELEASE_BOARD)"
