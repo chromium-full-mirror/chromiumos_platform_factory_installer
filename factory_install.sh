@@ -926,7 +926,7 @@ print_device_info() {
     echo "HWID: ${hwid:-(not set)}"
     echo -n "Dev mode: $(crossystem_on_or_off devsw_boot); "
     echo -n "Recovery mode: $(crossystem_on_or_off recoverysw_boot); "
-    echo -n "HW write protect: $(crossystem_on_or_off wpsw_boot); "
+    echo -n "HW write protect: $(crossystem_on_or_off wpsw_cur); "
     echo "SW write protect: $(command_to_yes_or_no check_fw_swwp host)"
     echo -n "EC present: $(bool_to_yes_or_no "${EC_PRESENT}"); "
     if [ "${EC_PRESENT}" -eq 1 ]; then
