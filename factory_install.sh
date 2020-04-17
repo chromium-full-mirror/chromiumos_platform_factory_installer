@@ -68,7 +68,7 @@ DST_STATE_PART=1
 # Each action x is implemented in an action_$x handler (e.g.,
 # action_i); see the handlers for more information about what
 # each option is.
-SUPPORTED_ACTIONS=cdefimrstuvyz
+SUPPORTED_ACTIONS=bcdefimrstuvyz
 SUPPORTED_ACTIONS_BOARD=
 
 GSCTOOL="gsctool"
@@ -1011,6 +1011,7 @@ menu() {
 
   menu_line I "Install" "Performs a network or USB install"
   menu_line R "Reset" "Performs a factory reset; finalized devices only"
+  menu_line B "Battery cutoff" "Performs a battery cutoff"
   menu_line S "Shell" "Opens bash; available only with developer firmware"
   menu_line V "View configuration" "Shows crossystem, VPD, etc."
   menu_line D "Debug info and logs" \
@@ -1183,6 +1184,11 @@ action_r() {
 
   reset_chromeos_device
   factory_reset
+}
+
+# B = Battery cutoff.
+action_b() {
+  /usr/share/cutoff/cutoff.sh
 }
 
 # S = Shell.
