@@ -1160,6 +1160,7 @@ action_r() {
 
 # B = Battery cutoff.
 action_b() {
+  crossystem disable_dev_request=1
   "/usr/share/cutoff/cutoff.sh"
 }
 
