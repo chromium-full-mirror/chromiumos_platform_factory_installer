@@ -758,8 +758,13 @@ cros_payload_get_server_json_path() {
     return 1
   fi
   echo "resourcemap: ${resourcemap}" >&2
-  local json_name="$(echo "${resourcemap}" | grep "^payloads: " |
+  # Check if multicast config exists
+  local json_name="$(echo "${resourcemap}" | grep "^multicast: " |
     cut -d ' ' -f 2)"
+  if [ -z "${json_name}" ]; then
+    # Multicast config not found. Fallback to normal payload config.
+    json_name="$(echo "${resourcemap}" | grep "^payloads: " | cut -d ' ' -f 2)"
+  fi
   if [ -n "${json_name}" ]; then
     echo "res/${json_name}"
   else
