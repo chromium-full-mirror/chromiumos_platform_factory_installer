@@ -798,7 +798,7 @@ factory_install_cros_payload() {
 
   # Install optional components.
   cros_payload install_optional "${json_url}" "${DST_DRIVE}" \
-    release_image.crx_cache hwid toolkit_config configproto
+    release_image.crx_cache hwid toolkit_config project_config
   cros_payload install_optional "${json_url}" "${tmp_dir}" firmware complete
 
   if [ -n "${src_mount}" ]; then
