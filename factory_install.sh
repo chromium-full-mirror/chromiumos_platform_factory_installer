@@ -502,6 +502,12 @@ load_modules() {
   modprobe i2c-dev || true
 }
 
+unload_modules() {
+  # Unload keyboard backlight related modules to prevent flashrom failed.
+  rmmod wilco_ec_telem wilco_charge_schedule wilco_charger rtc_wilco_ec \
+    wilco_ec_debugfs wilco_ec wilco_ec_events
+}
+
 prepare_disk() {
   log "Factory Install: Setting partition table"
 
@@ -1004,6 +1010,7 @@ menu() {
   # Enable cursor (if tput is available)
   tput cnorm 2>/dev/null || true
 
+
   echo
   echo
   echo Please select an action and press Enter.
@@ -1367,6 +1374,7 @@ main() {
   lightup_screen
 
   load_modules
+  unload_modules
 
   colorize white
   clear
