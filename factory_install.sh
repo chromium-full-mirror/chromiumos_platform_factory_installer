@@ -1179,6 +1179,9 @@ action_r() {
     return
   fi
 
+  log "Disable lid open power on."
+  echo 00 f0 88 00 0d >/sys/kernel/debug/wilco_ec/raw
+
   check_fw_swwp host && check_fw_swwp ec || ! is_pvt_phase || \
     die "SW write protect is not enabled in the device with PVT phase."
 
