@@ -1180,8 +1180,6 @@ action_r() {
   fi
 
   log "Disable lid open power on."
-  modprobe wilco_ec wilco_ec_events || \
-    die "Load modules wilco_ec and wilco_ec_events failed."
   echo 00 f0 88 00 0d >/sys/kernel/debug/wilco_ec/raw
 
   check_fw_swwp host && check_fw_swwp ec || ! is_pvt_phase || \
