@@ -90,7 +90,7 @@ patch_new_root() {
   # journald: it expects systemd-journald exists, which is not available in
   #     factory shim.
   local disabled_jobs
-  disabled_jobs="arc-oemcrypto powerd swap syslog tpm-probe ui update-engine
+  disabled_jobs="cdm-oemcrypto powerd swap syslog tpm-probe ui update-engine
                  journald"
 
   for job in ${disabled_jobs}; do
