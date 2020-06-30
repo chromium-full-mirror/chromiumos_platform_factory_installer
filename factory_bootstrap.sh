@@ -91,7 +91,7 @@ patch_new_root() {
   #     factory shim.
   local disabled_jobs
   disabled_jobs="cdm-oemcrypto powerd swap syslog tpm-probe ui update-engine
-                 journald"
+                 journald cryptohome-update-userdataauth"
 
   for job in ${disabled_jobs}; do
     file="${new_root}/etc/init/${job}.conf"
