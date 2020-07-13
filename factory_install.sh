@@ -1383,17 +1383,14 @@ main() {
     log "Netbooting. Set default action to (I) Install."
     DEFAULT_ACTION=i
   elif [ "${RMA_AUTORUN}" = "true" ]; then
-    if check_hwwp; then
-      log "Hardware write protect on."
-      if check_need_update_cr50; then
-        log "Cr50 version is old. Set default action to (U) Update Cr50."
-        DEFAULT_ACTION=u
-      else
-        log "Do not need to update cr50. Set default action to (E) Reset Cr50."
-        DEFAULT_ACTION=e
-      fi
+    if check_need_update_cr50; then
+      log "Cr50 version is old. Set default action to (U) Update Cr50."
+      DEFAULT_ACTION=u
+    elif check_hwwp; then
+      log "Hardware write protection on. Set default action to (E) Reset Cr50."
+      DEFAULT_ACTION=e
     else
-      log "Hardware write protect off. Set default action to (I) Install."
+      log "Hardware write protection off. Set default action to (I) Install."
       DEFAULT_ACTION=i
     fi
   fi
