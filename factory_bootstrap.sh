@@ -89,9 +89,11 @@ patch_new_root() {
   #     shim.
   # journald: it expects systemd-journald exists, which is not available in
   #     factory shim.
+  # ext-pci-drivers-allowlist: it depends on syslog.
   local disabled_jobs
   disabled_jobs="cdm-oemcrypto powerd swap syslog tpm-probe ui update-engine
-                 journald cryptohome-update-userdataauth"
+                 journald cryptohome-update-userdataauth
+                 ext-pci-drivers-allowlist"
 
   for job in ${disabled_jobs}; do
     file="${new_root}/etc/init/${job}.conf"
