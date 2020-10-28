@@ -12,7 +12,12 @@
 cros_payload_metadata() {
   local src_media="$1"
   local payloads_dir="$(cros_payload get_cros_payloads_dir)"
-  local model="$(mosys platform model)"
+
+  local model="$(cros_config / name)"
+  if [ -z "${model}" ]; then
+    model="$(mosys platform model)"
+  fi
+
   local model_json_path="${payloads_dir}/${model}.json"
   local board="$(findLSBValue CHROMEOS_RELEASE_BOARD)"
   local board_json_path="${payloads_dir}/${board}.json"
