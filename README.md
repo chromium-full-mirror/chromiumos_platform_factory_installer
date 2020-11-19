@@ -38,22 +38,22 @@ Factory shims are signed in a special way for security reasons. It needs to
 boot with "developer switch turned on" and "boot in recovery mode".
 
 ### Boot from install shim (clamshells / convertibles)
-  1. Press `ESC + F3(REFRESH) + POWER` to enter recovery mode
+  1. Enter recovery mode
   2. Press `CTRL + D` to turn on developer switch
   3. Press `ENTER` to confirm
-  4. Press `ESC + F3(REFRESH) + POWER` to enter recovery mode again (no need to
-     wait for wiping)
+  4. Enter recovery mode again (no need to wait for wiping)
   5. Insert and boot from USB stick with `rma_image.bin`
 
 ### Boot from install shim (tablets / detachables)
-  1. Press `POWER + VOL_UP + VOL_DOWN` for at least 10 seconds, and release them
-     to enter recovery mode
+  1. Enter recovery mode
   2. Press `VOL_UP + VOL_DOWN` to show recovery menu
   3. Press `VOL_UP` or `VOL_DOWN` to move the cursor to "Confirm Disabling OS
      Verification", and press `POWER` to select it
-  4. Press `POWER + VOL_UP + VOL_DOWN` for at least 10 seconds, and release them
-     to enter recovery mode again (no need to wait for wiping)
+  4. Enter recovery mode again (no need to wait for wiping)
   5. Insert and boot from USB stick with `rma_image.bin`
+
+See [here](https://google.com/chromeos/recovery) for instructions to enter
+recovery mode.
 
 If you boot factory shim in developer mode (`Ctrl-U`), some functions won't
 work, such as recovering TPM.
