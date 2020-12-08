@@ -78,6 +78,11 @@ patch_new_root() {
     echo 'echo "Sorry, $0 is disabled on factory installer image."' >>"${file}"
   fi
 
+  # Copy and override factory-shim specific jobs.
+  for file in "${new_root}"/usr/share/factory_installer/init/*.conf; do
+    cp "${file}" "${new_root}/etc/init/"
+  done
+
   # Set network to start up another way.
   file="${new_root}/etc/init/boot-complete.conf"
   if check_exists "${file}" "${new_root}"; then
@@ -105,11 +110,10 @@ patch_new_root() {
 
   # Dummy jobs are empty single shot tasks because there may be services waiting
   # them to finish.
-  # - pre-startup.conf: will mount new /tmp and /run, which we want to preserve.
   # - boot-splash.conf: will try to invoke another frecon instance.
   # - cr50-update.conf: will try to update cr50 firmware, which we want to do
   #     explicitly (via action_u in factory_install.sh).
-  local dummy_jobs="pre-startup boot-splash cr50-update"
+  local dummy_jobs="boot-splash cr50-update"
 
   for job in ${dummy_jobs}; do
     file="${new_root}/etc/init/${job}.conf"
