@@ -816,7 +816,8 @@ factory_install_cros_payload() {
 
   # Disable release partition and activate factory partition
   disable_release_partition
-  run_postinst "$(make_partition_dev "${DST_DRIVE}" "${DST_FACTORY_PART}")"
+  run_postinst "$(make_partition_dev "${DST_DRIVE}" "${DST_FACTORY_PART}")" ||
+    die "Failed running postinst script."
   stateful_postinst "$(make_partition_dev "${DST_DRIVE}" "${DST_STATE_PART}")"
 
   if [ -s "${tmp_dir}/firmware" ]; then
