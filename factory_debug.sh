@@ -6,9 +6,12 @@
 
 # This script contains debug functions called by factory_install.sh
 
+. "/usr/share/misc/storage-info-common.sh"
+. "/usr/sbin/write_gpt.sh"
+
 DEBUG_FUNCTIONS=(call_dev_debug_vboot call_mosys_eventlog sys_fw_log call_dmesg
                  call_get_storage_info checksums call_lspci cat_write_gpt
-                 dd_storage)
+                 dd_storage debug_get_fixed_dst_drive)
 
 # Checks if the given debug action is valid and supported.
 is_valid_debug_action() {
@@ -28,6 +31,7 @@ debug_menu() {
   echo "##   6) lspci"
   echo "##   7) /usr/sbin/write_gpt.sh"
   echo "##   8) dd storage device"
+  echo "##   9) get_fixed_dst_drive logs"
   echo "##   s) Save all debug information to USB"
   echo "##   q) Quit debug console"
 }
@@ -107,6 +111,45 @@ dd_storage() {
       fi
     done
   done
+}
+
+debug_get_fixed_dst_drive() {
+  load_base_vars
+  # Modify get_fixed_dst_drive function from
+  # platform2/chromeos-common-script/share/chromeos-common.sh
+  # and add more logs to help debug "Cannot find fixed drive." issue.
+  local dev rootdev
+  echo "DEFAULT_ROOTDEV: ${DEFAULT_ROOTDEV}"
+  if [ -n "${DEFAULT_ROOTDEV}" ]; then
+    # No " here, the variable may contain wildcards.
+    for rootdev in ${DEFAULT_ROOTDEV}; do
+      echo "rootdev: ${rootdev}"
+      dev="/dev/$(basename "${rootdev}")"
+      echo "original dev: ${dev}"
+      if [ -b "${dev}" ]; then
+        echo "original dev exists"
+        case "${dev}" in
+          *nvme*)
+            dev="/dev/$(get_largest_nvme_namespace "${dev}")"
+            ;;
+        esac
+        break
+      else
+        echo "original dev does not exist"
+        dev=""
+      fi
+    done
+  else
+    echo "DEFAULT_ROOTDEV does not exist"
+    dev=""
+  fi
+  echo "final dev: ${dev}"
+  echo "If your devices path is not in the DEFAULT_ROOTDEV,"
+  echo "then update baseboard-BOARD/scripts/disk_layout.json"
+  echo "nvme:"
+  echo "$(find /sys/devices -name nvme*)"
+  echo "mmc:"
+  echo "$(find /sys/devices -name mmc*)"
 }
 
 debug_save_logs() {
