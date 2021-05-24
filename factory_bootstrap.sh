@@ -98,7 +98,7 @@ patch_new_root() {
   local disabled_jobs
   disabled_jobs="cdm-oemcrypto powerd swap syslog tpm-probe ui update-engine
                  journald cryptohome-update-userdataauth
-                 ext-pci-drivers-allowlist"
+                 ext-pci-drivers-allowlist activate_date tlsdated"
 
   for job in ${disabled_jobs}; do
     file="${new_root}/etc/init/${job}.conf"
