@@ -22,6 +22,7 @@ fi
 . "/usr/sbin/write_gpt.sh"
 . "$(dirname "$0")/factory_common.sh"
 . "$(dirname "$0")/factory_cros_payload.sh"
+. "$(dirname "$0")/factory_tpm.sh"
 
 normalize_server_url() {
   local removed_protocol="${1#http://}"
@@ -68,11 +69,8 @@ DST_STATE_PART=1
 # Each action x is implemented in an action_$x handler (e.g.,
 # action_i); see the handlers for more information about what
 # each option is.
-SUPPORTED_ACTIONS=bcdefimrstuvyz
+SUPPORTED_ACTIONS=bcdeimrstuvyz
 SUPPORTED_ACTIONS_BOARD=
-
-GSCTOOL="gsctool"
-PROD_CR50_PATH="opt/google/cr50/firmware/cr50.bin.prod"
 
 # Define our own logging function.
 log() {
@@ -225,120 +223,10 @@ ensure_fwwp_consistency() {
   fi
 }
 
-copy_prod_cr50_firmware() {
-  # Create a copy of prod cr50 firmware in rootfs to a temporary file.
-  # The caller is responsible for deleting the temp file.
-  local rootfs_dev="$(findLSBValue REAL_USB_DEV)"
-  [ -n "${rootfs_dev}" ] ||
-    die "Unknown media source. Please define REAL_USB_DEV."
-  local mount_point="$(mktemp -d)"
-  local firmware_path="${mount_point}/${PROD_CR50_PATH}"
-  local temp_firmware="$(mktemp)"
-
-  mount -o ro "${rootfs_dev}" "${mount_point}"
-  cp "${firmware_path}" "${temp_firmware}"
-  umount "${rootfs_dev}"
-  rmdir "${mount_point}"
-
-  echo "${temp_firmware}"
-}
-
-get_cr50_output_value() {
-  local output="$1"
-  local key="$2"
-  echo "${output}" | grep "^${key}" | sed "s/${key}=//g"
-}
-
-get_cr50_board_id_flags() {
-  get_cr50_output_value "$(${GSCTOOL} -a -i -M)" 'BID_FLAGS'
-}
-
-get_cr50_rw_version() {
-  get_cr50_output_value "$(${GSCTOOL} -a -f -M)" 'RW_FW_VER'
-}
-
-get_cr50_image_rw_version() {
-  get_cr50_output_value "$(${GSCTOOL} -b -M "$1")" 'IMAGE_RW_FW_VER'
-}
-
-check_need_update_cr50() {
-  local temp_firmware="$(copy_prod_cr50_firmware)"
-  local image_version="$(get_cr50_image_rw_version "${temp_firmware}")"
-  local image_version_major=$(echo "${image_version}" | cut -d '.' -f 2)
-  local image_version_minor=$(echo "${image_version}" | cut -d '.' -f 3)
-  rm "${temp_firmware}"
-
-  local device_version="$(get_cr50_rw_version)"
-  local device_version_major=$(echo "${device_version}" | cut -d '.' -f 2)
-  local device_version_minor=$(echo "${device_version}" | cut -d '.' -f 3)
-
-  # Update only if the cr50 in install shim has version 0.3.*
-  [ "${image_version_major}" -eq 3 ] || return 1
-
-  # Update only if cr50 version on the device is smaller than the cr50 version
-  # in install shim. Some older devices may have cr50 version 0.0.*, 0.1.* or
-  # 0.2.*, and we also update these devices to 0.3.*.
-  # See go/cr50-release-notes for more information.
-  if [ "${device_version_major}" -ne "${image_version_major}" ]; then
-    [ "${device_version_major}" -lt "${image_version_major}" ]
-  else
-    [ "${device_version_minor}" -lt "${image_version_minor}" ]
-  fi
-}
-
-is_cr50_factory_mode_enabled() {
-  # If the cr50 RW version is 0.0.*, the device is booted to install shim
-  # straight from factory. The cr50 firmware does not support '-I' option and
-  # factory mode, so we treat it as factory mode enabled to avoid turning on
-  # factory mode.
-  local rw_version="$(get_cr50_rw_version)"
-  if [[ "${rw_version}" = '0.0.'* ]]; then
-    echo "Cr50 version is ${rw_version}. Assume factory mode enabled."
-    return 0
-  fi
-  # The pattern of output is as below in case of factory mode enabled:
-  # State: Locked
-  # Password: None
-  # Flags: 000000
-  # Capabilities, current and default:
-  #   ...
-  # Capabilities are modified.
-  #
-  # If factory mode is disabed then the last line would be
-  # Capabilities are default.
-  ${GSCTOOL} -a -I 2>/dev/null | \
-    grep '^Capabilities are modified.$' >/dev/null
-  return $?
-}
-
-enable_cr50_factory_mode() {
-  if check_hwwp; then
-    die "The hardware write protection should be disabled first."
-  fi
-
-  log "Starting to enable factory mode and will reboot automatically."
-  local ret=0
-  ${GSCTOOL} -a -F enable 2>&1 || ret=$?
-
-  if [ ${ret} != 0 ]; then
-    local ver="$(get_cr50_rw_version)"
-    log "Failed to enable factory mode; cr50 version: ${ver}"
-    log "Try RSU..."
-    action_e || die "Failed to perform RSU..."
-    # action_e should reboot if it succeeds.
-    return 0
-  fi
-
-  # Once enabling factory mode, system should reboot automatically.
-  log "Successfully to enable factory mode and should reboot soon."
-  # sleep indefinitely to avoid re-spawning rather than reboot.
-  sleep 1d
-}
-
 is_pvt_phase() {
   # If there is any error then pvt phase is returned as a safer default
   # option.
-  local bid_flags="0x$(get_cr50_board_id_flags)"
+  local bid_flags="0x$(tpm_get_board_id_flags)"
 
   # If board phase is not 0x0 then this is a development board.
   local pre_pvt=$(( bid_flags & 0x7F ))
@@ -942,8 +830,7 @@ print_device_info() {
     if [ "${EC_PRESENT}" -eq 1 ]; then
       echo -n "EC SW write protect: $(command_to_yes_or_no check_fw_swwp ec); "
     fi
-    echo -n "Cr50 version: $(get_cr50_rw_version); "
-    echo "Board ID flags: 0x$(get_cr50_board_id_flags)"
+    echo -n "$(tpm_get_info)"
     echo
     local description=""
     if [ -s "${DESCRIPTION_FILE}" ]; then
@@ -986,11 +873,10 @@ check_devmode_is_allowed() {
   echo "You need to disable hardware write protection to bypass this check."
   echo
 
-  # Run cr50-reset.sh if available
-  if command -v /usr/share/cros/cr50-reset.sh >/dev/null; then
-    echo "Defaulting to RMA reset"
+  if tpm_check_rsu_support; then
+    echo "Defaulting to perform RSU (RMA server unlock)"
     sleep 2
-    # Perform an RMA reset
+    # Perform RSU
     action_e
   fi
   return 1
@@ -1028,11 +914,9 @@ menu() {
   menu_line Y "VerifY erase" \
               "Verifies the storage has been erased with option C"
   menu_line T "Reset TPM" "Call chromeos-tpm-recovery"
-  menu_line F "Update TPM Firmware" "Call tpm-firmware-update-factory"
-  menu_line U "Update Cr50" \
-              "Update Cr50 fw from ROOTFS_PARTITION/${PROD_CR50_PATH}"
-  menu_line E "Reset Cr50" "Perform RSU (RMA Server Unlock)"
-  menu_line M "Cr50 factory mode" "Enable Cr50 factory mode"
+  menu_line U "Update TPM firmware" "Update TPM firmware"
+  menu_line E "Perform RSU" "Perform RSU (RMA Server Unlock)"
+  menu_line M "Enable factory mode" "Enable TPM factory mode"
 
   menu_board
 
@@ -1053,11 +937,6 @@ menu() {
 #
 # Action handlers
 #
-
-# F = tpm-firmware-update-factory
-action_f() {
-  /usr/share/cros/init/tpm-firmware-update-factory.sh
-}
 
 # I = Install.
 action_i() {
@@ -1133,16 +1012,16 @@ action_i() {
   # Default action after installation: reboot.
   trap - EXIT
 
-  # Cr50 factory mode can only be enabled when hardware write protection is
+  # TPM factory mode can only be enabled when hardware write protection is
   # disabled. Assume we only do netboot in factory, so that in netboot
   # environment we don't need to enable factory mode because the device should
   # already be in factory mode.
   # TODO(chenghan) Figure out the use case of netboot besides factory process.
-  if [ -z "${NETBOOT_RAMFS}" ] && ! is_cr50_factory_mode_enabled \
-                               && ! check_hwwp; then
-    # Enabling cr50 factory mode would trigger a reboot automatically and be
-    # halt inside this function until reboots.
-    enable_cr50_factory_mode
+  if [ -z "${NETBOOT_RAMFS}" ] && ! check_hwwp; then
+    # Enable factory mode if it's supported.
+    # Enabling factory mode would trigger a reboot automatically and be halt
+    # inside this function until reboots.
+    tpm_enable_factory_mode
   fi
 
   # Try to do EC reboot. If it fails, do normal reboot.
@@ -1310,51 +1189,19 @@ action_t() {
   chromeos-tpm-recovery
 }
 
-# U = Update Cr50
+# U = Update TPM firmware
 action_u() {
-  local temp_firmware="$(copy_prod_cr50_firmware)"
-
-  local result=0
-  "${GSCTOOL}" -a -u "${temp_firmware}" || result="$?"
-
-  rm "${temp_firmware}"
-
-  # Allow 0(no-op), 1(all_updated), 2(rw_updated), other return values are
-  # considered fail.
-  # See trunk/src/platform/ec/extra/usb_updater/gsctool.h for more detail.
-  case "${result}" in
-    "0" )
-      log "Cr50 not updated. Returning to shim menu."
-      # sleep for a while to show the messages
-      sleep 3
-      return 0
-      ;;
-    "1" | "2" )
-      log "Cr50 updated. System will reboot shortly."
-      # sleep for a while to show the messages
-      sleep 3
-      reboot
-      sleep 1d
-      return 0
-      ;;
-    *)
-      die "gsctool execution failed as ${result}."
-      ;;
-  esac
+  tpm_update_firmware
 }
 
-# E = Reset Cr50
+# E = Perform RSU
 action_e() {
-  /usr/share/cros/cr50-reset.sh
+  tpm_perform_rsu
 }
 
-# M = Enable Cr50 factory mode
+# M = Enable TPM factory mode
 action_m() {
-  if is_cr50_factory_mode_enabled; then
-    log "Factory mode was already enabled."
-  else
-    enable_cr50_factory_mode
-  fi
+  tpm_enable_factory_mode
 }
 
 main() {
@@ -1384,12 +1231,23 @@ main() {
     log "Netbooting. Set default action to (I) Install."
     DEFAULT_ACTION=i
   elif [ "${RMA_AUTORUN}" = "true" ]; then
-    if check_need_update_cr50; then
-      log "Cr50 version is old. Set default action to (U) Update Cr50."
-      DEFAULT_ACTION=u
-    elif check_hwwp; then
-      log "Hardware write protection on. Set default action to (E) Reset Cr50."
-      DEFAULT_ACTION=e
+    if check_hwwp; then
+      # HWWP is ON, let's check if we can do RSU.
+      case "$(tpm_check_rsu_support)" in
+        unsupported)
+          log "RSU is not supported, please disable hareware writeprotect."
+          DEFAULT_ACTION=""
+          ;;
+        supported)
+          log "Hardware write protection on. " \
+              "Set default action to (E) Perform RSU."
+          DEFAULT_ACTION=e
+          ;;
+        need_update)
+          log "TPM version is old. Set default action to (U) Update TPM."
+          DEFAULT_ACTION=u
+          ;;
+      esac
     else
       log "Hardware write protection off. Set default action to (I) Install."
       DEFAULT_ACTION=i

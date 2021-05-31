@@ -73,10 +73,9 @@ by a prompt to select an action.
       C SeCure erase         Performs full storage erase, write a verification pattern
       Y VerifY erase         Verifies the storage has been erased with option C
       T Reset TPM            Call chromeos-tpm-recovery
-      F Update TPM Firmware  Call tpm-firmware-update-factory
-      U Update Cr50          Update Cr50 fw from ROOTFS_PARTITION/opt/google/cr50/firmware/cr50.bin.prod
-      E Reset Cr50           Perform a Cr50 reset
-      M Cr50 factory mode    Enable Cr50 factory mode
+      U Update TPM Firmware  Update TPM firmware
+      E Perform RSU          Perform RSU (RMA Server Unlock)
+      M Enable factory mode  Enable TPM factory mode
 
     action>
 
