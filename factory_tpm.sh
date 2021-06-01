@@ -13,8 +13,11 @@ tpm_init_factory_tpm() {
       # This is "CROS", could be cr50 or ti50.
       source "${script_dir}/cros.sh"
       ;;
+    "49465800")
+      # This is "IFX" ==> infineon TPM
+      source "${script_dir}/infineon.sh"
+      ;;
     *)
-      # TODO(b/189732507): support infineon TPM (49465800)
       log "Unrecognized TPM, manufacturer_info=${manufacturer_info}."
       log "Loading dummy implementation..."
       source "${script_dir}/dummy.sh"
