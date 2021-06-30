@@ -95,7 +95,7 @@ tpm_perform_rsu() {
 }
 
 tpm_check_rsu_support() {
-  if !command -v /usr/share/cros/cr50-reset.sh >/dev/null; then
+  if ! command -v /usr/share/cros/cr50-reset.sh >/dev/null; then
     # cr50-reset.sh is not available, we cannot perform RSU.
     echo "unsupported"
     return 0
