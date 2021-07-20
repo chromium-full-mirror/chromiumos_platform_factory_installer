@@ -18,9 +18,9 @@ tpm_init_factory_tpm() {
       source "${script_dir}/infineon.sh"
       ;;
     *)
-      log "Unrecognized TPM, manufacturer_info=${manufacturer_info}."
-      log "Loading dummy implementation..."
-      source "${script_dir}/dummy.sh"
+      echo "Unrecognized TPM, manufacturer_info=${manufacturer_info}."
+      echo "Loading stub implementation..."
+      source "${script_dir}/stub.sh"
       ;;
   esac
 }
