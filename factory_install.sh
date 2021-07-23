@@ -71,10 +71,10 @@ DST_STATE_PART=1
 SUPPORTED_ACTIONS=bcdefimrstuvyz
 SUPPORTED_ACTIONS_BOARD=
 
-# Supported actions when the device is enrolled.
+# Supported actions when RSU is required.
 # We only support [e] RMA unlock to do RSU, and [u] Update Cr50 in case a device
 # has an older Cr50 version that doesn't support RSU.
-SUPPORTED_ACTIONS_ENROLLED=eu
+SUPPORTED_ACTIONS_RSU_REQUIRED=eu
 
 GSCTOOL="gsctool"
 PROD_CR50_PATH="opt/google/cr50/firmware/cr50.bin.prod"
@@ -185,18 +185,22 @@ die() {
   exit 1
 }
 
-is_enrolled() {
-  log "Checking enrollment."
+is_rsu_required() {
+  log "Checking if RSU is required."
   local flags
-  local FLAG_DEVELOPER_DISABLE_BOOT="0x1"
 
-  # Check if FWMP is present and has DEVELOPER_DISABLE_BOOT flag.
-  # When FWMP is not present, from coreboot's point of view, all flags are zero
-  # and the result is consistent (device not enrolled).
   flags="$(cryptohome --action=get_firmware_management_parameters |
-           grep -o "flags: [[:digit:]]\+" | sed 's/flags: //g')"
-  if [ -z "${flags}" ] ||
-     [ $(( flags & FLAG_DEVELOPER_DISABLE_BOOT )) -eq 0 ]; then
+           grep -o "flags=0x[0-9a-f]\+" | cut -d = -f 2)"
+
+  # TODO(b/138385402): This is a workaround. Change it in the future when the
+  #                    requirements for enabling cr50 factory mode changes.
+  # Only check if FWMP is present, and don't check DEVELOPER_DISABLE_BOOT.
+  # In edge cases where FWMP is set but doesn't have DEVELOPER_DISABLE_BOOT
+  # flag, the device is technically not forced enrolled, but cr50 still refuses
+  # to enable factory mode, and the user needs to keep the device open to
+  # disable HWWP. For repair convenience, we treat this as an enrolled device
+  # and force RSU to avoid the awkward repair process.
+  if [ -z "${flags}" ]; then
     return 1
   fi
   return 0
@@ -993,9 +997,9 @@ is_valid_action() {
   echo "$1" | grep -q "^[${SUPPORTED_ACTIONS}${SUPPORTED_ACTIONS_BOARD}]$"
 }
 
-# Checks if the given action is valid and supported on an enrolled device.
-is_valid_action_when_enrolled() {
-  echo "$1" | grep -q "^[${SUPPORTED_ACTIONS_ENROLLED}]$"
+# Checks if the given action is valid and supported if RSU is required.
+is_valid_action_when_rsu_required() {
+  echo "$1" | grep -q "^[${SUPPORTED_ACTIONS_RSU_REQUIRED}]$"
 }
 
 # Virtual function to show menu of board-specific actions.
@@ -1389,8 +1393,8 @@ main() {
     if check_need_update_cr50; then
       log "Cr50 version is old. Set default action to (U) Update Cr50."
       DEFAULT_ACTION=u
-    elif is_enrolled; then
-      log "Device is enrolled. " \
+    elif is_rsu_required; then
+      log "RSU is required. " \
           "Set default action to (E) Perform RSU."
       DEFAULT_ACTION=e
     elif check_hwwp; then
@@ -1405,9 +1409,10 @@ main() {
   # Sanity check default action
   if [ -n "${DEFAULT_ACTION}" ]; then
     log "Default action: [${DEFAULT_ACTION}]."
-    if is_enrolled && ! is_valid_action_when_enrolled "${DEFAULT_ACTION}"; then
-      log "Action [${DEFAULT_ACTION}] is invalid when device is enrolled."
-      log "Only support ${SUPPORTED_ACTIONS_ENROLLED}."
+    if is_rsu_required &&
+       ! is_valid_action_when_rsu_required "${DEFAULT_ACTION}"; then
+      log "Action [${DEFAULT_ACTION}] is invalid when RSU is required."
+      log "Only support ${SUPPORTED_ACTIONS_RSU_REQUIRED}."
       log "Will fallback to normal menu..."
       DEFAULT_ACTION=""
       sleep 3
@@ -1449,8 +1454,8 @@ main() {
       # Default action is set and no key pressed: perform the default action.
       "action_${DEFAULT_ACTION}"
     else
-      if is_enrolled; then
-        # Device is enrolled. Do RSU first.
+      if is_rsu_required; then
+        # RSU is required.
         colorize yellow
         echo
         echo "This device has FWMP and blocks developer mode."
