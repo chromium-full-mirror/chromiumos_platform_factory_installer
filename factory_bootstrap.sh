@@ -90,7 +90,7 @@ patch_new_root() {
   printf ""
 }
 
-# Usage: patch_new_root new_root
+# Usage: patch_new_run new_root
 # Patches new /run (tmpfs) under new_root for booting into factory shim
 # environment.
 patch_new_run() {
@@ -122,9 +122,23 @@ patch_new_run() {
   printf ""
 }
 
+# Usage: patch_dev
+# Patches /dev for booting into factory shim environment. /dev will later be
+# mount moved to new_root so we can make changes in the current root.
+patch_dev() {
+  printf "Patching /dev..."
+
+  # Some daemons are run in minijail with `--profile=minimalistic-mountns`
+  # argument, which requires /dev/log to exist.
+  if [ ! -e /dev/log ]; then
+    touch /dev/log
+  fi
+}
+
 main() {
   patch_new_root "$1"
   patch_new_run "$1"
+  patch_dev
 }
 set -e
 main "$@"
