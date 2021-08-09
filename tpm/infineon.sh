@@ -40,7 +40,7 @@ tpm_get_info() {
 #   "7f80" is PVT.
 #   "7f7f" is pre-PVT
 tpm_get_board_id_flags() {
-  # TODO(b/189732507): This is not implemented yet, for now, always return
-  # prepvt.
-  echo "7f7f"
+  # Board ID format from cr50: xxxxxxxx:xxxxxxxx:xxxxxxxx
+  # Retrieve the last 5 characters (4 + 1 newline) using tail command
+  /usr/share/cros/cr50-read-board-id.sh | cut -d ':' -f 3 | tail -c 5
 }
