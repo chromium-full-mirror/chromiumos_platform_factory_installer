@@ -185,6 +185,9 @@ die() {
 }
 
 is_rsu_required() {
+  log "Waiting for cryptohome service"
+  gdbus wait --system org.chromium.Cryptohome
+
   log "Checking if RSU is required."
   local flags
 
