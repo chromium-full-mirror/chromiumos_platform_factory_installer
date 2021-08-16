@@ -191,19 +191,26 @@ is_rsu_required() {
 
   log "Checking if RSU is required."
   local flags
+  local FWMP_DEV_DISABLE_CCD_UNLOCK="0x40"
 
   flags="$(cryptohome --action=get_firmware_management_parameters |
            grep -o "flags=0x[0-9a-f]\+" | cut -d = -f 2)"
 
-  # TODO(b/138385402): This is a workaround. Change it in the future when the
-  #                    requirements for enabling cr50 factory mode changes.
-  # Only check if FWMP is present, and don't check DEVELOPER_DISABLE_BOOT.
-  # In edge cases where FWMP is set but doesn't have DEVELOPER_DISABLE_BOOT
-  # flag, the device is technically not forced enrolled, but cr50 still refuses
-  # to enable factory mode, and the user needs to keep the device open to
-  # disable HWWP. For repair convenience, we treat this as an enrolled device
-  # and force RSU to avoid the awkward repair process.
-  if [ -z "${flags}" ]; then
+  # FWMP_DEV_DISABLE_CCD_UNLOCK (0x40) is set during enterprise enrollment if
+  # dev mode is blocked by the policy. We can use this flag to determine whether
+  # RSU required.
+  #
+  # According to platform/cr50/board/cr50/factory_mode.c, Cr50 allows factory
+  # mode when the following conditions are met:
+  #   - HWWP signal is deasserted (battery disconnected, or pins shorted)
+  #   - FWMP allows CCD unlock. FWMP_DEV_DISABLE_CCD_UNLOCK (0x40) is not set
+  #   - CCD password is not set
+  #
+  # Assuming that CCD password is not set, if FWMP_DEV_DISABLE_CCD_UNLOCK is not
+  # set, RSU is not required and we can enter factory mode by disconnecting the
+  # battery or shorting pins.
+  if [ -z "${flags}" ] ||
+     [ $(( flags & FWMP_DEV_DISABLE_CCD_UNLOCK )) -eq 0 ]; then
     return 1
   fi
   return 0
