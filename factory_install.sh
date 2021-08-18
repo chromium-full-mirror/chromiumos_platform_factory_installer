@@ -184,6 +184,9 @@ die() {
 }
 
 is_rsu_required() {
+  log "Waiting for UserDataAuth service"
+  gdbus wait --system org.chromium.UserDataAuth
+
   log "Checking if RSU is required."
   local flags
   local FWMP_DEV_DISABLE_CCD_UNLOCK="0x40"
