@@ -187,8 +187,32 @@ is_rsu_required() {
   local flags
   local FWMP_DEV_DISABLE_CCD_UNLOCK="0x40"
 
-  flags="$(cryptohome --action=get_firmware_management_parameters |
-           grep -o "flags=0x[0-9a-f]\+" | cut -d = -f 2)"
+  # This is a workaround as cryptohome might fail to read FWMP. According to
+  # platform2/cryptohome/firmware_management_parameters.cc, the structure of
+  # FWMP is
+  #
+  # struct FirmwareManagementParametersRawV1_0 {
+  #   uint8_t crc;
+  #   uint8_t struct_size;
+  #   // Data after this is covered by the crc
+  #   uint8_t struct_version;  // Set to kNvramVersionV1_0
+  #   uint8_t reserved0;
+  #   uint32_t flags;
+  #   uint8_t developer_key_hash[SHA256_DIGEST_LENGTH];
+  # } __attribute__((packed));
+  #
+  # The workaround reads the 5th byte of FWMP to check if it has 0x40 set. This
+  # implementation only works on little-endian systems.
+  if ! lscpu | grep -q 'Little Endian'; then
+    die "System is not little endian"
+  fi
+
+  stop trunksd >/dev/null
+  if tpmc read 0x100a 1 >/dev/null; then
+    # We only need the last byte of FWMP flags.
+    flags="0x$(tpmc read 0x100a 5 | cut -d ' ' -f5)"
+  fi
+  start trunksd >/dev/null
 
   # FWMP_DEV_DISABLE_CCD_UNLOCK (0x40) is set during enterprise enrollment if
   # dev mode is blocked by the policy. We can use this flag to determine whether
