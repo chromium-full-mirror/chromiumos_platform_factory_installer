@@ -226,7 +226,7 @@ is_rsu_required() {
   fi
 
   stop trunksd >/dev/null
-  if tpmc read 0x100a 1 >/dev/null; then
+  if tpmc read 0x100a 1 >/dev/null 2>&1; then
     # We only need the last byte of FWMP flags.
     flags="0x$(tpmc read 0x100a 5 | cut -d ' ' -f5)"
   fi
