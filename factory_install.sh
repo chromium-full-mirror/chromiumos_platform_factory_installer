@@ -796,6 +796,20 @@ factory_install_network() {
   factory_install_cros_payload "${OMAHA}" "${json_path}"
 }
 
+gbb_force_dev_mode() {
+  # Set factory-friendly gbb flags 0x39, which contains
+  # VB2_GBB_FLAG_DEV_SCREEN_SHORT_DELAY            0x00000001
+  # VB2_GBB_FLAG_FORCE_DEV_SWITCH_ON               0x00000008
+  # VB2_GBB_FLAG_FORCE_DEV_BOOT_USB                0x00000010
+  # VB2_GBB_FLAG_DISABLE_FW_ROLLBACK_CHECK         0x00000020
+  flashrom -p host --wp-disable --wp-range 0,0 > /dev/null 2>&1
+  local flags new_flags
+  flags="$(/usr/share/vboot/bin/get_gbb_flags.sh 2>/dev/null \
+    | awk '/Chrome OS GBB set flags:/ {print $NF}')"
+  new_flags="$(printf '0x%x' "$(( flags | 0x39 ))")"
+  /usr/share/vboot/bin/set_gbb_flags.sh "${new_flags}" > /dev/null 2>&1
+}
+
 test_ec_flash_presence() {
   # If "flashrom -p ec --flash-size" command succeeds (returns 0),
   # then EC flash chip is present in system. Otherwise, assume EC flash is not
@@ -1011,6 +1025,18 @@ action_i() {
   # Some installation procedure may clear or reset NVdata, so we want to ensure
   # TPM will be cleared again.
   crossystem clear_tpm_owner_request=1 || true
+
+  # The gbb flag which forces the dev switch on (0x8) is set when
+  # (1) installing the firmware-updater and (2) doing RSU using cr50-reset.sh.
+  # However, if the factory bundle does not contain firmware-updater and at the
+  # same time the hwwp is disabled via removing battery + action_m, then the
+  # gbb flag will not be set. Therefore, after installation, the DUT will try
+  # to boot into test image under normal mode. This results in 0x43 (see
+  # b/199803466 for more info.) Though user can enable developer mode and boot
+  # into test image, we decide to make it more user-friendly by setting the
+  # gbb flag here.
+  log "Setting user-friendly gbb flags 0x39..."
+  gbb_force_dev_mode
 
   colorize green
   echo_huge_ok
