@@ -124,6 +124,10 @@ is_dev_firmware() {
   crossystem "mainfw_type?developer" 2>/dev/null
 }
 
+is_netboot() {
+  grep -qw cros_netboot /proc/cmdline
+}
+
 explain_cros_debug() {
   log "To debug with a shell, boot factory shim in developer firmware (Ctrl-U)
    or add 'cros_debug' to your kernel command line:
@@ -469,7 +473,7 @@ reset_chromeos_device() {
 
   clear_block_devmode
 
-  if grep -q cros_netboot /proc/cmdline; then
+  if is_netboot; then
     log "Device is network booted."
     return
   fi
@@ -915,11 +919,14 @@ gbb_force_dev_mode() {
   # VB2_GBB_FLAG_FORCE_DEV_BOOT_USB                0x00000010
   # VB2_GBB_FLAG_DISABLE_FW_ROLLBACK_CHECK         0x00000020
   flashrom -p host --wp-disable --wp-range 0,0 > /dev/null 2>&1
-  local flags new_flags
-  flags="$(/usr/share/vboot/bin/get_gbb_flags.sh 2>/dev/null \
-    | awk '/Chrome OS GBB set flags:/ {print $NF}')"
-  new_flags="$(printf '0x%x' "$(( flags | 0x39 ))")"
-  /usr/share/vboot/bin/set_gbb_flags.sh "${new_flags}" > /dev/null 2>&1
+  local tmp_file cur_flags new_flags
+  tmp_file="$(mktemp)"
+  flashrom -p host -i GBB -r "${tmp_file}"
+  cur_flags="$(futility gbb -g --flags "${tmp_file}")" # flags: %#x
+  new_flags=$(( "${cur_flags#flags: }" | 0x39))
+  futility gbb -s --flags "${new_flags}" "${tmp_file}"
+  flashrom -p host -i GBB -w "${tmp_file}"
+  rm "${tmp_file}"
 }
 
 test_ec_flash_presence() {
