@@ -32,19 +32,28 @@ usage() {
   exit 1
 }
 
-# Note that some variables are shared with restore_crx_cache.
-preserve_crx_cache() {
+# Note that some variables are shared with restore_crx_dlc_cache.
+# The way we preserve DLC images is for short-term solution.
+# Will remove it once we finish implementing long-term solution.
+preserve_crx_dlc_cache() {
   PRESERVED_TAR="/tmp/preserve.tar"
   PRESERVED_FILES=""
   STATE_PATH="/mnt/stateful_partition"
+  CRX_PATHS="unencrypted/import_extensions/extensions/*.crx"
+  DLC_PATHS="unencrypted/dlc-factory-images/*/package/dlc.img"
   mkdir -p "${STATE_PATH}"
   mount "${STATE_DEV}" "${STATE_PATH}"
-  IMPORT_FILES="$(cd ${STATE_PATH};
-                  echo unencrypted/import_extensions/extensions/*.crx)"
-  if [ "${IMPORT_FILES}" != \
-       "unencrypted/import_extensions/extensions/*.crx" ]; then
-    PRESERVED_FILES="${PRESERVED_FILES} ${IMPORT_FILES}"
+  CRX_FILES="$(cd "${STATE_PATH}" || exit; echo "${CRX_PATHS}")"
+  DLC_FILES="$(cd "${STATE_PATH}" || exit; echo "${DLC_PATHS}")"
+
+  # Check if file exists.
+  if [ "${CRX_FILES}" != "${CRX_PATHS}" ]; then
+    PRESERVED_FILES="${PRESERVED_FILES} ${CRX_FILES}"
   fi
+  if [ "${DLC_FILES}" != "${DLC_PATHS}" ]; then
+    PRESERVED_FILES="${PRESERVED_FILES} ${DLC_FILES}"
+  fi
+
   PRESERVED_LIST=""
   if [ -n "${PRESERVED_FILES}" ]; then
     # We want to preserve permissions and recreate the directory structure
@@ -80,8 +89,8 @@ preserve_crx_cache() {
   fi
 }
 
-# Restores files previously preserved by preserve_crx_cache.
-restore_crx_cache() {
+# Restores files previously preserved by preserve_crx_dlc_cache.
+restore_crx_dlc_cache() {
   if [ -n "${PRESERVED_LIST}" ]; then
     # Copy files back to stateful partition
     mount ${STATE_DEV} ${STATE_PATH}
@@ -146,13 +155,13 @@ main() {
     fi
 
     # TODO(hungte) This should do same thing as what clobber-state did.
-    preserve_crx_cache
+    preserve_crx_dlc_cache
     # Just wipe the start of the partition and remake the fs on
     # the stateful partition.
     dd bs=4M count=1 if=/dev/zero of=${STATE_DEV}
     /sbin/mkfs.ext4 "${STATE_DEV}"
 
-    restore_crx_cache
+    restore_crx_dlc_cache
   fi
 
   do_cutoff
