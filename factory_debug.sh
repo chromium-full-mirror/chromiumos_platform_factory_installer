@@ -9,7 +9,7 @@
 . "/usr/share/misc/storage-info-common.sh"
 . "/usr/sbin/write_gpt.sh"
 
-DEBUG_FUNCTIONS=(call_dev_debug_vboot call_mosys_eventlog sys_fw_log call_dmesg
+DEBUG_FUNCTIONS=(call_dev_debug_vboot call_elogtool sys_fw_log call_dmesg
                  call_get_storage_info checksums call_lspci cat_write_gpt
                  dd_storage debug_get_fixed_dst_drive)
 
@@ -52,10 +52,10 @@ call_dev_debug_vboot() {
   cat /var/log/debug_vboot_noisy.log || true
 }
 
-call_mosys_eventlog() {
+call_elogtool() {
   echo
   echo "## firmware event log:"
-  mosys eventlog list || true
+  elogtool list || true
 }
 
 sys_fw_log() {
