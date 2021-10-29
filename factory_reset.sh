@@ -32,77 +32,6 @@ usage() {
   exit 1
 }
 
-# Note that some variables are shared with restore_crx_dlc_cache.
-# The way we preserve DLC images is for short-term solution.
-# Will remove it once we finish implementing long-term solution.
-preserve_crx_dlc_cache() {
-  PRESERVED_TAR="/tmp/preserve.tar"
-  PRESERVED_FILES=""
-  STATE_PATH="/mnt/stateful_partition"
-  CRX_PATHS="unencrypted/import_extensions/extensions/*.crx"
-  DLC_PATHS="unencrypted/dlc-factory-images/*/package/dlc.img"
-  mkdir -p "${STATE_PATH}"
-  mount "${STATE_DEV}" "${STATE_PATH}"
-  CRX_FILES="$(cd "${STATE_PATH}" || exit; echo "${CRX_PATHS}")"
-  DLC_FILES="$(cd "${STATE_PATH}" || exit; echo "${DLC_PATHS}")"
-
-  # Check if file exists.
-  if [ "${CRX_FILES}" != "${CRX_PATHS}" ]; then
-    PRESERVED_FILES="${PRESERVED_FILES} ${CRX_FILES}"
-  fi
-  if [ "${DLC_FILES}" != "${DLC_PATHS}" ]; then
-    PRESERVED_FILES="${PRESERVED_FILES} ${DLC_FILES}"
-  fi
-
-  PRESERVED_LIST=""
-  if [ -n "${PRESERVED_FILES}" ]; then
-    # We want to preserve permissions and recreate the directory structure
-    # for all of the files in the PRESERVED_FILES variable. In order to do
-    # so we run tar --no-recurison and specify the names of each of the
-    # parent directories. For example for home/.shadow/install_attributes.pb
-    # we pass to tar home home/.shadow home/.shadow/install_attributes.pb
-    for file in ${PRESERVED_FILES}; do
-      if [ ! -e "${STATE_PATH}/${file}" ]; then
-        continue
-      fi
-      path="${file}"
-      while [ "${path}" != '.' ]; do
-        PRESERVED_LIST="${path} ${PRESERVED_LIST}"
-        path=$(dirname "${path}")
-      done
-    done
-    tar cf ${PRESERVED_TAR} -C ${STATE_PATH} --no-recursion -- ${PRESERVED_LIST}
-  fi
-  # Try a few times to unmount the stateful partition.
-  local unmounted=false
-  for i in $(seq 5); do
-    if umount ${STATE_DEV}; then
-      unmounted=true
-      break
-    fi
-    sleep 1
-  done
-  if ! ${unmounted}; then
-    # Bail out: we may not be able to successfully mkfs.
-    echo "Unable to unmount stateful partition. Aborting."
-    exit 1
-  fi
-}
-
-# Restores files previously preserved by preserve_crx_dlc_cache.
-restore_crx_dlc_cache() {
-  if [ -n "${PRESERVED_LIST}" ]; then
-    # Copy files back to stateful partition
-    mount ${STATE_DEV} ${STATE_PATH}
-    tar xfp ${PRESERVED_TAR} -C ${STATE_PATH}
-    sync  # Try as best we can, in case umount fails
-    umount ${STATE_PATH}
-    # Sleep for a bit, since we will shut down soon and want to give
-    # the drive a chance to flush everything
-    sleep 3
-  fi
-}
-
 do_cutoff() {
   # inform_shopfloor will load shopfloor URL from lsb-factory, and ignore the
   # request if SHOPFLOOR_URL is not set.
@@ -154,14 +83,18 @@ main() {
       exit 1
     fi
 
-    # TODO(hungte) This should do same thing as what clobber-state did.
-    preserve_crx_dlc_cache
-    # Just wipe the start of the partition and remake the fs on
-    # the stateful partition.
-    dd bs=4M count=1 if=/dev/zero of=${STATE_DEV}
-    /sbin/mkfs.ext4 "${STATE_DEV}"
+    ROOT_DEV="$(make_partition_dev "${DEV}" "5")"
+    echo "Running clobber-state: ROOT_DEV=${ROOT_DEV}, ROOT_DISK: ${DEV}"
 
-    restore_crx_dlc_cache
+    # Mount RELEASE_ROOTFS and call the clobber-state in it.
+    mount_point="$(mktemp -d)"
+    mount -o ro "${ROOT_DEV}" "${mount_point}"
+
+    ROOT_DEV="${ROOT_DEV}" ROOT_DISK="${DEV}" \
+      "${mount_point}"/sbin/clobber-state factory fast
+
+    umount "${mount_point}" || true
+    rmdir "${mount_point}" || true
   fi
 
   do_cutoff
