@@ -51,6 +51,7 @@ main() {
     exit 1
   fi
   STATE_DEV=$(make_partition_dev "${DEV}" "1")
+  STATE_DEV="$(get_path_to_lvm_stateful "${STATE_DEV}")"
   DEV_SIZE=$(blockdev --getsize64 "${DEV}")
   shift
 

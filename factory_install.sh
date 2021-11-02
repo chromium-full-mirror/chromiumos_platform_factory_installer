@@ -1102,8 +1102,12 @@ action_r() {
   MOUNT_POINT=/tmp/stateful
   mkdir -p /tmp/stateful
   get_dst_drive
-  mount -o ro "$(make_partition_dev "${DST_DRIVE}" "${DST_STATE_PART}")" \
-    "${MOUNT_POINT}"
+
+  STATE_DEV="$(make_partition_dev "${DST_DRIVE}" "${DST_STATE_PART}")"
+  STATE_DEV="$(get_path_to_lvm_stateful "${STATE_DEV}")"
+  log "Device path to stateful partition: ${STATE_DEV}"
+
+  mount -o ro "${STATE_DEV}" "${MOUNT_POINT}"
 
   local factory_exists=false
   [ -e ${MOUNT_POINT}/dev_image/factory ] && factory_exists=true

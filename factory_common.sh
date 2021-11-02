@@ -105,3 +105,16 @@ register_to_overlord() {
   fi
   setsid sh -c "$(printf "${connect_cmd}" ${log_piper})" &
 }
+
+# Get the device path to LVM stateful partition.
+get_path_to_lvm_stateful() {
+  local state_dev="$1"
+  vg_name="$(pvdisplay -C --quiet --noheadings --separator '|' \
+                    -o vg_name "${state_dev}" | tr -d '[:space:]')"
+  if [ -n "${vg_name}" ]; then
+    vgchange -ay "${vg_name}" >/dev/null 2>&1
+    state_dev="/dev/${vg_name}/unencrypted"
+  fi
+
+  echo "${state_dev}"
+}
