@@ -61,8 +61,9 @@ ETH_INTERFACE=""
 
 # Definition of ChromeOS partition layout
 DST_FACTORY_KERNEL_PART=2
-DST_FACTORY_PART=3
+DST_FACTORY_ROOTFS_PART=3
 DST_RELEASE_KERNEL_PART=4
+DST_RELEASE_ROOTFS_PART=5
 DST_STATE_PART=1
 
 # Supported actions (a set of lowercase characters)
@@ -76,6 +77,11 @@ SUPPORTED_ACTIONS_BOARD=
 # We only support [e] RMA unlock to do RSU, and [u] Update Cr50 in case a device
 # has an older Cr50 version that doesn't support RSU.
 SUPPORTED_ACTIONS_RSU_REQUIRED=eu
+
+# These two arrays are shared b/w get_dlc_image_from_dlc_factory_cach and
+# verify_dlc_hash.
+DLC_IMG_PATHS=()
+DLC_IDS=()
 
 # Define our own logging function.
 log() {
@@ -704,6 +710,7 @@ cros_payload_get_server_json_path() {
 factory_install_cros_payload() {
   local src_media="$1"
   local json_path="$2"
+  local dlc_path="$3"
   local src_mount=""
   local tmp_dir="$(mktemp -d)"
   local json_url="${src_media}/${json_path}"
@@ -721,19 +728,26 @@ factory_install_cros_payload() {
   # Say hello to server if available.
   omaha_greetings "hello" "${uuid}"
 
-  cros_payload install "${json_url}" "${DST_DRIVE}" test_image release_image
+  if [ -n "${dlc_path}" ]; then
+    log "Installation will fail if factory server version is less than" \
+        "20211102181209!"
+    cros_payload install "${json_url}" "${dlc_path}" \
+      release_image.dlc_factory_cache
+  else
+    cros_payload install "${json_url}" "${DST_DRIVE}" test_image release_image
 
-  # Test image stateful partition may pretty full and we may want more space,
-  # before installing toolkit (which may be huge).
-  enlarge_partition "$(make_partition_dev "${DST_DRIVE}" "${DST_STATE_PART}")"
+    # Test image stateful partition may be pretty full and we may want more
+    # space, before installing toolkit (which may be huge).
+    enlarge_partition "$(make_partition_dev "${DST_DRIVE}" "${DST_STATE_PART}")"
 
-  cros_payload install "${json_url}" "${DST_DRIVE}" toolkit
+    cros_payload install "${json_url}" "${DST_DRIVE}" toolkit
 
-  # Install optional components.
-  cros_payload install_optional "${json_url}" "${DST_DRIVE}" \
-    release_image.crx_cache release_image.dlc_factory_cache hwid \
-    toolkit_config project_config
-  cros_payload install_optional "${json_url}" "${tmp_dir}" firmware complete
+    # Install optional components.
+    cros_payload install_optional "${json_url}" "${DST_DRIVE}" \
+      release_image.crx_cache release_image.dlc_factory_cache hwid \
+      toolkit_config project_config
+    cros_payload install_optional "${json_url}" "${tmp_dir}" firmware complete
+  fi
 
   if [ -n "${src_mount}" ]; then
     umount "${src_mount}"
@@ -743,10 +757,14 @@ factory_install_cros_payload() {
   # Notify server that all downloads are completed.
   omaha_greetings "download_complete" "${uuid}"
 
+  if [ -n "${dlc_path}" ]; then
+    return
+  fi
+
   # Disable release partition and activate factory partition
   disable_release_partition
-  run_postinst "$(make_partition_dev "${DST_DRIVE}" "${DST_FACTORY_PART}")" ||
-    die "Failed running postinst script."
+  run_postinst "$(make_partition_dev "${DST_DRIVE}" \
+    "${DST_FACTORY_ROOTFS_PART}")" || die "Failed running postinst script."
   stateful_postinst "$(make_partition_dev "${DST_DRIVE}" "${DST_STATE_PART}")"
 
   if [ -s "${tmp_dir}/firmware" ]; then
@@ -765,40 +783,131 @@ factory_install_cros_payload() {
   omaha_greetings "goodbye" "${uuid}"
 }
 
-factory_install_usb() {
-  local src_dev="$(findLSBValue REAL_USB_DEV)"
+get_usb_dev_stateful() {
+  local src_dev
+  src_dev="$(findLSBValue REAL_USB_DEV)"
   [ -n "${src_dev}" ] || src_dev="$(rootdev -s 2>/dev/null)"
   [ -n "${src_dev}" ] ||
     die "Unknown media source. Please define REAL_USB_DEV."
 
-  # Switch to stateful partition.
   # shellcheck disable=SC2001
-  local stateful_dev="$(echo "${src_dev}" | sed 's/[0-9]\+$/1/')"
+  echo "${src_dev}" | sed 's/[0-9]\+$/1/'
+}
 
-  local mount_point="$(mktemp -d)"
+factory_install_usb() {
+  local dlc_path stateful_dev mount_point json_path
+  dlc_path="$1"
+  stateful_dev="$(get_usb_dev_stateful)"
+  # Switch to stateful partition.
+  mount_point="$(mktemp -d)"
   mount -o ro "${stateful_dev}" "${mount_point}"
-  local json_path="$(cros_payload_metadata "${mount_point}")"
+  json_path="$(cros_payload_metadata "${mount_point}")"
   umount "${stateful_dev}"
   rmdir "${mount_point}"
 
   if [ -n "${json_path}" ]; then
-    factory_install_cros_payload "${stateful_dev}" "${json_path}"
+    factory_install_cros_payload "${stateful_dev}" "${json_path}" \
+      "${dlc_path}"
   else
     die "Cannot find cros_payload metadata."
   fi
 }
 
+connect_to_ethernet() {
+  log "Waiting for ethernet connectivity to install"
+
+  while true; do
+    if [ -n "${NETBOOT_RAMFS}" ]; then
+      # For initramfs network boot, there is no upstart job. We have to
+      # bring up network interface and get IP address from DHCP on our own.
+      # The network interface may not be ready, so let's ignore any
+      # error here.
+      bringup_network || true
+    fi
+    if check_ethernet_status; then
+      break
+    else
+      sleep 1
+    fi
+  done
+}
+
 factory_install_network() {
+  local dlc_path="$1"
   # Register to Overlord if haven't.
   if [ -z "${OVERLORD_READY}" ]; then
     register_to_overlord "${OMAHA}" "${TTY_FILE}" "${LOG_FILE}"
   fi
-
   # Get path of cros_payload json file from server (Umpire or Mini-Omaha).
-  local json_path="$(cros_payload_get_server_json_path \
+  local json_path
+  json_path="$(cros_payload_get_server_json_path \
     "${OMAHA}" "${ETH_INTERFACE}" 2>/dev/null)"
   [ -n "${json_path}" ] || die "Failed to get payload json path from server."
-  factory_install_cros_payload "${OMAHA}" "${json_path}"
+  factory_install_cros_payload "${OMAHA}" "${json_path}" "${dlc_path}"
+}
+
+# Count the number of the factory installed DLC metadata under
+# `/opt/google/dlc` of release rootfs.
+num_factory_installed_dlc_metadata() {
+  local release_rootfs_mount_point="$1"
+  local counter=0
+  for d in "${release_rootfs_mount_point}"/opt/google/dlc/* ; do
+    # Read the metadata.
+    local metadata="${d}"/package/imageloader.json
+    if [ ! -f "${metadata}" ]; then
+      continue
+    fi
+
+    # A DLC is factory installed DLC if `factory_install` is true.
+    if [ "$(jq '."factory-install"' "${metadata}")" = "true" ]; then
+      ((counter++))
+    fi
+  done
+
+  echo "${counter}"
+}
+
+
+get_dlc_image_from_dlc_factory_cache() {
+  local dlc_factory_cache_dir="$1"
+  for d in "${dlc_factory_cache_dir}"/* ; do
+    local image_path="${d}"/package/dlc.img
+
+    if [ -f "${image_path}" ]; then
+      DLC_IMG_PATHS+=( "${image_path}" )
+      DLC_IDS+=( "$(basename "${d}")" )
+    fi
+  done
+}
+
+# Verify the DLC hash by calling `dlcverify`.
+verify_dlc_hash() {
+  local release_rootfs_mount_point="$1"
+  log "DLCs to be verified: ${DLC_IDS[*]}"
+  # `dlcverify` locates at stateful partition of the shim.
+  local stateful_dev mount_point
+  stateful_dev="$(get_usb_dev_stateful)"
+
+  mount_point="$(mktemp -d)"
+  mount -o ro "${stateful_dev}" "${mount_point}"
+
+  local dlcverify_bin="${mount_point}"/dev_image/bin/dlcverify
+  for index in ${!DLC_IMG_PATHS[*]}; do
+    local verify_ret
+    verify_ret="$("${dlcverify_bin}" --id="${DLC_IDS[${index}]}" \
+                  --image="${DLC_IMG_PATHS[${index}]}" \
+                  --rootfs_mount="${release_rootfs_mount_point}")"
+    log "${verify_ret}"
+    if echo "${verify_ret}" | grep -q ERROR; then
+      die "DLC verify failed. The factory installed DLC images should be" \
+          "extracted from the same release image on the DUT."
+    fi
+  done
+
+  log "Verification succeeded!"
+
+  umount "${stateful_dev}"
+  rmdir "${mount_point}"
 }
 
 gbb_force_dev_mode() {
@@ -994,22 +1103,7 @@ action_i() {
   if [ -z "${FACTORY_INSTALL_FROM_USB}" ]; then
 
     colorize yellow
-    log "Waiting for ethernet connectivity to install"
-
-    while true; do
-      if [ -n "${NETBOOT_RAMFS}" ]; then
-        # For initramfs network boot, there is no upstart job. We have to
-        # bring up network interface and get IP address from DHCP on our own.
-        # The network interface may not be ready, so let's ignore any
-        # error here.
-        bringup_network || true
-      fi
-      if check_ethernet_status; then
-        break
-      else
-        sleep 1
-      fi
-    done
+    connect_to_ethernet
 
     # Check for factory server override from tftp server.
     override_from_tftp
@@ -1099,19 +1193,21 @@ action_r() {
   fi
 
   # First check to make sure that the factory software has been wiped.
-  MOUNT_POINT=/tmp/stateful
+  local state_mount_point state_dev
+  state_mount_point=/tmp/stateful
   mkdir -p /tmp/stateful
   get_dst_drive
 
-  STATE_DEV="$(make_partition_dev "${DST_DRIVE}" "${DST_STATE_PART}")"
-  STATE_DEV="$(get_path_to_lvm_stateful "${STATE_DEV}")"
-  log "Device path to stateful partition: ${STATE_DEV}"
+  state_dev="$(make_partition_dev "${DST_DRIVE}" "${DST_STATE_PART}")"
+  state_dev="$(get_path_to_lvm_stateful "${state_dev}")"
+  log "Device path to stateful partition: ${state_dev}"
 
-  mount -o ro "${STATE_DEV}" "${MOUNT_POINT}"
+  # Mount as rw since we might need to copy factory installed DLC images
+  # to the stateful partition.
+  mount -o rw "${state_dev}" "${state_mount_point}"
 
   local factory_exists=false
-  [ -e ${MOUNT_POINT}/dev_image/factory ] && factory_exists=true
-  umount "${MOUNT_POINT}"
+  [ -e "${state_mount_point}"/dev_image/factory ] && factory_exists=true
 
   if ${factory_exists}; then
     colorize red
@@ -1122,6 +1218,54 @@ action_r() {
 
   check_fw_swwp host && check_fw_swwp ec || ! is_pvt_phase || \
     die "SW write protect is not enabled in the device with PVT phase."
+
+  # Then check if the release rootfs has factory installed DLC metadata.
+  # If so, we copy the DLC images from network or RMA shim.
+  local release_rootfs_mount_point release_dev
+  release_rootfs_mount_point=/tmp/release_rootfs
+  mkdir -p "${release_rootfs_mount_point}"
+  release_dev="$(make_partition_dev "${DST_DRIVE}" \
+                 "${DST_RELEASE_ROOTFS_PART}")"
+  mount -o ro "${release_dev}" "${release_rootfs_mount_point}"
+
+  local num_dlc_metadata
+  num_dlc_metadata="$(num_factory_installed_dlc_metadata \
+                      "${release_rootfs_mount_point}")"
+  log "Number of factory installed DLC metadata: ${num_dlc_metadata}"
+  if [ "${num_dlc_metadata}" != 0 ]; then
+    # Install the factory installed DLC images to dlc_path.
+    local dlc_path=/tmp/dlc
+    mkdir -p "${dlc_path}"
+    log "Get factory installed DLC images from usb/network..."
+    if [ -n "${FACTORY_INSTALL_FROM_USB}" ]; then
+      factory_install_usb "${dlc_path}"
+    else
+      connect_to_ethernet
+      factory_install_network "${dlc_path}"
+    fi
+
+    # Unzip the DLC and verify their hashes.
+    log "Unpack factory installed DLC images to ${dlc_path}"
+    tar -xpvf "${dlc_path}"/release_image.dlc_factory_cache -C "${dlc_path}"
+    get_dlc_image_from_dlc_factory_cache \
+      "${dlc_path}"/unencrypted/dlc-factory-images
+
+    verify_dlc_hash "${release_rootfs_mount_point}"
+
+    log "Remove existing factory installed DLC images on stateful partition..."
+    local dlc_stateful="${state_mount_point}"/unencrypted/dlc-factory-images
+    if [ -d "${dlc_stateful}" ]; then
+      rm -rf "${dlc_stateful}"
+    fi
+
+    log "Install the DLCs to stateful partition..."
+    mv "${dlc_path}"/unencrypted/dlc-factory-images \
+       "${state_mount_point}"/unencrypted
+  else
+    log "No factory installed DLC metadata found. Skip copying..."
+  fi
+
+  umount "${state_mount_point}"
 
   reset_chromeos_device
   factory_reset
