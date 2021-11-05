@@ -87,15 +87,22 @@ main() {
     ROOT_DEV="$(make_partition_dev "${DEV}" "5")"
     echo "Running clobber-state: ROOT_DEV=${ROOT_DEV}, ROOT_DISK: ${DEV}"
 
-    # Mount RELEASE_ROOTFS and call the clobber-state in it.
+    # Mount RELEASE_ROOTFS and read the `USE_LVM_STATEFUL_PARTITION`.
     mount_point="$(mktemp -d)"
     mount -o ro "${ROOT_DEV}" "${mount_point}"
+    local chromeos_startup_path lvm_flag
+    chromeos_startup_path="${mount_point}"/sbin/chromeos_startup
 
-    ROOT_DEV="${ROOT_DEV}" ROOT_DISK="${DEV}" \
-      "${mount_point}"/sbin/clobber-state factory fast
+    if grep -q 'USE_LVM_STATEFUL_PARTITION=1' \
+       "${chromeos_startup_path}"; then
+      lvm_flag="setup_lvm"
+    fi
 
     umount "${mount_point}" || true
     rmdir "${mount_point}" || true
+
+    ROOT_DEV="${ROOT_DEV}" ROOT_DISK="${DEV}" \
+      clobber-state factory fast "${lvm_flag}"
   fi
 
   do_cutoff
