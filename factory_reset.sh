@@ -87,22 +87,30 @@ main() {
     ROOT_DEV="$(make_partition_dev "${DEV}" "5")"
     echo "Running clobber-state: ROOT_DEV=${ROOT_DEV}, ROOT_DISK: ${DEV}"
 
+    # clobber-state preserves the crx and factory installed dlc files under
+    # `/mnt/stateful_partition`. We need to mount `${STATE_DEV}` to that
+    # directory, so that the files can be correctly preserved.
+    STATE_MOUNT_POINT=/mnt/stateful_partition
+    mount -o ro "${STATE_DEV}" "${STATE_MOUNT_POINT}"
+
     # Mount RELEASE_ROOTFS and read the `USE_LVM_STATEFUL_PARTITION`.
-    mount_point="$(mktemp -d)"
-    mount -o ro "${ROOT_DEV}" "${mount_point}"
+    release_rootfs_mount_point="$(mktemp -d)"
+    mount -o ro "${ROOT_DEV}" "${release_rootfs_mount_point}"
     local chromeos_startup_path lvm_flag
-    chromeos_startup_path="${mount_point}"/sbin/chromeos_startup
+    chromeos_startup_path="${release_rootfs_mount_point}"/sbin/chromeos_startup
 
     if grep -q 'USE_LVM_STATEFUL_PARTITION=1' \
        "${chromeos_startup_path}"; then
       lvm_flag="setup_lvm"
     fi
 
-    umount "${mount_point}" || true
-    rmdir "${mount_point}" || true
+    umount "${release_rootfs_mount_point}" || true
+    rmdir "${release_rootfs_mount_point}" || true
 
     ROOT_DEV="${ROOT_DEV}" ROOT_DISK="${DEV}" \
       clobber-state factory fast "${lvm_flag}"
+
+    umount "${STATE_MOUNT_POINT}"
   fi
 
   do_cutoff
