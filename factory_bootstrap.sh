@@ -12,7 +12,7 @@ STATEFUL_MNT=/stateful
 
 get_stateful_dev() {
   local real_usb_dev="$1"
-  local stateful_dev="${real_usb_dev%[0-9]*}1"
+  local stateful_dev="${real_usb_dev%%[0-9]*}1"
   if [ ! -b "${stateful_dev}" ]; then
     stateful_dev=""
   fi
