@@ -27,7 +27,7 @@ cros_payload_metadata() {
 cros_payload_patch_lsb_factory() {
   local real_usb_dev="$(findLSBValue REAL_USB_DEV)"
   [ -n "${real_usb_dev}" ] || return 0
-  local stateful_dev="${real_usb_dev%[0-9]*}1"
+  local stateful_dev="${real_usb_dev%%[0-9]*}1"
   local temp_lsb_factory="$(mktemp)"
   local mount_point="$(mktemp -d)"
   mount -o ro "${stateful_dev}" "${mount_point}"
@@ -54,7 +54,7 @@ cros_payload_patch_lsb_factory() {
 cros_payload_patch_cutoff_config() {
   local real_usb_dev="$(findLSBValue REAL_USB_DEV)"
   [ -n "${real_usb_dev}" ] || return 0
-  local stateful_dev="${real_usb_dev%[0-9]*}1"
+  local stateful_dev="${real_usb_dev%%[0-9]*}1"
   local temp_config_path="$(mktemp)"
   local mount_point="$(mktemp -d)"
   mount -o ro "${stateful_dev}" "${mount_point}"
@@ -89,7 +89,7 @@ cros_payload_patch_cutoff_config() {
 cros_payload_install_description() {
   local real_usb_dev="$(findLSBValue REAL_USB_DEV)"
   [ -n "${real_usb_dev}" ] || return 0
-  local stateful_dev=${real_usb_dev%[0-9]*}1
+  local stateful_dev=${real_usb_dev%%[0-9]*}1
   local temp_path="$(mktemp)"
   local mount_point="$(mktemp -d)"
   mount -o ro "${stateful_dev}" "${mount_point}"
