@@ -12,7 +12,7 @@
 cros_payload_patch_lsb_factory() {
   local real_usb_dev="$(findLSBValue REAL_USB_DEV)"
   [ -n "${real_usb_dev}" ] || return 0
-  local stateful_dev="${real_usb_dev%[0-9]*}1"
+  local stateful_dev="${real_usb_dev%%[0-9]*}1"
   local mount_point="$(mktemp -d)"
   local board="$(findLSBValue CHROMEOS_RELEASE_BOARD)"
   local json_path="${mount_point}/cros_payloads/${board}.json"
@@ -36,7 +36,7 @@ cros_payload_patch_lsb_factory() {
 cros_payload_patch_cutoff_config() {
   local real_usb_dev="$(findLSBValue REAL_USB_DEV)"
   [ -n "${real_usb_dev}" ] || return 0
-  local stateful_dev="${real_usb_dev%[0-9]*}1"
+  local stateful_dev="${real_usb_dev%%[0-9]*}1"
   local mount_point="$(mktemp -d)"
   local board="$(findLSBValue CHROMEOS_RELEASE_BOARD)"
   local json_path="${mount_point}/cros_payloads/${board}.json"
