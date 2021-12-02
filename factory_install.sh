@@ -978,6 +978,8 @@ print_header() {
 
 # Prints various information about the device.
 print_device_info() {
+    echo "Board name: ${BOARD}"
+    echo "Model Name: $(cros_config / name)"
     echo "Factory shim version: $(findLSBValue CHROMEOS_RELEASE_DESCRIPTION)"
     local bios_version="$(crossystem ro_fwid 2>/dev/null)"
     echo "BIOS version: ${bios_version:-(unknown)}"
@@ -1005,6 +1007,35 @@ print_device_info() {
       echo "${description}"
       echo
     fi
+}
+
+print_rma_info() {
+  local stateful_dev mount_point cros_payload_path rma_metadata_path
+  stateful_dev="$(get_usb_dev_stateful)"
+  mount_point="$(mktemp -d)"
+  mount -o ro "${stateful_dev}" "${mount_point}"
+
+  cros_payload_path="${mount_point}"/cros_payloads
+  rma_metadata_path="${cros_payload_path}"/rma_metadata.json
+  if [ -f "${rma_metadata_path}" ]; then
+    echo "RMA shim contains payloads from board:"
+    jq -r '.[].board' "${rma_metadata_path}"
+    local model
+    model="$(cros_config / name)"
+    if [ -f "${cros_payload_path}/${model}".json ]; then
+      echo "Find corresponding RMA payloads by model name: ${model}"
+    elif [ -f "${cros_payload_path}/${BOARD}".json ]; then
+      echo "Find corresponding RMA payloads by board name: ${BOARD}"
+    else
+      echo "No payloads found for ${model} or ${BOARD}."
+      echo "Did you set the wrong model/board name?"
+    fi
+  else
+    echo "Skip checking RMA payloads since it is not a RMA shim."
+  fi
+
+  umount "${mount_point}"
+  rmdir "${mount_point}"
 }
 
 # Displays a line in the menu.  Used in the menu function.
@@ -1100,6 +1131,7 @@ action_i() {
   fi
   ensure_fwwp_consistency
 
+  print_rma_info
   if [ -z "${FACTORY_INSTALL_FROM_USB}" ]; then
 
     colorize yellow
