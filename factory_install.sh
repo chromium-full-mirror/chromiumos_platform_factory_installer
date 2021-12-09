@@ -918,7 +918,7 @@ gbb_force_dev_mode() {
   # VB2_GBB_FLAG_FORCE_DEV_SWITCH_ON               0x00000008
   # VB2_GBB_FLAG_FORCE_DEV_BOOT_USB                0x00000010
   # VB2_GBB_FLAG_DISABLE_FW_ROLLBACK_CHECK         0x00000020
-  flashrom -p host --wp-disable --wp-range 0,0 > /dev/null 2>&1
+  flashrom -p host --wp-disable --wp-range 0 0 > /dev/null 2>&1
   local tmp_file cur_flags new_flags
   tmp_file="$(mktemp)"
   flashrom -p host -i GBB -r "${tmp_file}"
