@@ -922,8 +922,8 @@ gbb_force_dev_mode() {
   local tmp_file cur_flags new_flags
   tmp_file="$(mktemp)"
   flashrom -p host -i GBB -r "${tmp_file}"
-  cur_flags="$(futility gbb -g --flags "${tmp_file}")" # flags: %#x
-  new_flags=$(( "${cur_flags#flags: }" | 0x39))
+  cur_flags="$(futility gbb -g --flags "${tmp_file}" | sed 's/flags: //g')"
+  new_flags=$(( cur_flags | 0x39 ))
   futility gbb -s --flags "${new_flags}" "${tmp_file}"
   flashrom -p host -i GBB -w "${tmp_file}"
   rm "${tmp_file}"
