@@ -978,8 +978,6 @@ print_header() {
 
 # Prints various information about the device.
 print_device_info() {
-    echo "Board name: ${BOARD}"
-    echo "Model Name: $(cros_config / name)"
     echo "Factory shim version: $(findLSBValue CHROMEOS_RELEASE_DESCRIPTION)"
     local bios_version="$(crossystem ro_fwid 2>/dev/null)"
     echo "BIOS version: ${bios_version:-(unknown)}"
@@ -1022,6 +1020,8 @@ print_rma_info() {
     jq -r '.[].board' "${rma_metadata_path}"
     local model
     model="$(cros_config / name)"
+    echo "Board name: ${BOARD}"
+    echo "Model Name: ${model}"
     if [ -f "${cros_payload_path}/${model}".json ]; then
       echo "Find corresponding RMA payloads by model name: ${model}"
     elif [ -f "${cros_payload_path}/${BOARD}".json ]; then
@@ -1131,7 +1131,12 @@ action_i() {
   fi
   ensure_fwwp_consistency
 
-  print_rma_info
+  # `print_rma_info` prints the information about the usb shim.
+  # Skip printing when using netboot.
+  if ! is_netboot; then
+    print_rma_info
+  fi
+
   if [ -z "${FACTORY_INSTALL_FROM_USB}" ]; then
 
     colorize yellow
