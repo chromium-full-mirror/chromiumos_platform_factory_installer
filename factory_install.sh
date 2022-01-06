@@ -427,6 +427,15 @@ get_dst_drive() {
 lightup_screen() {
   # Always backlight on factory install shim.
   ectool forcelidopen 1 || true
+  # Before we try to light up the screen, we set the brightness to another one
+  # in case we can't set the brightness. Since we set the brightness via the
+  # /sys/class/../brightness, the entry is only used to set the brightness and
+  # does not reflect the actual brightness change (brightness may be different
+  # from actual_brightness). Therefore, if the entry value is already the value
+  # we want to set, we should first set the value to another value, otherwise
+  # the value will not be set eventually.
+  # Please refer to b/203831384 for more information.
+  backlight_tool --set_brightness_percent=80 || true
   # Light up screen in case you can't see our splash image.
   backlight_tool --set_brightness_percent=100 || true
 }
