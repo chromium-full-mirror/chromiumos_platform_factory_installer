@@ -110,7 +110,7 @@ register_to_overlord() {
 get_path_to_lvm_stateful() {
   local state_dev="$1"
   vg_name="$(pvdisplay -C --quiet --noheadings --separator '|' \
-                    -o vg_name "${state_dev}" | tr -d '[:space:]')"
+             -o vg_name "${state_dev}" 2>/dev/null | tr -d '[:space:]')"
   if [ -n "${vg_name}" ]; then
     vgchange -ay "${vg_name}" >/dev/null 2>&1
     state_dev="/dev/${vg_name}/unencrypted"
