@@ -1028,7 +1028,7 @@ print_rma_info() {
     echo "RMA shim contains payloads from board:"
     jq -r '.[].board' "${rma_metadata_path}"
     local model
-    model="$(cros_config / name)"
+    model="$(cros_config / name)" || true
     echo "Board name: ${BOARD}"
     echo "Model Name: ${model}"
     if [ -f "${cros_payload_path}/${model}".json ]; then
