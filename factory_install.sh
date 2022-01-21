@@ -424,6 +424,32 @@ get_dst_drive() {
   fi
 }
 
+# In some envs (such as netboot's initramfs), backlight_tool is not available,
+# so if that fails we fallback to controlling backlight brightness via
+# entries under /sys/class/backlight/.
+set_brightness_percentage() {
+  local backlight_device
+  local max_brightness
+  local desired_brightness
+  local percentage="$1"
+
+  if backlight_tool --set_brightness_percent="${percentage}"; then
+    return
+  fi
+
+  # We set all backlight devices to the desired brightness percentage.
+  for backlight_device in /sys/class/backlight/*; do
+    # In order to set brightness to specific percentage, we do the following:
+    # - Turn the backlight device on (using bl_power).
+    # - Read max_brightness and scale that into the desired brightness.
+    # - Write the desired brightness to the brightness entry.
+    echo 0 > "${backlight_device}/bl_power" # 0 = FB_BLANK_UNBLANK (i.e.: on)
+    max_brightness="$(cat "${backlight_device}/max_brightness")"
+    desired_brightness=$((max_brightness * percentage / 100))
+    echo "${desired_brightness}" > "${backlight_device}/brightness"
+  done
+}
+
 lightup_screen() {
   # Always backlight on factory install shim.
   ectool forcelidopen 1 || true
@@ -435,9 +461,9 @@ lightup_screen() {
   # we want to set, we should first set the value to another value, otherwise
   # the value will not be set eventually.
   # Please refer to b/203831384 for more information.
-  backlight_tool --set_brightness_percent=80 || true
+  set_brightness_percentage 80 || true
   # Light up screen in case you can't see our splash image.
-  backlight_tool --set_brightness_percent=100 || true
+  set_brightness_percentage 100 || true
 }
 
 load_modules() {
