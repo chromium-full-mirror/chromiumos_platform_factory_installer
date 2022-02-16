@@ -83,6 +83,9 @@ SUPPORTED_ACTIONS_RSU_REQUIRED=eu
 DLC_IMG_PATHS=()
 DLC_IDS=()
 
+DLC_COUNT=0
+TOTAL_DLC_PREALLOCATE_SIZE=0
+
 # Define our own logging function.
 log() {
   echo "$*"
@@ -678,10 +681,24 @@ enlarge_partition() {
   local block_size="$(dumpe2fs -h "${dev}" | sed -n 's/Block size: *//p')"
   local minimal="$(resize2fs -P "${dev}" | sed -n 's/Estimated .*: //p')"
 
-  # Try to allocate 1G if possible.
+  local test_rootfs_mount_point test_rootfs_dev
+  test_rootfs_mount_point="$(mktemp -d)"
+  test_rootfs_dev="$(make_partition_dev "${DST_DRIVE}" \
+                  "${DST_FACTORY_ROOTFS_PART}")"
+  mount -o ro "${test_rootfs_dev}" "${test_rootfs_mount_point}"
+  get_factory_installed_dlc_cnt_and_size "${test_rootfs_mount_point}"
+  umount "${test_rootfs_mount_point}"
+  rmdir "${test_rootfs_mount_point}"
+
   if [ "${minimal}" -gt 0 ] && [ "${block_size}" -gt 0 ]; then
     e2fsck -f -y "${dev}"
-    resize2fs "${dev}" "$((minimal + (1024 * 1048576 / block_size)))" || true
+    # DLC images will be installed to stateful partition in run time.
+    # We need to preserve space for them.
+    log "Allocate ${TOTAL_DLC_PREALLOCATE_SIZE} bytes for DLCs."
+    local dlc_size=$((TOTAL_DLC_PREALLOCATE_SIZE / block_size))
+    # Try to allocate 2G if possible for factory toolkit + run time overhead.
+    local reserve=$((1024 * 2097152 / block_size))
+    resize2fs "${dev}" "$((minimal + reserve + dlc_size))" || true
   fi
 }
 
@@ -881,12 +898,12 @@ factory_install_network() {
   factory_install_cros_payload "${OMAHA}" "${json_path}" "${dlc_path}"
 }
 
-# Count the number of the factory installed DLC metadata under
-# `/opt/google/dlc` of release rootfs.
-num_factory_installed_dlc_metadata() {
-  local release_rootfs_mount_point="$1"
-  local counter=0
-  for d in "${release_rootfs_mount_point}"/opt/google/dlc/* ; do
+# Get the total number of factory installed DLC images and their pre-allocated
+# size from `/opt/google/dlc` of rootfs.
+get_factory_installed_dlc_cnt_and_size() {
+  local rootfs_mount_point="$1"
+
+  for d in "${rootfs_mount_point}"/opt/google/dlc/* ; do
     # Read the metadata.
     local metadata="${d}"/package/imageloader.json
     if [ ! -f "${metadata}" ]; then
@@ -895,11 +912,14 @@ num_factory_installed_dlc_metadata() {
 
     # A DLC is factory installed DLC if `factory_install` is true.
     if [ "$(jq '."factory-install"' "${metadata}")" = "true" ]; then
-      ((counter++))
+      DLC_COUNT=$((DLC_COUNT + 1))
+      # The run time overhead of factory installed DLC images is
+      # `2 * pre-allocated-size`. We need to allocate additional space for
+      # this in `enlarge_partition`.
+      TOTAL_DLC_PREALLOCATE_SIZE=$((TOTAL_DLC_PREALLOCATE_SIZE + \
+        $(jq -r '."pre-allocated-size"' "${metadata}") * 2))
     fi
   done
-
-  echo "${counter}"
 }
 
 
@@ -1300,11 +1320,9 @@ action_r() {
                  "${DST_RELEASE_ROOTFS_PART}")"
   mount -o ro "${release_dev}" "${release_rootfs_mount_point}"
 
-  local num_dlc_metadata
-  num_dlc_metadata="$(num_factory_installed_dlc_metadata \
-                      "${release_rootfs_mount_point}")"
-  log "Number of factory installed DLC metadata: ${num_dlc_metadata}"
-  if [ "${num_dlc_metadata}" != 0 ]; then
+  get_factory_installed_dlc_cnt_and_size "${release_rootfs_mount_point}"
+  log "Number of factory installed DLC metadata: ${DLC_COUNT}"
+  if [ "${DLC_COUNT}" != 0 ]; then
     # Install the factory installed DLC images to dlc_path.
     local dlc_path=/tmp/dlc
     mkdir -p "${dlc_path}"
@@ -1321,6 +1339,10 @@ action_r() {
     tar -xpvf "${dlc_path}"/release_image.dlc_factory_cache -C "${dlc_path}"
     get_dlc_image_from_dlc_factory_cache \
       "${dlc_path}"/unencrypted/dlc-factory-images
+
+    if [ "${DLC_COUNT}" != "${#DLC_IMG_PATHS[@]}" ]; then
+      die "Expected to have ${DLC_COUNT} DLCs. Current: ${#DLC_IMG_PATHS[@]}."
+    fi
 
     verify_dlc_hash "${release_rootfs_mount_point}"
 
