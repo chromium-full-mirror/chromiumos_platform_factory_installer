@@ -20,6 +20,7 @@
 CUTOFF_DIR="/usr/share/cutoff"
 CUTOFF_SCRIPT="${CUTOFF_DIR}/cutoff.sh"
 INFORM_SHOPFLOOR_SCRIPT="${CUTOFF_DIR}/inform_shopfloor.sh"
+STARTUP_PATH="sbin/chromeos_startup.sh"
 
 usage() {
   echo "Usage: $0 disk [wipe|secure|verify]."
@@ -97,7 +98,7 @@ main() {
     release_rootfs_mount_point="$(mktemp -d)"
     mount -o ro "${ROOT_DEV}" "${release_rootfs_mount_point}"
     local chromeos_startup_path lvm_flag
-    chromeos_startup_path="${release_rootfs_mount_point}"/sbin/chromeos_startup
+    chromeos_startup_path="${release_rootfs_mount_point}/${STARTUP_PATH}"
 
     if grep -q 'USE_LVM_STATEFUL_PARTITION=1' \
        "${chromeos_startup_path}"; then
