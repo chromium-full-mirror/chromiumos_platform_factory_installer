@@ -53,8 +53,11 @@ bringup_network() {
   local module_name
   local result=1
   for module in /lib/modules/*/kernel/drivers/net/usb/*; do
-    module_name="$(basename "${module%.ko}")"
-    modprobe ${module_name}
+    # Since there may be uncompressed modules "${module_name}.ko" or compressed
+    # modules of "${module_name}.ko.gz" or "${module_name}.ko.xz", we use
+    # "${module%.ko*}" to match all cases to prevent the mismatch issue.
+    module_name="$(basename "${module%.ko*}")"
+    modprobe "${module_name}"
   done
 
   # Try to bring up network and get an IP address on each Ethernet device.
