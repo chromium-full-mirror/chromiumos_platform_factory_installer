@@ -1498,28 +1498,7 @@ action_m() {
   tpm_enable_factory_mode
 }
 
-main() {
-  if [ "$(id -u)" -ne 0 ]; then
-    echo "You must run this as root."
-    exit 1
-  fi
-  config_tty || true  # Never abort if TTY has problems.
-
-  log "Starting Factory Installer."
-  # TODO: do we still need this call now that the kernel was tweaked to
-  # provide a good light level by default?
-  lightup_screen
-
-  load_modules
-
-  colorize white
-  clear
-
-  test_ec_flash_presence
-
-  # Check for any configuration overrides.
-  overrides
-
+read_default_option() {
   # Read default options
   if [ "${NETBOOT_RAMFS}" = 1 ]; then
     log "Netbooting. Set default action to (I) Install."
@@ -1558,8 +1537,33 @@ main() {
         ;;
     esac
   fi
+}
 
-  # Sanity check default action
+main() {
+  if [ "$(id -u)" -ne 0 ]; then
+    echo "You must run this as root."
+    exit 1
+  fi
+  config_tty || true  # Never abort if TTY has problems.
+
+  log "Starting Factory Installer."
+  # TODO: do we still need this call now that the kernel was tweaked to
+  # provide a good light level by default?
+  lightup_screen
+
+  load_modules
+
+  colorize white
+  clear
+
+  test_ec_flash_presence
+
+  # Check for any configuration overrides.
+  overrides
+
+  read_default_option
+
+  # Validity check default action for mandantory RSU.
   if [ -n "${DEFAULT_ACTION}" ]; then
     log "Default action: [${DEFAULT_ACTION}]."
     if [ "$(tpm_check_rsu_support)" = "supported" ] && is_rsu_required &&
