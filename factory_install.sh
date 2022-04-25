@@ -1498,6 +1498,32 @@ action_m() {
   tpm_enable_factory_mode
 }
 
+try_set_default_action_rsu() {
+  if is_rsu_required; then
+    log "RSU is required. " \
+        "Set default action to (E) Perform RSU."
+    DEFAULT_ACTION=e
+    return 0
+  elif check_hwwp; then
+    log "Hardware write protection on. " \
+        "Set default action to (E) Perform RSU."
+    DEFAULT_ACTION=e
+    return 0
+  fi
+  return 1
+}
+
+set_default_action_install() {
+  log "Hardware write protection off. " \
+      "Set default action to (I) Install."
+  DEFAULT_ACTION=i
+  return 0
+}
+
+read_default_rma_autorun_tpm_support_option() {
+  try_set_default_action_rsu || set_default_action_install
+}
+
 read_default_option() {
   # Read default options
   if [ "${NETBOOT_RAMFS}" = 1 ]; then
@@ -1517,19 +1543,7 @@ read_default_option() {
         fi
         ;;
       supported)
-        if is_rsu_required; then
-          log "RSU is required. " \
-              "Set default action to (E) Perform RSU."
-          DEFAULT_ACTION=e
-        elif check_hwwp; then
-          log "Hardware write protection on. " \
-              "Set default action to (E) Perform RSU."
-          DEFAULT_ACTION=e
-        else
-          log "Hardware write protection off. " \
-              "Set default action to (I) Install."
-          DEFAULT_ACTION=i
-        fi
+        read_default_rma_autorun_tpm_support_option
         ;;
       need_update)
           log "TPM version is old. Set default action to (U) Update TPM."
