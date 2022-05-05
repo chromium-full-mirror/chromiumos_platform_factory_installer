@@ -1,8 +1,4 @@
 [package]
-name = "factory_installer_rust"
+name = "factory_installer"
 version = "0.1.0"
 edition = "2021"
-
-[[bin]]
-name = "factory_fai"
-path = "factory_fai/main.rs"
