@@ -1,0 +1,13 @@
+{
+  "data1": {
+    "DataCommand": {
+      "cmd": "echo",
+       "args": ["some", "data"]
+    }
+  },
+  "data2": {
+    "DataCommand": {
+        "cmd": "echo"
+    }
+  }
+}

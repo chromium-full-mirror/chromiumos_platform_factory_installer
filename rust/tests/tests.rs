@@ -6,3 +6,8 @@
 mod utils {
     mod test_process_utils;
 }
+
+#[cfg(test)]
+mod factory_fai {
+    mod test_factory_fai;
+}

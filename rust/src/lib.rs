@@ -4,4 +4,8 @@
 
 #[cfg(feature = "factory-ufs")]
 pub mod factory_ufs;
+
+#[cfg(feature = "factory-fai")]
+pub mod factory_fai;
+
 pub mod utils;

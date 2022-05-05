@@ -70,7 +70,7 @@ DST_STATE_PART=1
 # Each action x is implemented in an action_$x handler (e.g.,
 # action_i); see the handlers for more information about what
 # each option is.
-SUPPORTED_ACTIONS=bcdeimrstuvyz
+SUPPORTED_ACTIONS=bcdefimrstuvyz
 SUPPORTED_ACTIONS_BOARD=
 
 # Supported actions when RSU is required.
@@ -1152,6 +1152,9 @@ menu() {
   menu_line U "Update TPM firmware" "Update TPM firmware"
   menu_line E "Perform RSU" "Perform RSU (RMA Server Unlock)"
   menu_line M "Enable factory mode" "Enable TPM factory mode"
+  # TODO(wyuang): show up in menu after all FAI functions ready.
+  # menu_line F "Perform factory FAI" \
+  #             "Perform Factory FAI(First Article Inspection)"
 
   menu_board
 
@@ -1496,6 +1499,11 @@ action_e() {
 # M = Enable TPM factory mode
 action_m() {
   tpm_enable_factory_mode
+}
+
+# F = Perform Factory FAI process
+action_f() {
+  /usr/sbin/factory_fai
 }
 
 try_set_default_action_rsu() {
