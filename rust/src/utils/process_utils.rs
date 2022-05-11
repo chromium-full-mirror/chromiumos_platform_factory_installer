@@ -27,3 +27,18 @@ impl StringOutput for std::process::Output {
         String::from_utf8_lossy(&self.stderr).to_string()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::utils::process_utils::StringOutput;
+
+    #[test]
+    fn test_string_output_stdout_success() {
+        let output = std::process::Command::new("echo")
+            .args(["some", "text"])
+            .output()
+            .unwrap();
+
+        assert_eq!("some text\n", output.stdout());
+    }
+}
