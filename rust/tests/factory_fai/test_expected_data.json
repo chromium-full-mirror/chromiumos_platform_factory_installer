@@ -1,4 +1,9 @@
 {
-  "data1": "some data",
-  "data2": ""
+  "data1": {
+    "key1": "value1"
+  },
+  "data2": {
+    "key1": "value1",
+    "key2": "value2"
+  }
 }

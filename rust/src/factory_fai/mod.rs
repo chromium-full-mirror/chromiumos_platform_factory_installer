@@ -3,20 +3,16 @@
 // found in the LICENSE file.
 
 use crate::factory_fai::config::{DataCollector, FAIConfig};
+use crate::factory_fai::parsers::Parser;
 use crate::utils::process_utils::{Command, StringOutput};
 
 use anyhow::{Context, Result};
 use serde_json;
-use serde_json::{Map, Value};
+use serde_json::Map;
 
 pub mod args;
 pub mod config;
-
-fn default_parse_function(output: String) -> Value {
-    // TODO(wyuang): implement customized parse functions for different
-    // collected data.
-    Value::String(output.trim().to_string())
-}
+pub mod parsers;
 
 pub fn collect_fai_data(fai_config: FAIConfig) -> Result<String> {
     let mut fai_data = Map::new();
@@ -27,7 +23,7 @@ pub fn collect_fai_data(fai_config: FAIConfig) -> Result<String> {
                     .args(&data_cmd.args)
                     .output()
                     .with_context(|| format!("Failed to collect \"{}\".", name))?;
-                default_parse_function(output.stdout())
+                data_cmd.parser.parse(output.stdout())?
             }
         };
 

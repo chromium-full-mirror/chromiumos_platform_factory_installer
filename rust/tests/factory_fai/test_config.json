@@ -2,12 +2,22 @@
   "data1": {
     "DataCommand": {
       "cmd": "echo",
-       "args": ["some", "data"]
+      "args": ["key1", "=", "value1", "#", "comment1"],
+      "parser": {
+        "type": "DictParser",
+        "delimiter": "=",
+        "comment_mark": "#"
+      }
     }
   },
   "data2": {
     "DataCommand": {
-        "cmd": "echo"
+      "cmd": "echo",
+      "args": ["value1 some text value2"],
+      "parser": {
+        "type": "RegexParser",
+        "pattern": "(?P<key1>value1)|(?P<key2>value2)"
+      }
     }
   }
 }

@@ -6,6 +6,8 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
+use crate::factory_fai::parsers::DataParser;
+
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use serde_json;
@@ -38,7 +40,11 @@ pub const DEFAULT_CONFIG: &str = r##"{
   },
   "tpm_version": {
     "DataCommand": {
-      "cmd": "tpm_version"
+      "cmd": "tpm_version",
+      "parser": {
+        "type": "DictParser",
+        "delimiter": ":"
+      }
     }
   },
   "gsc_capabilities": {
@@ -50,36 +56,63 @@ pub const DEFAULT_CONFIG: &str = r##"{
   "gsc_board_id": {
     "DataCommand": {
       "cmd": "gsctool",
-      "args": ["-a", "-i", "-M"]
+      "args": ["-a", "-i", "-M"],
+      "parser": {
+        "type": "DictParser",
+        "delimiter": "="
+      }
     }
   },
   "gsc_firmware_version": {
     "DataCommand": {
       "cmd": "gsctool",
-      "args": ["-a", "-f", "-M"]
+      "args": ["-a", "-f", "-M"],
+      "parser": {
+        "type": "DictParser",
+        "delimiter": "="
+      }
     }
   },
   "crossystem": {
     "DataCommand": {
-      "cmd": "crossystem"
+      "cmd": "crossystem",
+      "parser": {
+        "type": "DictParser",
+        "delimiter": "=",
+        "comment_mark": "#"
+      }
     }
   },
   "ap_write_protect": {
     "DataCommand": {
       "cmd": "flashrom",
-      "args": ["-p", "host", "--wp-status"]
+      "args": ["-p", "host", "--wp-status"],
+      "parser": {
+        "type": "RegexParser",
+        "pattern":
+          "(write protect is (?P<status>enabled|disabled))|(?P<range>start=0x\\d+, len=0x\\d+)"
+      }
     }
   },
   "ec_write_protect": {
     "DataCommand": {
       "cmd": "flashrom",
-      "args": ["-p", "ec", "--wp-status"]
+      "args": ["-p", "ec", "--wp-status"],
+      "parser": {
+        "type": "RegexParser",
+        "pattern":
+          "(write protect is (?P<status>enabled|disabled))|(?P<range>start=0x\\d+, len=0x\\d+)"
+      }
     }
   },
   "factory_instal_shim_version": {
     "DataCommand": {
       "cmd": "cat",
-      "args": ["/etc/lsb-release"]
+      "args": ["/etc/lsb-release"],
+      "parser": {
+        "type": "DictParser",
+        "delimiter": "="
+      }
     }
   }
 }"##;
@@ -90,6 +123,9 @@ pub struct DataCommand {
 
     #[serde(default)]
     pub args: Vec<String>,
+
+    #[serde(default)]
+    pub parser: DataParser,
 }
 
 #[derive(Serialize, Deserialize)]
