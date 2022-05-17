@@ -86,6 +86,8 @@ DLC_IDS=()
 DLC_COUNT=0
 TOTAL_DLC_PREALLOCATE_SIZE=0
 
+UNVERIFIED_DLC_PATH=
+
 # Define our own logging function.
 log() {
   echo "$*"
@@ -142,6 +144,12 @@ explain_cros_debug() {
     - Netboot: Change kernel command line config file on TFTP."
 }
 
+dlc_cleanup() {
+  if [ -d "${UNVERIFIED_DLC_PATH}" ]; then
+    rm -rf "${UNVERIFIED_DLC_PATH}"
+  fi
+}
+
 # Error message for any unexpected error.
 on_die() {
   set +x
@@ -157,6 +165,7 @@ on_die() {
     log "See ${LOG_FILE} for detailed information."
   fi
 
+  dlc_cleanup
   # Open a terminal if the kernel command line allows debugging.
   if is_allow_debug; then
     while true; do sh; done
@@ -783,37 +792,6 @@ factory_install_cros_payload() {
   if [ -n "${dlc_path}" ]; then
     log "Installation will fail if factory server version is less than" \
         "20211102181209!"
-    # Estimate the size of the DLC and resize the tmpfs accordingly.
-    # This is a short term solution since the max size of the tmpfs is
-    # limited by the size of the memory on DUT.
-    local dlc_gz_file dlc_gz_size cur_tmpfs_size
-    if [ -n "${FACTORY_INSTALL_FROM_USB}" ]; then
-      dlc_gz_file="$(jq -r \
-                    '."release_image"."dlc_factory_cache"' "${json_url}")"
-      dlc_gz_file="$(dirname "${json_url}")/${dlc_gz_file}"
-      dlc_gz_size="$(du -B1 "${dlc_gz_file}" | \
-                    awk '{ size=$1 } END { print size }')"
-    else
-      dlc_gz_file="$(curl "${json_url}" | \
-                    jq -r '."release_image"."dlc_factory_cache"')"
-      dlc_gz_file="$(dirname "${json_url}")/${dlc_gz_file}"
-      # curl -sI returns the header information of the DLC file.
-      # The header looks like this:
-      #   Location: <url_to_dlc_file>
-      #   Date: <date>
-      #   ...
-      #   Content-Length: <size_of_content>
-      #   ...
-      # We use `awk` to get the second column of the Content-Length, which is
-      # the size of the DLC file, and trim off the white spaces using `tr`.
-      dlc_gz_size="$(curl -sI "${dlc_gz_file}" | grep -i Content-Length \
-                    | awk '{ print $2 }' | tr -d '[:space:]')"
-    fi
-    # tmpfs mounts on /
-    cur_tmpfs_size="$(df -B1 / | awk '(NR>1) { size=$2 } END { print size }')"
-    # The size of the compressed and decompressed DLC images are similar.
-    mount -o remount,size="$((dlc_gz_size * 2 + cur_tmpfs_size))" /
-
     cros_payload install "${json_url}" "${dlc_path}" \
       release_image.dlc_factory_cache
   else
@@ -1357,22 +1335,27 @@ action_r() {
   get_factory_installed_dlc_cnt_and_size "${release_rootfs_mount_point}"
   log "Number of factory installed DLC metadata: ${DLC_COUNT}"
   if [ "${DLC_COUNT}" != 0 ]; then
-    # Install the factory installed DLC images to dlc_path.
-    local dlc_path=/tmp/dlc
-    mkdir -p "${dlc_path}"
+    # We install the unverified factory installed DLC images to the
+    # unencrypted stateful partition of the DUT. We do not install those images
+    # on tmpfs since tmpfs is an in-memory fs. DUT might not have enough memory
+    # to use if tmpfs is too large.
+    # We also cleanup `UNVERIFIED_DLC_PATH` on die.
+    UNVERIFIED_DLC_PATH="${state_mount_point}"/unencrypted/unverified_dlc
+    mkdir -p "${UNVERIFIED_DLC_PATH}"
     log "Get factory installed DLC images from usb/network..."
     if [ -n "${FACTORY_INSTALL_FROM_USB}" ]; then
-      factory_install_usb "${dlc_path}"
+      factory_install_usb "${UNVERIFIED_DLC_PATH}"
     else
       connect_to_ethernet
-      factory_install_network "${dlc_path}"
+      factory_install_network "${UNVERIFIED_DLC_PATH}"
     fi
 
     # Unzip the DLC and verify their hashes.
-    log "Unpack factory installed DLC images to ${dlc_path}"
-    tar -xpvf "${dlc_path}"/release_image.dlc_factory_cache -C "${dlc_path}"
+    log "Unpack factory installed DLC images to ${UNVERIFIED_DLC_PATH}"
+    tar -xpvf "${UNVERIFIED_DLC_PATH}"/release_image.dlc_factory_cache \
+      -C "${UNVERIFIED_DLC_PATH}"
     get_dlc_image_from_dlc_factory_cache \
-      "${dlc_path}"/unencrypted/dlc-factory-images
+      "${UNVERIFIED_DLC_PATH}"/unencrypted/dlc-factory-images
 
     if [ "${DLC_COUNT}" != "${#DLC_IMG_PATHS[@]}" ]; then
       die "Expected to have ${DLC_COUNT} DLCs. Current: ${#DLC_IMG_PATHS[@]}."
@@ -1387,8 +1370,11 @@ action_r() {
     fi
 
     log "Install the DLCs to stateful partition..."
-    mv "${dlc_path}"/unencrypted/dlc-factory-images \
+    mv "${UNVERIFIED_DLC_PATH}"/unencrypted/dlc-factory-images \
        "${state_mount_point}"/unencrypted
+
+    # Removes `UNVERIFIED_DLC_PATH`.
+    dlc_cleanup
   else
     log "No factory installed DLC metadata found. Skip copying..."
   fi
