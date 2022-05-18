@@ -487,9 +487,9 @@ prepare_disk() {
 }
 
 ufs_init() {
-  local ufs_init_file="/usr/sbin/factory_ufs_init.sh"
-  if [ -x "${ufs_init_file}" ]; then
-    ${ufs_init_file}
+  local ufs_init_bin="/usr/sbin/factory_ufs"
+  if [ -x "${ufs_init_bin}" ]; then
+    ${ufs_init_bin}
   fi
 }
 
