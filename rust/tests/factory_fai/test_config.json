@@ -19,5 +19,11 @@
         "pattern": "(?P<key1>value1)|(?P<key2>value2)"
       }
     }
+  },
+  "data3": {
+    "DataFiles": {
+      "root": "tests/factory_fai/test_fs",
+      "read_content": true
+    }
   }
 }

@@ -1,4 +1,4 @@
-// Copyright 2022 The Chromium OS Authors. All rights reserved.
+// Copyright 2022 The ChromiumOS Authors.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -17,25 +17,22 @@ use serde_json;
 // 2. Release image info ("mount $DEV; cat /$DEV/etc/lsb-release")
 // 3. Signing key
 // 4. CBI data ("ectool cbi get <tag> ...")
-// TODO(wyuang): VPD may contains "\n", we would probably want to read values from
-// `/sys/firmware/vpd` instead of `vpd` command.
 pub const DEFAULT_CONFIG: &str = r##"{
   "ro_vpd": {
-    "DataCommand": {
-      "cmd": "vpd",
-      "args": ["-i", "RO_VPD", "-l"]
+    "DataFiles": {
+      "root": "/sys/firmware/vpd/ro",
+      "read_content": true
     }
   },
   "rw_vpd": {
-    "DataCommand": {
-      "cmd": "vpd",
-      "args": ["-i", "RW_VPD", "-l"]
+    "DataFiles": {
+      "root": "/sys/firmware/vpd/rw",
+      "read_content": true
     }
   },
   "stateful_partition": {
-    "DataCommand": {
-      "cmd": "find",
-      "args": ["/mnt/stateful_partition", "-not", "-type", "d"]
+    "DataFiles": {
+      "root": "/mnt/stateful_partition"
     }
   },
   "tpm_version": {
@@ -129,9 +126,25 @@ pub struct DataCommand {
 }
 
 #[derive(Serialize, Deserialize)]
+pub struct DataFiles {
+    pub root: String,
+
+    #[serde(default = "default_glob")]
+    pub glob: String,
+
+    #[serde(default)]
+    pub read_content: bool,
+}
+
+fn default_glob() -> String {
+    "**/*".to_string()
+}
+
+#[derive(Serialize, Deserialize)]
 pub enum DataCollector {
-    // TODO(wyuang): support DataFunction and DataFiles for calling function and read files.
+    // TODO(wyuang): support DataFunction for calling functions.
     DataCommand(DataCommand),
+    DataFiles(DataFiles),
 }
 
 pub type FAIConfig = HashMap<String, DataCollector>;
