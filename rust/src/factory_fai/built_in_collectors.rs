@@ -1,0 +1,178 @@
+// Copyright 2022 The ChromiumOS Authors.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+use std::fs;
+
+use crate::device;
+use crate::factory_fai::parsers::{DictParser, Parser, RegexParser};
+use crate::utils::process_utils::{Command, StringOutput};
+use crate::utils::sys_utils;
+
+use anyhow::{self, Result};
+use regex::Regex;
+use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value};
+use tempfile;
+
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BuiltInCollector {
+    PartitionTable,
+    ReleaseImageInfo,
+    SigningKeys,
+    CbiData,
+    #[cfg(test)]
+    MockForTest, // Variant for unit test.
+}
+
+impl BuiltInCollector {
+    pub fn collect(&self) -> Result<Value> {
+        match self {
+            BuiltInCollector::PartitionTable => partition_table(),
+            BuiltInCollector::ReleaseImageInfo => release_image_info(),
+            BuiltInCollector::SigningKeys => signing_keys(),
+            BuiltInCollector::CbiData => cbi_data(),
+            #[cfg(test)]
+            BuiltInCollector::MockForTest => mock_for_test(),
+        }
+    }
+}
+
+fn partition_table() -> Result<Value> {
+    let fixed_device_storage = device::get_fixed_device_storage()?;
+    let parser = RegexParser::new(
+        r"(?P<start>\d+)\s+(?P<size>\d+)\s+(?P<partition>\d+)\s+(?P<type>.+)".to_string(),
+    );
+    let output = Command::new("cgpt")
+        .args(["show", "-q", &fixed_device_storage])
+        .output()?
+        .stdout()
+        .split('\n')
+        .filter_map(|line| {
+            if let Ok(matches) = parser.parse(line.to_string()) {
+                if matches.as_object().unwrap().keys().len() > 0 {
+                    return Some(matches);
+                }
+            }
+            None
+        })
+        .collect();
+    Ok(Value::Array(output))
+}
+
+fn release_image_info() -> Result<Value> {
+    let rootfs_partition = device::get_release_rootfs_partition()?;
+    let mount_point = tempfile::tempdir()?.into_path();
+
+    sys_utils::mount(rootfs_partition, mount_point.as_os_str(), true)?;
+    let output = fs::read_to_string(mount_point.join("etc/lsb-release"))?.to_string();
+    sys_utils::umount(mount_point)?;
+
+    Ok(DictParser::new("=".to_string()).parse(output)?)
+}
+
+fn signing_keys() -> Result<Value> {
+    let rootfs_partition = device::get_release_rootfs_partition()?;
+    let mount_point = tempfile::tempdir()?.into_path();
+
+    sys_utils::mount(rootfs_partition, mount_point.as_os_str(), true)?;
+    let output: Map<String, Value> = serde_json::from_str(
+        &Command::new(mount_point.join("usr/sbin/chromeos-firmwareupdate"))
+            .arg("--manifest")
+            .output()?
+            .stdout(),
+    )?;
+    sys_utils::umount(mount_point)?;
+
+    // Format of firmware manifest:
+    //   {
+    //     MODEL_NAME: {
+    //       "host": {
+    //         "keys": {
+    //           "root": ROOTKEY,
+    //           "recovery": RECOVERY_KEY
+    //         }
+    //       },
+    //       ...
+    //     },
+    //     ...
+    //   }
+    let model_name = device::get_model_name()?;
+    Ok(output
+        .get(&model_name)
+        .unwrap()
+        .get("host")
+        .unwrap()
+        .get("keys")
+        .cloned()
+        .unwrap())
+}
+
+fn cbi_data() -> Result<Value> {
+    let mut data = Map::new();
+
+    // Parse the CBI usage:
+    //   Usage: ectool cbi get <tag> [get_flag]
+    //   Usage: ectool cbi set <tag> <value/string> <size> [set_flag]
+    //     <tag> is one of:
+    //       0: BOARD_VERSION
+    //       1: OEM_ID
+    //       ...
+    //     <other usage>
+    //     ...
+    let cbi_usage = Command::new("ectool")
+        .args(["cbi", "get"])
+        .output()?
+        .stderr();
+    let mut tag_section = false;
+    for line in cbi_usage.split('\n') {
+        if tag_section {
+            // Parse "ID: TAG" pairs
+            if let Some(matches) = Regex::new(r"(\d+):\s*([A-Z_]+)")?.captures(line) {
+                let id = matches.get(1).unwrap().as_str().to_string();
+                let tag = matches.get(2).unwrap().as_str().to_string();
+
+                // Execute `ectool cbi get <tag>` to obtain CBI data.
+                let output = Command::new("ectool")
+                    .args(["cbi", "get", &id])
+                    .output()?
+                    .stdout();
+                if output.len() == 0 {
+                    continue;
+                }
+
+                // Parse different type of CBI:
+                //   int: prefix "As unint: VALUE"
+                //   string: raw string
+                let value = match Regex::new(r"As uint:\s*(\d+)")?.captures(&output) {
+                    Some(caps) => Value::Number(caps.get(1).unwrap().as_str().parse().unwrap()),
+                    None => Value::String(output.trim().to_string()),
+                };
+                data.insert(tag, value);
+            } else {
+                break;
+            }
+        } else if line.trim().starts_with("<tag> is one of") {
+            tag_section = true;
+        }
+    }
+    Ok(Value::Object(data))
+}
+
+#[cfg(test)]
+fn mock_for_test() -> Result<Value> {
+    Ok(Value::String("text for test".to_string()))
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::factory_fai::built_in_collectors::BuiltInCollector;
+
+    #[test]
+    fn test_collect() {
+        let output = BuiltInCollector::MockForTest.collect().unwrap();
+
+        assert_eq!(output, "text for test");
+    }
+}

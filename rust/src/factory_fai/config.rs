@@ -6,17 +6,14 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
+use crate::factory_fai::built_in_collectors::BuiltInCollector;
 use crate::factory_fai::parsers::DataParser;
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use serde_json;
 
-// TODO(wyuang): collect more default data:
-// 1. Partition Table ("cgpt show ...")
-// 2. Release image info ("mount $DEV; cat /$DEV/etc/lsb-release")
-// 3. Signing key
-// 4. CBI data ("ectool cbi get <tag> ...")
+// TODO(wyuang): implement parser for `gsc_capabilities`
 pub const DEFAULT_CONFIG: &str = r##"{
   "ro_vpd": {
     "DataFiles": {
@@ -111,6 +108,18 @@ pub const DEFAULT_CONFIG: &str = r##"{
         "delimiter": "="
       }
     }
+  },
+  "partition_table": {
+    "BuiltInCollector": "partition_table"
+  },
+  "release_image_info": {
+    "BuiltInCollector": "release_image_info"
+  },
+  "signing_keys": {
+    "BuiltInCollector": "signing_keys"
+  },
+  "cbi_data": {
+    "BuiltInCollector": "cbi_data"
   }
 }"##;
 
@@ -140,11 +149,25 @@ fn default_glob() -> String {
     "**/*".to_string()
 }
 
+/// `DataCollector` implements a set of functions ro collect FAI data.
+///
+/// # `DataCommand`
+/// `DataCommand` collects data from command line by execute `cmd` with arguments `args`. Then the
+/// output will be passed to a `DetaParser` implemented in `factory_fai::parsers` and converted to
+/// JSON format.
+///
+/// # `DataFiles`
+/// `Datafiles` collect data from all files the `root` directory according to the `glob` string. If
+/// `read_content` is set, it will collect the contents of files. Otherwise list the filenames only.
+///
+/// # BuiltInCollector
+/// If the data cannot be fit in the other common collectors, there's a set of `BuiltInCollector`
+/// implemented in `factory_fai::built_in_collectors` which handles specific cases.
 #[derive(Serialize, Deserialize)]
 pub enum DataCollector {
-    // TODO(wyuang): support DataFunction for calling functions.
     DataCommand(DataCommand),
     DataFiles(DataFiles),
+    BuiltInCollector(BuiltInCollector),
 }
 
 pub type FAIConfig = HashMap<String, DataCollector>;

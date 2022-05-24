@@ -15,6 +15,7 @@ use serde_json;
 use serde_json::{Map, Value};
 
 pub mod args;
+pub mod built_in_collectors;
 pub mod config;
 pub mod parsers;
 
@@ -61,20 +62,19 @@ pub fn collect_fai_data(fai_config: FAIConfig) -> Result<String> {
     for (name, config) in fai_config.iter() {
         let data = match config {
             DataCollector::DataCommand(data_cmd) => {
-                let output = Command::new(&data_cmd.cmd)
-                    .args(&data_cmd.args)
-                    .output()
-                    .with_context(|| format!("Failed to collect \"{}\".", name))?;
-                data_cmd.parser.parse(output.stdout())?
+                let output = Command::new(&data_cmd.cmd).args(&data_cmd.args).output()?;
+                data_cmd.parser.parse(output.stdout())
             }
             DataCollector::DataFiles(data_files) => {
                 if data_files.read_content {
-                    read_files(&data_files.root, &data_files.glob)?
+                    read_files(&data_files.root, &data_files.glob)
                 } else {
-                    list_files(&data_files.root, &data_files.glob)?
+                    list_files(&data_files.root, &data_files.glob)
                 }
             }
+            DataCollector::BuiltInCollector(collector) => collector.collect(),
         };
+        let data = data.with_context(|| format!("Failed to collect \"{}\".", name))?;
 
         fai_data.insert(name.to_string(), data);
     }
