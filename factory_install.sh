@@ -1183,9 +1183,8 @@ menu() {
   menu_line U "Update TPM firmware" "Update TPM firmware"
   menu_line E "Perform RSU" "Perform RSU (RMA Server Unlock)"
   menu_line M "Enable factory mode" "Enable TPM factory mode"
-  # TODO(wyuang): show up in menu after all FAI functions ready.
-  # menu_line F "Perform factory FAI" \
-  #             "Perform Factory FAI(First Article Inspection)"
+  menu_line F "Perform factory FAI" \
+              "Perform Factory FAI(First Article Inspection)"
 
   menu_board
 
@@ -1534,7 +1533,10 @@ action_m() {
 
 # F = Perform Factory FAI process
 action_f() {
-  /usr/sbin/factory_fai
+  /usr/sbin/factory_fai --save-to-usb
+  colorize yellow
+  log "Please upload the FAI data to issue tracker for Google review."
+  colorize white
 }
 
 try_set_default_action_rsu() {
