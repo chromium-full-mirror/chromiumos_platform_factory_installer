@@ -783,6 +783,19 @@ factory_install_cros_payload() {
   if [ -n "${dlc_path}" ]; then
     log "Installation will fail if factory server version is less than" \
         "20211102181209!"
+    # Estimate the size of the DLC and resize the tmpfs accordingly.
+    # This is a short term solution since the max size of the tmpfs is
+    # limited by the size of the memory on DUT.
+    local dlc_gz_file dlc_gz_size cur_tmpfs_size
+    dlc_gz_file="$(jq -r '."release_image"."dlc_factory_cache"' "${json_url}")"
+    dlc_gz_file="$(dirname "${json_url}")/${dlc_gz_file}"
+    dlc_gz_size="$(du -B1 "${dlc_gz_file}" | \
+                  awk '{ size=$1 } END { print size }')"
+    # tmpfs mounts on /
+    cur_tmpfs_size="$(df -B1 / | awk '(NR>1) {size=$2} END {print size}')"
+    # The size of the compressed and decompressed DLC images are similar.
+    mount -o remount,size="$((dlc_gz_size * 2 + cur_tmpfs_size))" /
+
     cros_payload install "${json_url}" "${dlc_path}" \
       release_image.dlc_factory_cache
   else
