@@ -13,7 +13,6 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use serde_json;
 
-// TODO(wyuang): implement parser for `gsc_capabilities`
 pub const DEFAULT_CONFIG: &str = r##"{
   "ro_vpd": {
     "DataFiles": {
@@ -44,7 +43,10 @@ pub const DEFAULT_CONFIG: &str = r##"{
   "gsc_capabilities": {
     "DataCommand": {
       "cmd": "gsctool",
-      "args": ["-a", "-I", "-M"]
+      "args": ["-a", "-I", "-M"],
+      "parser": {
+        "type": "GSCCapsParser"
+      }
     }
   },
   "gsc_board_id": {

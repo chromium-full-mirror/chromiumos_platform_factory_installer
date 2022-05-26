@@ -6,14 +6,15 @@ use std::collections::HashMap;
 
 use anyhow::{self, Result};
 
-fn parse_dict_impl<S, I>(
+fn parse_dict_impl<D, L, I>(
     lines: I,
-    delimiter: S,
+    delimiter: D,
     ignore_error: bool,
 ) -> Result<HashMap<String, String>>
 where
-    S: AsRef<str>,
-    I: IntoIterator<Item = S>,
+    D: AsRef<str>,
+    L: AsRef<str>,
+    I: IntoIterator<Item = L>,
 {
     let delimiter = delimiter.as_ref();
     let mut ret = HashMap::new();
@@ -48,10 +49,11 @@ where
 /// let parse_result = string_utils::parse_dict(["key:value"], ":").unwrap();
 /// let value = parse_result.get("key").unwrap(); // will return "value"
 /// ```
-pub fn parse_dict<S, I>(lines: I, delimiter: S) -> Result<HashMap<String, String>>
+pub fn parse_dict<D, L, I>(lines: I, delimiter: D) -> Result<HashMap<String, String>>
 where
-    S: AsRef<str>,
-    I: IntoIterator<Item = S>,
+    D: AsRef<str>,
+    L: AsRef<str>,
+    I: IntoIterator<Item = L>,
 {
     parse_dict_impl(lines, delimiter, false)
 }
@@ -73,10 +75,11 @@ where
 /// let parse_result = string_utils::parse_dict_ignore_error(["key:value"], ":");
 /// let value = parse_result.get("key").unwrap(); // will return "value"
 /// ```
-pub fn parse_dict_ignore_error<S, I>(lines: I, delimiter: S) -> HashMap<String, String>
+pub fn parse_dict_ignore_error<D, L, I>(lines: I, delimiter: D) -> HashMap<String, String>
 where
-    S: AsRef<str>,
-    I: IntoIterator<Item = S>,
+    D: AsRef<str>,
+    L: AsRef<str>,
+    I: IntoIterator<Item = L>,
 {
     parse_dict_impl(lines, delimiter, true).unwrap()
 }
