@@ -9,31 +9,37 @@ use std::ptr;
 
 use anyhow::{self, Result};
 
+// TODO(wyuang): add more possible fstype.
+const FSTYPES: &[&str] = &["ext4", "exfat", "vfat"];
+
 /// Mounts a node to certain path.
 /// # Arguments
 /// * `src` - source device to be mounted.
 /// * `dst` - mount point.
 /// * `ro` - whether mount the device as readonly.
 pub fn mount<S: AsRef<OsStr>, D: AsRef<OsStr>>(src: S, dst: D, ro: bool) -> Result<()> {
-    // TODO(wyuang): Currently RO and ext4 is enough, but may want to support more options and
-    // flags in the future.
+    // TODO(wyuang): support more options and flags in the future.
     let src = CString::new(src.as_ref().as_bytes())?;
     let dst = CString::new(dst.as_ref().as_bytes())?;
-    let fstype = CString::new("ext4")?;
     let flags = if ro { libc::MS_RDONLY } else { 0 };
-    let retval = unsafe {
-        libc::mount(
-            src.as_ptr(),
-            dst.as_ptr(),
-            fstype.as_ptr(),
-            flags,
-            ptr::null(),
-        )
-    };
-    if retval != 0 {
-        anyhow::bail!("Failed to mount: {}", Error::last_os_error());
+
+    // Auto detect possible fstypes like `mount -t auto`.
+    for fstype in FSTYPES {
+        let fstype = CString::new(*fstype)?;
+        let retval = unsafe {
+            libc::mount(
+                src.as_ptr(),
+                dst.as_ptr(),
+                fstype.as_ptr(),
+                flags,
+                ptr::null(),
+            )
+        };
+        if retval == 0 {
+            return Ok(());
+        }
     }
-    Ok(())
+    anyhow::bail!("Failed to mount: {}", Error::last_os_error());
 }
 
 /// Unmounts a node.

@@ -22,10 +22,15 @@ fn main() -> Result<()> {
 
     let data = factory_fai::collect_fai_data(fai_config)?;
 
+    println!("{}", &data);
+    if args.save_to_usb {
+        let (dev, filename) = factory_fai::save_to_usb(&data)?;
+        eprintln!("Suceed to saved {} in {}.", filename, dev);
+    }
+
     if let Some(path) = args.output_path {
-        println!("Writing result to {}.", path);
+        eprintln!("Writing result to {}.", path);
         fs::write(path, &data).context("Failed to write result to output file.")?;
     }
-    println!("{}", &data);
     Ok(())
 }

@@ -19,4 +19,8 @@ pub struct Args {
     /// Dump the default configuration.
     #[clap(long)]
     pub dump_config: bool,
+
+    /// Safe the FAI data to stateful partition of factory shim.
+    #[clap(long)]
+    pub save_to_usb: bool,
 }

@@ -9,7 +9,7 @@ use crate::factory_fai::parsers::{DictParser, Parser, RegexParser};
 use crate::utils::process_utils::{Command, StringOutput};
 use crate::utils::sys_utils;
 
-use anyhow::{self, Result};
+use anyhow::{self, Context, Result};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -101,12 +101,12 @@ fn signing_keys() -> Result<Value> {
     let model_name = device::get_model_name()?;
     Ok(output
         .get(&model_name)
-        .unwrap()
+        .context("Unable to get model name from manifest.")?
         .get("host")
-        .unwrap()
+        .context("Unable to get firmware info from manifest.")?
         .get("keys")
         .cloned()
-        .unwrap())
+        .context("Unabel to get keys from manifest.")?)
 }
 
 fn cbi_data() -> Result<Value> {

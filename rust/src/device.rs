@@ -2,9 +2,14 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use anyhow::Result;
+use std::fs;
+
+use anyhow::{Context, Result};
 
 use crate::utils::process_utils::{Command, StringOutput};
+use crate::utils::string_utils;
+
+use regex::Regex;
 
 const GET_FIXED_DST_DRIVE_CMD: &str =
     ". /usr/sbin/write_gpt.sh; load_base_vars; get_fixed_dst_drive;";
@@ -43,10 +48,38 @@ pub fn get_release_rootfs_partition() -> Result<String> {
     Ok(fixed_device_storage)
 }
 
+/// Gets the stateful partition of dev image.
+pub fn get_dev_stateful_partition() -> Result<String> {
+    let lsb_factory = string_utils::parse_dict(
+        fs::read_to_string("/mnt/stateful_partition/dev_image/etc/lsb-factory")?
+            .trim()
+            .split("\n"),
+        "=",
+    )?;
+
+    // `REAL_USB_DEV` presents the rootfs partition (usually the 3rd partition).
+    // Replace with the 1st partition which is the stateful partition.
+    // E.g. /dev/sda3 -> /dev/sda1
+    let dev_stateful_partition = String::from(
+        Regex::new("[0-9]")?.replace(
+            lsb_factory
+                .get("REAL_USB_DEV")
+                .context("Unable to get the path of dev image.")?,
+            "1",
+        ),
+    );
+    Ok(dev_stateful_partition)
+}
+
 /// Gets the model name of device.
 pub fn get_model_name() -> Result<String> {
     Ok(Command::new("cros_config")
         .args(["/", "name"])
         .output()?
         .stdout())
+}
+
+/// Get the serial number of the device.
+pub fn get_serial_number() -> Result<String> {
+    Ok(fs::read_to_string("/sys/firmware/vpd/ro/serial_number")?)
 }
