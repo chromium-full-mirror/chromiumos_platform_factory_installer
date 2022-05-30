@@ -787,12 +787,30 @@ factory_install_cros_payload() {
     # This is a short term solution since the max size of the tmpfs is
     # limited by the size of the memory on DUT.
     local dlc_gz_file dlc_gz_size cur_tmpfs_size
-    dlc_gz_file="$(jq -r '."release_image"."dlc_factory_cache"' "${json_url}")"
-    dlc_gz_file="$(dirname "${json_url}")/${dlc_gz_file}"
-    dlc_gz_size="$(du -B1 "${dlc_gz_file}" | \
-                  awk '{ size=$1 } END { print size }')"
+    if [ -n "${FACTORY_INSTALL_FROM_USB}" ]; then
+      dlc_gz_file="$(jq -r \
+                    '."release_image"."dlc_factory_cache"' "${json_url}")"
+      dlc_gz_file="$(dirname "${json_url}")/${dlc_gz_file}"
+      dlc_gz_size="$(du -B1 "${dlc_gz_file}" | \
+                    awk '{ size=$1 } END { print size }')"
+    else
+      dlc_gz_file="$(curl "${json_url}" | \
+                    jq -r '."release_image"."dlc_factory_cache"')"
+      dlc_gz_file="$(dirname "${json_url}")/${dlc_gz_file}"
+      # curl -sI returns the header information of the DLC file.
+      # The header looks like this:
+      #   Location: <url_to_dlc_file>
+      #   Date: <date>
+      #   ...
+      #   Content-Length: <size_of_content>
+      #   ...
+      # We use `awk` to get the second column of the Content-Length, which is
+      # the size of the DLC file, and trim off the white spaces using `tr`.
+      dlc_gz_size="$(curl -sI "${dlc_gz_file}" | grep -i Content-Length \
+                    | awk '{ print $2 }' | tr -d '[:space:]')"
+    fi
     # tmpfs mounts on /
-    cur_tmpfs_size="$(df -B1 / | awk '(NR>1) {size=$2} END {print size}')"
+    cur_tmpfs_size="$(df -B1 / | awk '(NR>1) { size=$2 } END { print size }')"
     # The size of the compressed and decompressed DLC images are similar.
     mount -o remount,size="$((dlc_gz_size * 2 + cur_tmpfs_size))" /
 
