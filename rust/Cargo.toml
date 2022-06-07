@@ -18,3 +18,4 @@ tempfile = "3.2.0"
 default = ["factory-fai", "factory-ufs"]
 factory-fai = []
 factory-ufs = []
+cq-test = []

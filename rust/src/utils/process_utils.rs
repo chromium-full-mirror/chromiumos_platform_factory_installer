@@ -28,6 +28,7 @@ impl StringOutput for std::process::Output {
     }
 }
 
+#[cfg(not(feature = "cq-test"))]
 #[cfg(test)]
 mod tests {
     use crate::utils::process_utils::StringOutput;
