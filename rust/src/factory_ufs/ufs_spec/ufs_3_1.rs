@@ -117,3 +117,31 @@ impl ProvisionLun for UnitConfigDescriptor {
 }
 
 impl CommonDescriptorTrait<'_> for UnitConfigDescriptor {}
+
+#[cfg(test)]
+mod tests {
+    use crate::factory_ufs::ufs_spec::ufs_3_1::{DeviceConfigDescriptor, UnitConfigDescriptor};
+    use crate::factory_ufs::ufs_spec::ufs_common;
+    use crate::factory_ufs::ufs_spec::ufs_unit_descriptor::ProvisionLun;
+
+    #[test]
+    fn test_device_config_descriptor() {
+        let device_config = DeviceConfigDescriptor::default();
+
+        assert_eq!(device_config.b_length, 0xe6);
+    }
+
+    #[test]
+    fn test_unit_config_descriptor() {
+        let alloc_units: u32 = 10;
+        let mut unit_config = UnitConfigDescriptor::default();
+        unit_config.provision_lun(alloc_units);
+
+        assert_eq!(unit_config.b_lu_enable, 0x01);
+        assert_eq!(unit_config.d_num_alloc_units, alloc_units);
+        assert_eq!(
+            unit_config.b_provisioning_type,
+            ufs_common::PROVISIONING_TYPE,
+        );
+    }
+}

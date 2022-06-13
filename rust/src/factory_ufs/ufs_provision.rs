@@ -105,7 +105,7 @@ fn rescan_dev_and_sync(ufs_dev_path: &Path) -> Result<()> {
 /// Writes new UFS config using ufs-utils.
 fn write_ufs_config<T: Serialize>(ufs_bsg_node_path: &Path, ufs_config: &T) -> Result<()> {
     let config_path = NamedTempFile::new()?.path().display().to_string();
-    let config_bin_vec = bincode::config().big_endian().serialize::<T>(&ufs_config)?;
+    let config_bin_vec = serialize_config::<T>(&ufs_config)?;
     fs::write(&config_path, config_bin_vec)?;
 
     println!("Write config to {}...", ufs_bsg_node_path.display());
@@ -123,6 +123,11 @@ fn write_ufs_config<T: Serialize>(ufs_bsg_node_path: &Path, ufs_config: &T) -> R
         .output()?;
     println!("{}", output.stdout());
     Ok(())
+}
+
+/// Serialize an UFS config to a u8 vector.
+fn serialize_config<T: Serialize>(ufs_config: &T) -> Result<Vec<u8>> {
+    Ok(bincode::config().big_endian().serialize::<T>(&ufs_config)?)
 }
 
 /// Deserialize a binary config to a given type.
@@ -225,4 +230,122 @@ pub fn do_provisioning_if_needed<'de, T: CommonDescriptorTrait<'de> + ProvisionL
     println!("Finish UFS provisioning.");
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs::{self, File};
+    use std::path::{Path, PathBuf};
+
+    use tempdir::TempDir;
+
+    use crate::factory_ufs::ufs_provision;
+    use crate::factory_ufs::ufs_spec::ufs_config_descriptor::{
+        UFS2ConfigDescriptor, UFS3ConfigDescriptor,
+    };
+
+    #[test]
+    fn test_read_header() {
+        let config_binary: Vec<u8> = vec![0x90, 0x01, 0x00, 0x00];
+        let header_value = ufs_provision::read_header(&config_binary).unwrap();
+
+        assert_eq!(header_value, config_binary[0]);
+    }
+
+    fn generate_ufs2_config_binary() -> Vec<u8> {
+        vec![
+            144, 1, 0, 1, 0, 1, 127, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 119, 50, 0, 12,
+            3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 12, 0,
+            0, 0, 0, 0, 0,
+        ]
+    }
+
+    #[test]
+    fn test_deserialize_config() {
+        // TODO: (phoebewang) add ufs3
+        let ufs2_config_binary = generate_ufs2_config_binary();
+        let ufs2_config_descriptor =
+            ufs_provision::deserialize_config::<UFS2ConfigDescriptor>(&ufs2_config_binary).unwrap();
+
+        assert_eq!(ufs2_config_descriptor.device_config.b_length, 0x90);
+        assert_eq!(ufs2_config_descriptor.units_config[0].b_lu_enable, 0x1);
+        // 119 = 0x77, 50 = 0x32
+        assert_eq!(
+            ufs2_config_descriptor.units_config[0].d_num_alloc_units,
+            0x7732
+        );
+        assert_eq!(
+            ufs2_config_descriptor.units_config[0].b_provisioning_type,
+            0x3
+        );
+    }
+
+    #[test]
+    fn test_serialize_config() {
+        let mut ufs2_config = UFS2ConfigDescriptor::default();
+        ufs2_config.units_config[0].b_lu_enable = 0x1;
+        ufs2_config.units_config[0].d_num_alloc_units = 0x7732;
+        ufs2_config.units_config[0].b_provisioning_type = 0x3;
+
+        let ufs2_config_binary =
+            ufs_provision::serialize_config::<UFS2ConfigDescriptor>(&ufs2_config).unwrap();
+
+        assert_eq!(ufs2_config_binary, generate_ufs2_config_binary())
+    }
+
+    #[test]
+    fn test_generate_new_config() {
+        let alloc_units: u32 = 10;
+        let ufs2_config =
+            ufs_provision::generate_new_config::<UFS2ConfigDescriptor>(alloc_units).unwrap();
+        let ufs3_config =
+            ufs_provision::generate_new_config::<UFS3ConfigDescriptor>(alloc_units).unwrap();
+
+        assert_eq!(ufs2_config.device_config.b_length, 0x90);
+        assert_eq!(ufs2_config.units_config[0].d_num_alloc_units, alloc_units);
+
+        assert_eq!(ufs3_config.device_config.b_length, 0xe6);
+        assert_eq!(ufs3_config.units_config[0].d_num_alloc_units, alloc_units);
+    }
+
+    fn create_geometry_descriptor_dir(ufs_dev_path: &Path) -> PathBuf {
+        let geometry_dir = ufs_dev_path.join("geometry_descriptor");
+        fs::create_dir(&geometry_dir).unwrap();
+
+        geometry_dir.to_path_buf()
+    }
+
+    fn create_geometry_descriptor_files(geometry_dir: &Path, fname: &str, content: &str) {
+        let geometry_file_path = geometry_dir.join(fname);
+        File::create(&geometry_file_path).unwrap();
+        fs::write(geometry_file_path, content).unwrap();
+    }
+
+    #[test]
+    fn test_read_geometry_descriptor() {
+        let geometry_test_file = "geometry_test";
+        let ufs_dev_path = TempDir::new("test_ufs_dev").unwrap();
+        let geometry_dir = create_geometry_descriptor_dir(&ufs_dev_path.path());
+        create_geometry_descriptor_files(&geometry_dir, &geometry_test_file, "0x1234");
+
+        let val =
+            ufs_provision::read_geometry_descriptor(&ufs_dev_path.path(), &geometry_test_file)
+                .unwrap();
+        assert_eq!(val, 0x1234);
+    }
+
+    #[test]
+    fn test_get_alloc_units() {
+        let ufs_dev_path = TempDir::new("test_ufs_dev").unwrap();
+        let geometry_dir = create_geometry_descriptor_dir(&ufs_dev_path.path());
+        create_geometry_descriptor_files(&geometry_dir, "raw_device_capacity", "0xee64000");
+        create_geometry_descriptor_files(&geometry_dir, "segment_size", "0x2000");
+        create_geometry_descriptor_files(&geometry_dir, "allocation_unit_size", "0x1");
+
+        let val = ufs_provision::get_alloc_units(&ufs_dev_path.path()).unwrap();
+        assert_eq!(val, 30514);
+    }
 }
