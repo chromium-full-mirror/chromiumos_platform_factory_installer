@@ -1184,7 +1184,7 @@ menu() {
   menu_line E "Perform RSU" "Perform RSU (RMA Server Unlock)"
   menu_line M "Enable factory mode" "Enable TPM factory mode"
   menu_line F "Perform factory FAI" \
-              "Perform Factory FAI(First Article Inspection)"
+              "Perform Factory FAI (First Article Inspection)"
 
   menu_board
 

@@ -76,6 +76,7 @@ by a prompt to select an action.
       U Update TPM Firmware  Update TPM firmware
       E Perform RSU          Perform RSU (RMA Server Unlock)
       M Enable factory mode  Enable TPM factory mode
+      F Perform factory FAI  Perform Factory FAI (First Article Inspection)
 
     action>
 

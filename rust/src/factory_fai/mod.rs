@@ -67,7 +67,7 @@ pub fn save_to_usb(data: &str) -> Result<(String, String)> {
     let usb = device::get_dev_stateful_partition()?;
     let mount_point = tempfile::tempdir()?.into_path();
     let filename = format!(
-        "factoy_fai_{}_{}.json",
+        "factory_fai_{}_{}.json",
         device::get_model_name()?,
         device::get_serial_number()?
     );

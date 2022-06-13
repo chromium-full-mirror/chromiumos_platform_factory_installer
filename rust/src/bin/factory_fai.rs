@@ -25,7 +25,7 @@ fn main() -> Result<()> {
     println!("{}", &data);
     if args.save_to_usb {
         let (dev, filename) = factory_fai::save_to_usb(&data)?;
-        eprintln!("Suceed to saved {} in {}.", filename, dev);
+        eprintln!("Succeed to save {} in {}.", filename, dev);
     }
 
     if let Some(path) = args.output_path {
