@@ -122,6 +122,16 @@ pub const DEFAULT_CONFIG: &str = r##"{
   },
   "cbi_data": {
     "BuiltInCollector": "cbi_data"
+  },
+  "tpm_status": {
+    "DataCommand": {
+      "cmd": "trunks_client",
+      "args": ["--status"],
+      "parser": {
+        "type": "DictParser",
+        "delimiter": ":"
+      }
+    }
   }
 }"##;
 
