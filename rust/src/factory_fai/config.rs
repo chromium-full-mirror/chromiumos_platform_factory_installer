@@ -132,6 +132,16 @@ pub const DEFAULT_CONFIG: &str = r##"{
         "delimiter": ":"
       }
     }
+  },
+  "ap_ro_hash": {
+    "DataCommand": {
+      "cmd": "gsctool",
+      "args": ["-a", "-A"],
+      "parser": {
+        "type": "DictParser",
+        "delimiter": ":"
+      }
+    }
   }
 }"##;
 
