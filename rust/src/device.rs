@@ -50,12 +50,16 @@ pub fn get_release_rootfs_partition() -> Result<String> {
 
 /// Gets the stateful partition of dev image.
 pub fn get_dev_stateful_partition() -> Result<String> {
-    let lsb_factory = string_utils::parse_dict(
+    // The format of `lsb-factory` is "shell-executable" which may contain "#" comments and empty
+    // lines.
+    let lsb_factory = string_utils::parse_dict_ignore_error(
         fs::read_to_string("/mnt/stateful_partition/dev_image/etc/lsb-factory")?
             .trim()
-            .split("\n"),
+            .split("\n")
+            .map(|line| line.split("#").nth(0).unwrap())
+            .collect::<Vec<&str>>(),
         "=",
-    )?;
+    );
 
     // `REAL_USB_DEV` presents the rootfs partition (usually the 3rd partition).
     // Replace with the 1st partition which is the stateful partition.
@@ -67,7 +71,10 @@ pub fn get_dev_stateful_partition() -> Result<String> {
                 .context("Unable to get the path of dev image.")?,
             "1",
         ),
-    );
+    )
+    // Shell-executable allows value quoted by "".
+    .trim_matches('"')
+    .to_string();
     Ok(dev_stateful_partition)
 }
 
