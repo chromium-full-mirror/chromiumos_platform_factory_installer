@@ -5,11 +5,10 @@
 use std::fs;
 
 use anyhow::{Context, Result};
+use regex::Regex;
 
 use crate::utils::process_utils::{Command, StringOutput};
 use crate::utils::string_utils;
-
-use regex::Regex;
 
 const GET_FIXED_DST_DRIVE_CMD: &str =
     ". /usr/sbin/write_gpt.sh; load_base_vars; get_fixed_dst_drive;";

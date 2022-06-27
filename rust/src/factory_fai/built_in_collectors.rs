@@ -4,16 +4,16 @@
 
 use std::fs;
 
-use crate::device;
-use crate::factory_fai::parsers::{DictParser, Parser, RegexParser};
-use crate::utils::process_utils::{Command, StringOutput};
-use crate::utils::sys_utils;
-
 use anyhow::{self, Context, Result};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use tempfile;
+
+use crate::device;
+use crate::factory_fai::parsers::{DictParser, Parser, RegexParser};
+use crate::utils::process_utils::{Command, StringOutput};
+use crate::utils::sys_utils;
 
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

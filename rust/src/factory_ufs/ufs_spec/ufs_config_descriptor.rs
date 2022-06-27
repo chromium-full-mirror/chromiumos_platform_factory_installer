@@ -2,9 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use serde::{Deserialize, Serialize};
+
 use crate::factory_ufs::ufs_spec::ufs_common::CommonDescriptorTrait;
 use crate::factory_ufs::ufs_spec::{ufs_2_1, ufs_3_1, ufs_unit_descriptor::ProvisionLun};
-use serde::{Deserialize, Serialize};
 
 /// Defines the the config descriptor for UFS provisioning.
 ///

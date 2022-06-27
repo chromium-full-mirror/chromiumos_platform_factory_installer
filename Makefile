@@ -7,3 +7,7 @@ SUBDIRS =
 .PHONY: subdirs $(SUBDIRS)
 
 subdirs: $(SUBDIRS)
+
+cargo_fmt:
+	cd rust; cargo fmt --check -q || \
+	  (echo " Please run \`cargo fmt\` to format your code"; exit 1)

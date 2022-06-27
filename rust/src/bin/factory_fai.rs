@@ -4,11 +4,10 @@
 
 use std::fs;
 
+use anyhow::{Context, Result};
 use factory_installer::factory_fai;
 use factory_installer::factory_fai::args::{Args, Parser};
 use factory_installer::factory_fai::config;
-
-use anyhow::{Context, Result};
 
 fn main() -> Result<()> {
     let args = Args::parse();

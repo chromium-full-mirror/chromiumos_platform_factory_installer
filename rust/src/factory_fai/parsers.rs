@@ -4,12 +4,12 @@
 
 use std::default::Default;
 
-use crate::utils::string_utils;
-
 use anyhow::Result;
 use regex::Regex;
 use serde::{self, Deserialize, Serialize};
 use serde_json::{self, Map, Value};
+
+use crate::utils::string_utils;
 
 pub trait Parser {
     fn parse(&self, input: String) -> Result<Value>;

@@ -5,17 +5,17 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::device;
-use crate::factory_fai::config::{DataCollector, FAIConfig};
-use crate::factory_fai::parsers::Parser;
-use crate::utils::process_utils::{Command, StringOutput};
-use crate::utils::sys_utils;
-
 use anyhow::{self, Context, Result};
 use glob;
 use serde_json;
 use serde_json::{Map, Value};
 use tempfile;
+
+use crate::device;
+use crate::factory_fai::config::{DataCollector, FAIConfig};
+use crate::factory_fai::parsers::Parser;
+use crate::utils::process_utils::{Command, StringOutput};
+use crate::utils::sys_utils;
 
 pub mod args;
 pub mod built_in_collectors;

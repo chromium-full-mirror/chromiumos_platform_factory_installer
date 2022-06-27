@@ -6,12 +6,12 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
-use crate::factory_fai::built_in_collectors::BuiltInCollector;
-use crate::factory_fai::parsers::DataParser;
-
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use serde_json;
+
+use crate::factory_fai::built_in_collectors::BuiltInCollector;
+use crate::factory_fai::parsers::DataParser;
 
 pub const DEFAULT_CONFIG: &str = r##"{
   "ro_vpd": {
