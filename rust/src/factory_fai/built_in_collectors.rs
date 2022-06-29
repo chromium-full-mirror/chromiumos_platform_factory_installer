@@ -12,6 +12,7 @@ use tempfile;
 
 use crate::device;
 use crate::factory_fai::parsers::{DictParser, Parser, RegexParser};
+use crate::tools::ap_ro_hash;
 use crate::utils::process_utils::{Command, StringOutput};
 use crate::utils::sys_utils;
 
@@ -22,6 +23,7 @@ pub enum BuiltInCollector {
     ReleaseImageInfo,
     SigningKeys,
     CbiData,
+    DeviceApRoHash,
     #[cfg(test)]
     MockForTest, // Variant for unit test.
 }
@@ -33,6 +35,7 @@ impl BuiltInCollector {
             BuiltInCollector::ReleaseImageInfo => release_image_info(),
             BuiltInCollector::SigningKeys => signing_keys(),
             BuiltInCollector::CbiData => cbi_data(),
+            BuiltInCollector::DeviceApRoHash => device_ap_ro_hash(),
             #[cfg(test)]
             BuiltInCollector::MockForTest => mock_for_test(),
         }
@@ -158,6 +161,10 @@ fn cbi_data() -> Result<Value> {
         }
     }
     Ok(Value::Object(data))
+}
+
+fn device_ap_ro_hash() -> Result<Value> {
+    Ok(Value::String(ap_ro_hash::ap_ro_hash(None)?))
 }
 
 #[cfg(test)]

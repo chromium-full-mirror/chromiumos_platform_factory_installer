@@ -133,7 +133,7 @@ pub const DEFAULT_CONFIG: &str = r##"{
       }
     }
   },
-  "ap_ro_hash": {
+  "gsc_ap_ro_hash": {
     "DataCommand": {
       "cmd": "gsctool",
       "args": ["-a", "-A"],
@@ -142,6 +142,9 @@ pub const DEFAULT_CONFIG: &str = r##"{
         "delimiter": ":"
       }
     }
+  },
+  "device_ap_ro_hash": {
+    "BuiltInCollector": "device_ap_ro_hash"
   }
 }"##;
 
