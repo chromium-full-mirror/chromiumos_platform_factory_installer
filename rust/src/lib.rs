@@ -9,4 +9,5 @@ pub mod factory_ufs;
 pub mod factory_fai;
 
 pub mod device;
+pub mod tools;
 pub mod utils;

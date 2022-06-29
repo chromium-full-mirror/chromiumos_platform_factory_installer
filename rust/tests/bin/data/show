@@ -1,0 +1,63 @@
+BIOS:                    bios.bin
+GBB header:              GBB
+  Version:               1.2
+  Flags:                 0x00000000
+  Regions:                 offset       size
+    hwid                 0x00000080   0x00000100
+    bmpvf                0x00001180   0x00000000
+    rootkey              0x00000180   0x00001000
+    recovery_key         0x00001180   0x00001000
+  Size:                  0x00002180 / 0x00002f00
+GBB content:
+  HWID:                  TOMATO-LYVN C5B-A2B-D5D-V5O-27K
+     digest:             bf8892f6d156b718ff6f88ba9b57643e0b2e784684041c93e8ee584d96c2bcd5   valid
+  Root Key:
+    Vboot API:           1.0
+    Algorithm:           8 RSA4096 SHA512
+    Key Version:         1
+    Key sha1sum:         31bedda10a657b60d1ad06c5de9f56f54d7ffe98
+  Recovery Key:
+    Vboot API:           1.0
+    Algorithm:           8 RSA4096 SHA512
+    Key Version:         1
+    Key sha1sum:         d5284bfff8e652cc060ef4acb43cea51c278de65
+Firmware body:           FW_MAIN_A
+  Offset:                0x00402000
+  Size:                  0x00174f00
+Firmware body:           FW_MAIN_B
+  Offset:                0x00582000
+  Size:                  0x00174f00
+Keyblock:                VBLOCK_A
+  Signature:             valid
+  Size:                  0x6b8
+  Flags:                 23  !DEV DEV !REC !MINIOS
+  Data key algorithm:    7 RSA4096 SHA256
+  Data key version:      1
+  Data key sha1sum:      1254f38632a5bf88db230611018113ccba5437f5
+Firmware Preamble:
+  Size:                  2164
+  Header version:        2.1
+  Firmware version:      1
+  Kernel key algorithm:  8 RSA4096 SHA512
+  Kernel key version:    1
+  Kernel key sha1sum:    081445d3406f3a845d84cdac0a2de8db45399fb0
+  Firmware body size:    708160
+  Preamble flags:        0
+Body verification succeeded.
+Keyblock:                VBLOCK_B
+  Signature:             valid
+  Size:                  0x6b8
+  Flags:                 23  !DEV DEV !REC !MINIOS
+  Data key algorithm:    7 RSA4096 SHA256
+  Data key version:      1
+  Data key sha1sum:      1254f38632a5bf88db230611018113ccba5437f5
+Firmware Preamble:
+  Size:                  2164
+  Header version:        2.1
+  Firmware version:      1
+  Kernel key algorithm:  8 RSA4096 SHA512
+  Kernel key version:    1
+  Kernel key sha1sum:    081445d3406f3a845d84cdac0a2de8db45399fb0
+  Firmware body size:    714112
+  Preamble flags:        0
+Body verification succeeded.
