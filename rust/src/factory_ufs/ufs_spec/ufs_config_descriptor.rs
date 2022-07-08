@@ -2,10 +2,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
 use crate::factory_ufs::ufs_spec::ufs_common::CommonDescriptorTrait;
-use crate::factory_ufs::ufs_spec::{ufs_2_1, ufs_3_1, ufs_unit_descriptor::ProvisionLun};
+use crate::factory_ufs::ufs_spec::ufs_device_descriptor::WriteBooster;
+use crate::factory_ufs::ufs_spec::ufs_unit_descriptor::{GetAllocUnits, ProvisionLun};
+use crate::factory_ufs::ufs_spec::{ufs_2_1, ufs_3_1};
 
 /// Defines the the config descriptor for UFS provisioning.
 ///
@@ -56,6 +59,31 @@ where
 {
     fn provision_lun_0(&mut self, alloc_units: u32) {
         self.units_config[0].provision_lun(alloc_units);
+    }
+}
+
+pub trait WriteBoosterConfig {
+    fn support_write_booster(&self) -> bool;
+    fn enable_write_booster(&mut self, wb_max_alloc_units: u32) -> Result<u32>;
+    fn disable_write_booster(&mut self) -> Result<()>;
+}
+
+impl<D, U> WriteBoosterConfig for ConfigDescriptor<D, U>
+where
+    D: WriteBooster,
+    U: GetAllocUnits,
+{
+    fn support_write_booster(&self) -> bool {
+        self.device_config.support_write_booster()
+    }
+
+    fn enable_write_booster(&mut self, wb_max_alloc_units: u32) -> Result<u32> {
+        self.device_config
+            .enable_write_booster(wb_max_alloc_units, self.units_config[0].get_alloc_units())
+    }
+
+    fn disable_write_booster(&mut self) -> Result<()> {
+        self.device_config.disable_write_booster()
     }
 }
 

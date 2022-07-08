@@ -20,9 +20,12 @@ use serde::{Deserialize, Serialize};
 use tempfile::NamedTempFile;
 
 use crate::device;
-use crate::factory_ufs::ufs_spec::ufs_common::{self, CommonDescriptorTrait, PurgeStatus};
+use crate::factory_ufs::ufs_spec::ufs_common::{
+    self, CommonDescriptorTrait, PurgeStatus, SupportedWBBufferTypes,
+    SupportedWBBufferUserSpaceReductionTypes,
+};
 use crate::factory_ufs::ufs_spec::ufs_config_descriptor::{
-    ProvisionLun0, UFS2ConfigDescriptor, UFS3ConfigDescriptor,
+    ProvisionLun0, UFS2ConfigDescriptor, UFS3ConfigDescriptor, WriteBoosterConfig,
 };
 use crate::factory_ufs::ufs_spec::{ufs_2_1, ufs_3_1};
 use crate::utils::process_utils::{Command, StringOutput};
@@ -208,6 +211,10 @@ fn read_attributes(sys_dev_path: &Path, f_name: &str) -> Result<u32> {
     Ok(read_sysfs(&sys_dev_path, "attributes", &f_name)?)
 }
 
+fn read_device_descriptor(sys_dev_path: &Path, f_name: &str) -> Result<u32> {
+    Ok(read_sysfs(&sys_dev_path, "device_descriptor", &f_name)?)
+}
+
 fn set_purge_flag(bsg_node_path: &Path) -> Result<()> {
     // -t 6 is flag type `fPurgeEnable`
     Command::new("ufs-utils")
@@ -275,11 +282,89 @@ pub fn read_header(ufs_config_binary: &Vec<u8>) -> Result<u8> {
     Ok(Cursor::new(ufs_config_binary).read_u8()?)
 }
 
+/// Configures the write booster buffer if the operation is supported.
+///
+/// The write performance of TLC (triple level cell) NAND is slower than
+/// SLC (single level cell) NAND. To improve the write performance, we can
+/// configure part of the TLC NAND (normal storage) to SLC NAND (write buffer).
+/// Ref: 13.4.17.2 WriteBooster configuration from `UFS 3.1`
+fn config_write_booster_if_supported<T: WriteBoosterConfig>(
+    sys_dev_path: &Path,
+    ufs_config: &mut T,
+) -> Result<()> {
+    if !ufs_config.support_write_booster() {
+        println!("UFS Spec does not support write booster. Skipping...");
+        return Ok(());
+    }
+
+    // Reads the DEVICE_DESC.dExtendedUFSFeaturesSupport bits.
+    // The bits[8] defines if a device supports the WriteBooster feature or not.
+    let ext_feature_sup = read_device_descriptor(&sys_dev_path, "ext_feature_sup")?;
+    let support_write_booster =
+        (ext_feature_sup & ufs_common::SUPPORT_WB_MASK) == ufs_common::SUPPORT_WB_MASK;
+
+    // Reads the GEOM_DESC.bSupportedWriteBoosterBufferUserSpaceReductionTypes bits.
+    let wb_sup_red_type = read_geometry_descriptor(&sys_dev_path, "wb_sup_red_type")?;
+    let support_preserver_user_space = match FromPrimitive::from_u32(wb_sup_red_type) {
+        Some(SupportedWBBufferUserSpaceReductionTypes::PreserveUserSpaceType)
+        | Some(SupportedWBBufferUserSpaceReductionTypes::EitherType) => true,
+        _ => false,
+    };
+
+    // Reads the GEOM_DESC.bSupportedWriteBoosterBufferTypes.
+    let wb_sup_wb_type = read_geometry_descriptor(&sys_dev_path, "wb_sup_wb_type")?;
+    let support_single_shared_buffer = match FromPrimitive::from_u32(wb_sup_red_type) {
+        Some(SupportedWBBufferTypes::SingleShared) | Some(SupportedWBBufferTypes::SupportBoth) => {
+            true
+        }
+        _ => false,
+    };
+
+    println!(
+        "DEVICE_DESC.dExtendedUFSFeaturesSupport: {}",
+        ext_feature_sup
+    );
+    println!(
+        "GEOM_DESC.bSupportedWriteBoosterBufferUserSpaceReductionTypes: {}",
+        wb_sup_red_type
+    );
+    println!(
+        "GEOM_DESC.bSupportedWriteBoosterBufferTypes: {}",
+        wb_sup_wb_type
+    );
+
+    // Configures WB as single shared buffer that preserves user space capacity.
+    if support_write_booster && support_preserver_user_space && support_single_shared_buffer {
+        // Reads the GEOM_DESC.dWriteBoosterBufferMaxNAllocUnits bits.
+        // This is the maximum total write booster buffer size which is
+        // supported by the entire device.
+        let wb_max_alloc_units = read_geometry_descriptor(&sys_dev_path, "wb_max_alloc_units")?;
+        println!(
+            "GEOM_DESC.dWriteBoosterBufferMaxNAllocUnits: {}",
+            wb_max_alloc_units
+        );
+        println!("Enable write booster...");
+        let wb_alloc_units = ufs_config.enable_write_booster(wb_max_alloc_units)?;
+        println!(
+            "{} units is allocated for write booster buffer.",
+            wb_alloc_units
+        );
+    } else {
+        println!("Disable write booster...");
+        ufs_config.disable_write_booster()?;
+    }
+
+    Ok(())
+}
+
 /// Provisions the UFS if needed.
 ///
 /// This function compares the current UFS config and the newly generated
 /// config, and skips provisioning if these two configs are the same.
-fn provision_ufs_if_needed<'de, T: CommonDescriptorTrait<'de> + ProvisionLun0>(
+fn provision_ufs_if_needed<
+    'de,
+    T: CommonDescriptorTrait<'de> + ProvisionLun0 + WriteBoosterConfig,
+>(
     ufs_path: &UFSPath,
     cur_config_binary: &'de Vec<u8>,
     rescan_timeout: u32,
@@ -287,7 +372,9 @@ fn provision_ufs_if_needed<'de, T: CommonDescriptorTrait<'de> + ProvisionLun0>(
     let cur_config = deserialize_config::<'de, T>(cur_config_binary)?;
 
     let alloc_units = get_alloc_units(&ufs_path.sys_dev)?;
-    let new_config = generate_new_config::<T>(alloc_units)?;
+    let mut new_config = generate_new_config::<T>(alloc_units)?;
+
+    config_write_booster_if_supported(&ufs_path.sys_dev, &mut new_config)?;
 
     println!("Current UFS config on DUT: {:#?}", cur_config);
 

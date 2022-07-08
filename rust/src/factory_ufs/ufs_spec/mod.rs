@@ -6,4 +6,5 @@ pub mod ufs_2_1;
 pub mod ufs_3_1;
 pub mod ufs_common;
 pub mod ufs_config_descriptor;
+pub mod ufs_device_descriptor;
 pub mod ufs_unit_descriptor;

@@ -2,10 +2,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use anyhow::{self, Result};
 use serde::{Deserialize, Serialize};
 
 use crate::factory_ufs::ufs_spec::ufs_common::{self, CommonDescriptorTrait};
-use crate::factory_ufs::ufs_spec::ufs_unit_descriptor::ProvisionLun;
+use crate::factory_ufs::ufs_spec::ufs_device_descriptor::WriteBooster;
+use crate::factory_ufs::ufs_spec::ufs_unit_descriptor::{GetAllocUnits, ProvisionLun};
+use crate::utils::error::NotImplementedError;
 
 /// Defines the config descriptor for device.
 ///
@@ -59,6 +62,20 @@ impl Default for DeviceConfigDescriptor {
 
 impl CommonDescriptorTrait<'_> for DeviceConfigDescriptor {}
 
+impl WriteBooster for DeviceConfigDescriptor {
+    fn support_write_booster(&self) -> bool {
+        false
+    }
+
+    fn enable_write_booster(&mut self, _: u32, _: u32) -> Result<u32> {
+        anyhow::bail!(NotImplementedError)
+    }
+
+    fn disable_write_booster(&mut self) -> Result<()> {
+        anyhow::bail!(NotImplementedError)
+    }
+}
+
 /// Defines the config descriptor for each LUN unit.
 ///
 /// For spec, please refer to `UFS 2.1`.
@@ -99,6 +116,12 @@ impl ProvisionLun for UnitConfigDescriptor {
         self.b_lu_enable = 0x01;
         self.d_num_alloc_units = alloc_units;
         self.b_provisioning_type = ufs_common::PROVISIONING_TYPE;
+    }
+}
+
+impl GetAllocUnits for UnitConfigDescriptor {
+    fn get_alloc_units(&self) -> u32 {
+        self.d_num_alloc_units
     }
 }
 

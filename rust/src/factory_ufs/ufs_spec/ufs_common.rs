@@ -26,6 +26,8 @@ pub const PCI_RESCAN_TIMEOUT_SEC: u32 = 10;
 
 pub const PURGE_DEFAULT_TIMEOUT_SEC: u32 = 300;
 
+pub const SUPPORT_WB_MASK: u32 = 1 << 8;
+
 #[derive(FromPrimitive)]
 pub enum PurgeStatus {
     Idle = 0x0,
@@ -33,6 +35,20 @@ pub enum PurgeStatus {
     StoppedPrematurely = 0x2,
     Complete = 0x3,
     QueueNotEmpty = 0x4,
+}
+
+#[derive(FromPrimitive)]
+pub enum SupportedWBBufferUserSpaceReductionTypes {
+    UserSpaceReductionType = 0x0,
+    PreserveUserSpaceType = 0x1,
+    EitherType = 0x2,
+}
+
+#[derive(FromPrimitive)]
+pub enum SupportedWBBufferTypes {
+    LUBased = 0x0,
+    SingleShared = 0x1,
+    SupportBoth = 0x2,
 }
 
 pub trait CommonDescriptorTrait<'de>:

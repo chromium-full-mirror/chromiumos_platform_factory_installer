@@ -2,10 +2,14 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::cmp::min;
+
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
 use crate::factory_ufs::ufs_spec::ufs_common::{self, CommonDescriptorTrait};
-use crate::factory_ufs::ufs_spec::ufs_unit_descriptor::ProvisionLun;
+use crate::factory_ufs::ufs_spec::ufs_device_descriptor::WriteBooster;
+use crate::factory_ufs::ufs_spec::ufs_unit_descriptor::{GetAllocUnits, ProvisionLun};
 
 /// Defines the config descriptor for device.
 ///
@@ -65,6 +69,33 @@ impl Default for DeviceConfigDescriptor {
 
 impl CommonDescriptorTrait<'_> for DeviceConfigDescriptor {}
 
+impl WriteBooster for DeviceConfigDescriptor {
+    fn support_write_booster(&self) -> bool {
+        true
+    }
+
+    fn enable_write_booster(
+        &mut self,
+        wb_max_alloc_units: u32,
+        lun0_alloc_units: u32,
+    ) -> Result<u32> {
+        self.b_write_booster_buffer_preserve_user_space_en = 0x1;
+        self.b_write_booster_buffer_type = 0x1;
+        // min(10% of total capacity, the maximum allowed value)
+        let ten_percent_total_alloc = (lun0_alloc_units as f32 * 0.1) as u32;
+        self.d_num_shared_write_booster_buffer_alloc_units =
+            min(ten_percent_total_alloc, wb_max_alloc_units);
+        Ok(self.d_num_shared_write_booster_buffer_alloc_units)
+    }
+
+    fn disable_write_booster(&mut self) -> Result<()> {
+        self.b_write_booster_buffer_preserve_user_space_en = 0x0;
+        self.b_write_booster_buffer_type = 0x0;
+        self.d_num_shared_write_booster_buffer_alloc_units = 0x0;
+        Ok(())
+    }
+}
+
 /// Defines the config descriptor for each LUN unit.
 ///
 /// For spec, please refer to `UFS 3.1 table 14.12`.
@@ -115,6 +146,12 @@ impl ProvisionLun for UnitConfigDescriptor {
         self.b_lu_enable = 0x01;
         self.d_num_alloc_units = alloc_units;
         self.b_provisioning_type = ufs_common::PROVISIONING_TYPE;
+    }
+}
+
+impl GetAllocUnits for UnitConfigDescriptor {
+    fn get_alloc_units(&self) -> u32 {
+        self.d_num_alloc_units
     }
 }
 
