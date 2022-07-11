@@ -84,22 +84,48 @@ pub fn get_ufs_bsg_sys() -> Result<PathBuf> {
 
 /// Rescans to bring the device up.
 fn rescan_dev_and_sync(ufs_dev_path: &Path) -> Result<()> {
-    let pattern = Path::new(ufs_dev_path)
+    let pci_remove_path = Path::new(&ufs_dev_path).join("remove");
+
+    println!("Perform pci remove: {}", pci_remove_path.display());
+    fs::write(&pci_remove_path, "1")?;
+    println!("Perform pci rescan: {}", ufs_common::PCI_RESCAN_PATH);
+    fs::write(ufs_common::PCI_RESCAN_PATH, "1")?;
+
+    println!("Wait for root device to be available...");
+    let rootdev_pattern = Path::new(&ufs_dev_path)
         .join("host*")
-        .join("scsi_host")
-        .join("host*")
-        .join("scan")
+        .join("target*")
+        .join("*")
+        .join("block")
+        .join("sd*")
         .display()
         .to_string();
-    let scsi_path = match_path(&pattern)?;
-
-    println!("Perform scsi rescan: {}", scsi_path.display());
-    fs::write(&scsi_path, "- - -")?;
-
-    println!("Sync write...");
-    Command::new("sync").output()?;
-
-    Ok(())
+    for _ in 0..ufs_common::PCI_RESCAN_WAIT_SEC {
+        Command::new("sleep").args(["1"]).output()?;
+        match match_path(&rootdev_pattern) {
+            Ok(path) => {
+                println!("Root device found after pci rescan: {}", path.display());
+                return Ok(());
+            }
+            Err(err) => {
+                if let Some(err) = err.downcast_ref::<PathMatchError>() {
+                    if matches!(err, PathMatchError::PathNotFound) {
+                        println!("Root device not found. Keep waiting...");
+                        continue;
+                    } else {
+                        anyhow::bail!("Multiple root device found after pci rescan!");
+                    }
+                } else {
+                    anyhow::bail!("Error occurs after pci rescan: {}", err);
+                }
+            }
+        };
+    }
+    anyhow::bail!(
+        "Root device pattern {} not found after {} seconds. Aborting...",
+        rootdev_pattern,
+        ufs_common::PCI_RESCAN_WAIT_SEC
+    );
 }
 
 /// Writes new UFS config using ufs-utils.
