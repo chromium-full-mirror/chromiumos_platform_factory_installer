@@ -13,6 +13,7 @@ use tempfile;
 use crate::device;
 use crate::factory_fai::parsers::{DictParser, Parser, RegexParser};
 use crate::tools::ap_ro_hash;
+use crate::utils::file_utils;
 use crate::utils::process_utils::{Command, StringOutput};
 use crate::utils::sys_utils;
 
@@ -24,6 +25,7 @@ pub enum BuiltInCollector {
     SigningKeys,
     CbiData,
     DeviceApRoHash,
+    ReleaseImageStatefulPartition,
     #[cfg(test)]
     MockForTest, // Variant for unit test.
 }
@@ -36,6 +38,7 @@ impl BuiltInCollector {
             BuiltInCollector::SigningKeys => signing_keys(),
             BuiltInCollector::CbiData => cbi_data(),
             BuiltInCollector::DeviceApRoHash => device_ap_ro_hash(),
+            BuiltInCollector::ReleaseImageStatefulPartition => release_image_stateful_partition(),
             #[cfg(test)]
             BuiltInCollector::MockForTest => mock_for_test(),
         }
@@ -165,6 +168,41 @@ fn cbi_data() -> Result<Value> {
 
 fn device_ap_ro_hash() -> Result<Value> {
     Ok(Value::String(ap_ro_hash::ap_ro_hash(None)?))
+}
+
+fn release_image_stateful_partition() -> Result<Value> {
+    let stateful_partition = device::get_release_stateful_partition()?;
+    let mount_point = tempfile::tempdir()?.into_path();
+
+    sys_utils::mount(stateful_partition, mount_point.as_os_str(), true)?;
+    let mut file_list = Vec::new();
+    // There are hundreds of files in release image stateful partition, so we only collect some
+    // desired files:
+    // 1. Top level folders and files.
+    file_list.append(&mut file_utils::list_files(&mount_point, "*", false)?);
+    // 2. Contents of dev_image which should be empty.
+    file_list.append(&mut file_utils::list_files(
+        &mount_point,
+        "dev_image/*",
+        false,
+    )?);
+    // 3. `GetPreservedFilesList` list in `src/platform2/init/clobber_state.cc`.
+    file_list.append(&mut file_utils::list_files(
+        &mount_point,
+        "unencrypted/import_extensions/extensions/*.crx",
+        false,
+    )?);
+    file_list.append(&mut file_utils::list_files(
+        &mount_point,
+        "unencrypted/dlc-factory-images/*/package/dlc.img",
+        false,
+    )?);
+    sys_utils::umount(mount_point)?;
+
+    Ok(file_list
+        .iter()
+        .map(|path| Value::String(path.display().to_string()))
+        .collect())
 }
 
 #[cfg(test)]

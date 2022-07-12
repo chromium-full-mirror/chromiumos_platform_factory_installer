@@ -47,6 +47,54 @@ pub fn get_release_rootfs_partition() -> Result<String> {
     Ok(fixed_device_storage)
 }
 
+/// Gets the stateful partition of release image.
+/// There're two cases of storage device path:
+///   /dev/sda -> release stateful at /dev/sda1
+///   /dev/mmcblk0 -> release stateful at /dev/mmcblk0p1
+///
+/// If the device enables LVM stateful partition, get the partition path from `pvdisplay`.
+pub fn get_release_stateful_partition() -> Result<String> {
+    let mut fixed_device_storage = get_fixed_device_storage()?;
+    // If the last character is digit, it is the case of `/dev/mmcblk0`, Otherwise is the case of
+    // `/dev/sda`.
+    if fixed_device_storage
+        .chars()
+        .last()
+        .unwrap_or(' ')
+        .is_digit(10)
+    {
+        fixed_device_storage.push_str("p1");
+    } else {
+        fixed_device_storage.push('1');
+    }
+
+    // Get the device path to LVM stateful partition.
+    let mut vg_name = Command::new("pvdisplay")
+        .args([
+            "-C",
+            "--quiet",
+            "--noheadings",
+            "--separator",
+            "'|'",
+            "-o",
+            "vg_name",
+            &fixed_device_storage,
+        ])
+        .output()?
+        .stdout();
+    vg_name.retain(|c| !c.is_whitespace());
+
+    if vg_name.len() > 0 {
+        Command::new("vgchange")
+            .args(["-ay", &vg_name])
+            .output()?
+            .exit_ok()?;
+        return Ok(format!("/dev/{}/unencrypted", vg_name));
+    }
+
+    Ok(fixed_device_storage)
+}
+
 /// Gets the stateful partition of dev image.
 pub fn get_dev_stateful_partition() -> Result<String> {
     // The format of `lsb-factory` is "shell-executable" which may contain "#" comments and empty

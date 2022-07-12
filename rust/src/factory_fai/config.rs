@@ -26,10 +26,8 @@ pub const DEFAULT_CONFIG: &str = r##"{
       "read_content": true
     }
   },
-  "stateful_partition": {
-    "DataFiles": {
-      "root": "/mnt/stateful_partition"
-    }
+  "release_image_stateful_partition": {
+    "BuiltInCollector": "release_image_stateful_partition"
   },
   "tpm_version": {
     "DataCommand": {

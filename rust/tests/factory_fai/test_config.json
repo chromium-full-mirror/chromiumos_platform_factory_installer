@@ -22,7 +22,7 @@
   },
   "data3": {
     "DataFiles": {
-      "root": "tests/factory_fai/test_fs",
+      "root": "tests/test_fs",
       "read_content": true
     }
   }
