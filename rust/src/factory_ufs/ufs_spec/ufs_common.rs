@@ -4,6 +4,7 @@
 
 use std::fmt::Debug;
 
+use num_derive::FromPrimitive;
 use serde::{Deserialize, Serialize};
 
 /// Defines the logical block size of each LUN.
@@ -22,6 +23,17 @@ pub const UFS_CONFIG_NAME: &str = "config_desc_data_ind_0";
 
 pub const PCI_RESCAN_PATH: &str = "/sys/bus/pci/rescan";
 pub const PCI_RESCAN_TIMEOUT_SEC: u32 = 10;
+
+pub const PURGE_DEFAULT_TIMEOUT_SEC: u32 = 300;
+
+#[derive(FromPrimitive)]
+pub enum PurgeStatus {
+    Idle = 0x0,
+    InProgress = 0x1,
+    StoppedPrematurely = 0x2,
+    Complete = 0x3,
+    QueueNotEmpty = 0x4,
+}
 
 pub trait CommonDescriptorTrait<'de>:
     Serialize + Deserialize<'de> + Default + Debug + PartialEq

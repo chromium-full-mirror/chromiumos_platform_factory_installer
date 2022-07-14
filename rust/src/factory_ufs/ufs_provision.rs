@@ -15,10 +15,12 @@ use anyhow::{self, Result};
 use bincode;
 use byteorder::ReadBytesExt;
 use glob;
+use num_traits::FromPrimitive;
 use serde::{Deserialize, Serialize};
 use tempfile::NamedTempFile;
 
-use crate::factory_ufs::ufs_spec::ufs_common::{self, CommonDescriptorTrait};
+use crate::device;
+use crate::factory_ufs::ufs_spec::ufs_common::{self, CommonDescriptorTrait, PurgeStatus};
 use crate::factory_ufs::ufs_spec::ufs_config_descriptor::{
     ProvisionLun0, UFS2ConfigDescriptor, UFS3ConfigDescriptor,
 };
@@ -172,6 +174,12 @@ fn deserialize_config<'de, T: Deserialize<'de>>(config_binary: &'de Vec<u8>) -> 
 }
 
 /// Generates a new UFS config given the allocation units.
+///
+/// Here we provision the LUN 0 with `thin` provisioning type with TPRZ.
+/// In this mode, when we try to securely remove the data from the device,
+/// UNMAP triggers `Erase operation`, and renders the value of the block to
+/// be zero on read. Additional purge operation can be used to ensure physical
+/// erasure of the unmapped blocks.
 fn generate_new_config<T: Default + ProvisionLun0>(alloc_units: u32) -> Result<T> {
     let mut ufs_config = T::default();
     ufs_config.provision_lun_0(alloc_units);
@@ -179,19 +187,54 @@ fn generate_new_config<T: Default + ProvisionLun0>(alloc_units: u32) -> Result<T
     Ok(ufs_config)
 }
 
-/// Reads the geometry_descriptor from a given path.
-fn read_geometry_descriptor(sys_dev_path: &Path, f_name: &str) -> Result<u32> {
-    // The content of the geometry_descriptor is a hex string.
+/// Reads the sysfs file from a given path.
+fn read_sysfs(sys_dev_path: &Path, dir_name: &str, f_name: &str) -> Result<u32> {
+    // The content of the descriptor is a hex string.
     // We need to transform it into u32.
-    let path = Path::new(sys_dev_path)
-        .join("geometry_descriptor")
-        .join(f_name);
+    let path = Path::new(sys_dev_path).join(dir_name).join(f_name);
     let raw_string = fs::read_to_string(path)?
         .trim()
         .trim_start_matches("0x")
         .to_string();
 
     Ok(u32::from_str_radix(&raw_string, 16)?)
+}
+
+fn read_geometry_descriptor(sys_dev_path: &Path, f_name: &str) -> Result<u32> {
+    Ok(read_sysfs(&sys_dev_path, "geometry_descriptor", &f_name)?)
+}
+
+fn read_attributes(sys_dev_path: &Path, f_name: &str) -> Result<u32> {
+    Ok(read_sysfs(&sys_dev_path, "attributes", &f_name)?)
+}
+
+fn set_purge_flag(bsg_node_path: &Path) -> Result<()> {
+    // -t 6 is flag type `fPurgeEnable`
+    Command::new("ufs-utils")
+        .args([
+            "fl",
+            "-t",
+            "6",
+            "-e",
+            "-p",
+            &bsg_node_path.display().to_string(),
+        ])
+        .output()?
+        .exit_ok()?;
+    Ok(())
+}
+
+fn discard_stateful() -> Result<()> {
+    let stateful_dev = device::get_release_stateful_partition()?;
+    println!(
+        "Discard stateful partition {} using blkdiscard...",
+        stateful_dev
+    );
+    Command::new("blkdiscard")
+        .args([stateful_dev])
+        .output()?
+        .exit_ok()?;
+    Ok(())
 }
 
 /// Gets the total number of allocation units from the geometry_descriptor.
@@ -299,10 +342,58 @@ pub fn action_show(_ufs_path: &UFSPath) -> Result<()> {
     Ok(())
 }
 
-/// Performs clobber.
-pub fn action_clobber(_ufs_path: &UFSPath) -> Result<()> {
-    println!("Action clobber is not supported yet.");
-    Ok(())
+/// Performs clobber to clean up the stateful partition.
+///
+/// This function first discards the stateful partition by calling `blkdiscard`.
+/// It then enables purge operation and waits until the operation is finished.
+pub fn action_clobber(ufs_path: &UFSPath, purge_timeout: u32) -> Result<()> {
+    discard_stateful()?;
+    if purge_timeout == 0 {
+        println!("Skip purging since it is disabled.");
+        println!("Clobber completed successfully.");
+        return Ok(());
+    }
+
+    set_purge_flag(&ufs_path.bsg_node)?;
+
+    println!("Running purge...");
+    for sec in 0..purge_timeout {
+        let message: &str;
+        // Ref: UFS2.1 12.2.3.3 Purge operation
+        let purge_status = read_attributes(&ufs_path.sys_dev, "purge_status")?;
+        match FromPrimitive::from_u32(purge_status) {
+            Some(PurgeStatus::Idle) => {
+                message = "Purge hasn't started yet.";
+            }
+            Some(PurgeStatus::InProgress) => {
+                message = "Purge operation in progress.";
+            }
+            Some(PurgeStatus::StoppedPrematurely) => {
+                anyhow::bail!("Purge operation stopped prematurely by the host.");
+            }
+            Some(PurgeStatus::Complete) => {
+                println!("Purge completed successfully.");
+                return Ok(());
+            }
+            Some(PurgeStatus::QueueNotEmpty) => {
+                anyhow::bail!("Purge operation failed due to logical unit queue not empty.");
+            }
+            None => {
+                anyhow::bail!("Purge operation general failure.");
+            }
+        }
+
+        if sec % 30 == 0 {
+            println!(
+                "{}\nKeep waiting... (Time remained: {} seconds)",
+                message,
+                purge_timeout - sec
+            );
+        }
+        thread::sleep(Duration::from_secs(1));
+    }
+
+    anyhow::bail!("Purge operation timeout after {} seconds!", purge_timeout);
 }
 
 #[cfg(test)]

@@ -48,7 +48,9 @@ fn main() -> Result<()> {
     };
 
     match args.command {
-        Commands::Clobber => ufs_provision::action_clobber(&ufs_path),
+        Commands::Clobber { purge_timeout } => {
+            ufs_provision::action_clobber(&ufs_path, purge_timeout)
+        }
         Commands::Show => ufs_provision::action_show(&ufs_path),
         Commands::Provision { rescan_timeout } => {
             ufs_provision::action_provision(&ufs_path, rescan_timeout)

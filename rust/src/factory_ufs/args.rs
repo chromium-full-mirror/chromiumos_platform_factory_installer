@@ -8,8 +8,12 @@ use crate::factory_ufs::ufs_spec::ufs_common;
 
 #[derive(Debug, Subcommand)]
 pub enum Commands {
-    /// Perform clobber
-    Clobber,
+    /// Perform clobber to clean up the stateful partition
+    Clobber {
+        /// Timeout limit for the purge operation. Set to 0 to disable purge.
+        #[clap(short, long, default_value_t=ufs_common::PURGE_DEFAULT_TIMEOUT_SEC)]
+        purge_timeout: u32,
+    },
     /// Print the current UFS config on DUT
     Show,
     /// Provision the UFS

@@ -17,7 +17,14 @@ then you can find the built binary in `/build/$BOARD/usr/sbin/factory_ufs`.
 Factory UFS provides three functions: clobber, show and provision.
 
 ### Clobber
-TODO
+This function first discards the stateful partition by calling `blkdiscard`.
+It then enables purge operation and waits until the operation is finished.
+```
+# Run clobber with default parameters.
+> factory_ufs clobber
+# Run clobber without purging.
+> factory_ufs clobber -p 0
+```
 
 ### Show
 TODO
