@@ -33,10 +33,12 @@ pub struct DeviceConfigDescriptor {
     pub b_rpmb_region_3_size: u8,
 }
 
+pub const HEADER_LENGTH: u8 = 0x90;
+
 impl Default for DeviceConfigDescriptor {
     fn default() -> Self {
         DeviceConfigDescriptor {
-            b_length: 0x90,
+            b_length: HEADER_LENGTH,
             b_descriptor_type: 0x01,
             b_conf_desc_continue: 0x00,
             b_boot_enable: 0x01,

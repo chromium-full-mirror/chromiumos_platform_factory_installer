@@ -489,7 +489,7 @@ prepare_disk() {
 ufs_init() {
   local ufs_init_bin="/usr/sbin/factory_ufs"
   if [ -x "${ufs_init_bin}" ]; then
-    ${ufs_init_bin}
+    ${ufs_init_bin} provision
   fi
 }
 

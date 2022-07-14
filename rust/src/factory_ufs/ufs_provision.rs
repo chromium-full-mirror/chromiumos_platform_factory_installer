@@ -8,6 +8,8 @@ use std::fmt::{Debug, Display, Formatter, Result as fmt_Result};
 use std::fs;
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
+use std::thread;
+use std::time::Duration;
 
 use anyhow::{self, Result};
 use bincode;
@@ -17,7 +19,10 @@ use serde::{Deserialize, Serialize};
 use tempfile::NamedTempFile;
 
 use crate::factory_ufs::ufs_spec::ufs_common::{self, CommonDescriptorTrait};
-use crate::factory_ufs::ufs_spec::ufs_config_descriptor::ProvisionLun0;
+use crate::factory_ufs::ufs_spec::ufs_config_descriptor::{
+    ProvisionLun0, UFS2ConfigDescriptor, UFS3ConfigDescriptor,
+};
+use crate::factory_ufs::ufs_spec::{ufs_2_1, ufs_3_1};
 use crate::utils::process_utils::{Command, StringOutput};
 
 #[derive(Debug)]
@@ -38,14 +43,19 @@ impl Display for PathMatchError {
 }
 
 #[derive(Debug)]
-struct NoParentDir;
+pub struct NoParentDirError;
 
-impl Error for NoParentDir {}
+impl Error for NoParentDirError {}
 
-impl Display for NoParentDir {
+impl Display for NoParentDirError {
     fn fmt(&self, f: &mut Formatter) -> fmt_Result {
         write!(f, "No parent directory can be found.")
     }
+}
+
+pub struct UFSPath {
+    pub bsg_node: PathBuf,
+    pub sys_dev: PathBuf,
 }
 
 /// Gets one match path given a path regex.
@@ -56,7 +66,7 @@ impl Display for NoParentDir {
 ///
 /// # Return value
 ///
-/// Return a result type. Raise error if path is not found or multiple paths
+/// Returns a result type. Raise error if path is not found or multiple paths
 /// are found.
 fn match_path(path_regex: &str) -> Result<PathBuf> {
     let mut paths = Vec::<PathBuf>::new();
@@ -83,8 +93,8 @@ pub fn get_ufs_bsg_sys() -> Result<PathBuf> {
 }
 
 /// Rescans to bring the device up.
-fn rescan_dev_and_sync(ufs_dev_path: &Path) -> Result<()> {
-    let pci_remove_path = Path::new(&ufs_dev_path).join("remove");
+fn rescan_dev_and_sync(sys_dev_path: &Path, rescan_timeout: u32) -> Result<()> {
+    let pci_remove_path = Path::new(&sys_dev_path).join("remove");
 
     println!("Perform pci remove: {}", pci_remove_path.display());
     fs::write(&pci_remove_path, "1")?;
@@ -92,7 +102,7 @@ fn rescan_dev_and_sync(ufs_dev_path: &Path) -> Result<()> {
     fs::write(ufs_common::PCI_RESCAN_PATH, "1")?;
 
     println!("Wait for root device to be available...");
-    let rootdev_pattern = Path::new(&ufs_dev_path)
+    let rootdev_pattern = Path::new(&sys_dev_path)
         .join("host*")
         .join("target*")
         .join("*")
@@ -100,8 +110,8 @@ fn rescan_dev_and_sync(ufs_dev_path: &Path) -> Result<()> {
         .join("sd*")
         .display()
         .to_string();
-    for _ in 0..ufs_common::PCI_RESCAN_WAIT_SEC {
-        Command::new("sleep").args(["1"]).output()?;
+    for _ in 0..rescan_timeout {
+        thread::sleep(Duration::from_secs(1));
         match match_path(&rootdev_pattern) {
             Ok(path) => {
                 println!("Root device found after pci rescan: {}", path.display());
@@ -124,24 +134,24 @@ fn rescan_dev_and_sync(ufs_dev_path: &Path) -> Result<()> {
     anyhow::bail!(
         "Root device pattern {} not found after {} seconds. Aborting...",
         rootdev_pattern,
-        ufs_common::PCI_RESCAN_WAIT_SEC
+        rescan_timeout
     );
 }
 
 /// Writes new UFS config using ufs-utils.
-fn write_ufs_config<T: Serialize>(ufs_bsg_node_path: &Path, ufs_config: &T) -> Result<()> {
+fn write_ufs_config<T: Serialize>(bsg_node_path: &Path, ufs_config: &T) -> Result<()> {
     let config_path = NamedTempFile::new()?.path().display().to_string();
     let config_bin_vec = serialize_config::<T>(&ufs_config)?;
     fs::write(&config_path, config_bin_vec)?;
 
-    println!("Write config to {}...", ufs_bsg_node_path.display());
+    println!("Write config to {}...", bsg_node_path.display());
     let output = Command::new("ufs-utils")
         .args([
             "desc",
             "-t",
             "1",
             "-p",
-            &ufs_bsg_node_path.display().to_string(),
+            &bsg_node_path.display().to_string(),
             "-w",
             &config_path,
         ])
@@ -151,12 +161,12 @@ fn write_ufs_config<T: Serialize>(ufs_bsg_node_path: &Path, ufs_config: &T) -> R
     Ok(())
 }
 
-/// Serialize an UFS config to a u8 vector.
+/// Serializes an UFS config to a u8 vector.
 fn serialize_config<T: Serialize>(ufs_config: &T) -> Result<Vec<u8>> {
     Ok(bincode::config().big_endian().serialize::<T>(&ufs_config)?)
 }
 
-/// Deserialize a binary config to a given type.
+/// Deserializes a binary config to a given type.
 fn deserialize_config<'de, T: Deserialize<'de>>(config_binary: &'de Vec<u8>) -> Result<T> {
     Ok(bincode::config().big_endian().deserialize(&config_binary)?)
 }
@@ -170,10 +180,10 @@ fn generate_new_config<T: Default + ProvisionLun0>(alloc_units: u32) -> Result<T
 }
 
 /// Reads the geometry_descriptor from a given path.
-fn read_geometry_descriptor(ufs_dev_path: &Path, f_name: &str) -> Result<u32> {
+fn read_geometry_descriptor(sys_dev_path: &Path, f_name: &str) -> Result<u32> {
     // The content of the geometry_descriptor is a hex string.
     // We need to transform it into u32.
-    let path = Path::new(ufs_dev_path)
+    let path = Path::new(sys_dev_path)
         .join("geometry_descriptor")
         .join(f_name);
     let raw_string = fs::read_to_string(path)?
@@ -185,11 +195,11 @@ fn read_geometry_descriptor(ufs_dev_path: &Path, f_name: &str) -> Result<u32> {
 }
 
 /// Gets the total number of allocation units from the geometry_descriptor.
-fn get_alloc_units(ufs_dev_path: &Path) -> Result<u32> {
-    let total_capacity = read_geometry_descriptor(ufs_dev_path, "raw_device_capacity")?;
-    let segment_size = read_geometry_descriptor(ufs_dev_path, "segment_size")?;
+fn get_alloc_units(sys_dev_path: &Path) -> Result<u32> {
+    let total_capacity = read_geometry_descriptor(sys_dev_path, "raw_device_capacity")?;
+    let segment_size = read_geometry_descriptor(sys_dev_path, "segment_size")?;
     let segments_per_allocation_unit =
-        read_geometry_descriptor(ufs_dev_path, "allocation_unit_size")?;
+        read_geometry_descriptor(sys_dev_path, "allocation_unit_size")?;
 
     println!("UFS capacity: {} GB", total_capacity / 0x200000);
     let units = total_capacity / segment_size / segments_per_allocation_unit;
@@ -198,7 +208,7 @@ fn get_alloc_units(ufs_dev_path: &Path) -> Result<u32> {
 }
 
 /// Gets the current UFS config using ufs-utils.
-pub fn get_current_config_binary(ufs_bsg_node_path: &Path) -> Result<Vec<u8>> {
+pub fn get_current_config_binary(bsg_node_path: &Path) -> Result<Vec<u8>> {
     // Needs to switch to /tmp since ufs-utils dumps the config to cwd
     // with name `ufs_common::UFS_CONFIG_NAME`.
     Command::new("ufs-utils")
@@ -207,7 +217,7 @@ pub fn get_current_config_binary(ufs_bsg_node_path: &Path) -> Result<Vec<u8>> {
             "-t",
             "1",
             "-p",
-            &ufs_bsg_node_path.display().to_string(),
+            &bsg_node_path.display().to_string(),
         ])
         .current_dir(env::temp_dir())
         .output()
@@ -217,44 +227,81 @@ pub fn get_current_config_binary(ufs_bsg_node_path: &Path) -> Result<Vec<u8>> {
     Ok(fs::read(cur_config_path)?)
 }
 
-/// Read the first byte from a config binary.
+/// Reads the first byte from a config binary.
 pub fn read_header(ufs_config_binary: &Vec<u8>) -> Result<u8> {
     Ok(Cursor::new(ufs_config_binary).read_u8()?)
 }
 
-/// Do UFS provisioning if needed.
+/// Provisions the UFS if needed.
 ///
 /// This function compares the current UFS config and the newly generated
 /// config, and skips provisioning if these two configs are the same.
-pub fn do_provisioning_if_needed<'de, T: CommonDescriptorTrait<'de> + ProvisionLun0>(
-    ufs_bsg_node_path: &Path,
-    ufs_bsg_sys_path: &Path,
+fn provision_ufs_if_needed<'de, T: CommonDescriptorTrait<'de> + ProvisionLun0>(
+    ufs_path: &UFSPath,
     cur_config_binary: &'de Vec<u8>,
+    rescan_timeout: u32,
 ) -> Result<()> {
-    // `ufs_bsg_sys_path` looks like: /sys/devices/pcixxx/xxx/hostx/ufs-bsgx,
-    // but we actually want: /sys/devices/pcixxx/xxx.
-    let ufs_dev_path = Path::new(ufs_bsg_sys_path)
-        .parent()
-        .ok_or(NoParentDir)?
-        .parent()
-        .ok_or(NoParentDir)?;
-    let alloc_units = get_alloc_units(&ufs_dev_path)?;
-
     let cur_config = deserialize_config::<'de, T>(cur_config_binary)?;
+
+    let alloc_units = get_alloc_units(&ufs_path.sys_dev)?;
     let new_config = generate_new_config::<T>(alloc_units)?;
 
     println!("Current UFS config on DUT: {:#?}", cur_config);
-    println!("New UFS config: {:#?}", new_config);
 
     if cur_config == new_config {
         println!("Current UFS config is the same as the new config. Skip UFS provisioning.");
         return Ok(());
     }
 
-    write_ufs_config(&ufs_bsg_node_path, &new_config)?;
-    rescan_dev_and_sync(&ufs_dev_path)?;
+    println!("New UFS config: {:#?}", new_config);
+
+    write_ufs_config(&ufs_path.bsg_node, &new_config)?;
+    rescan_dev_and_sync(&ufs_path.sys_dev, rescan_timeout)?;
     println!("Finish UFS provisioning.");
 
+    Ok(())
+}
+
+/// Provisions UFS storage.
+pub fn action_provision(ufs_path: &UFSPath, rescan_timeout: u32) -> Result<()> {
+    // We need to parse the header of current UFS config to decide which UFS
+    // spec to load.
+    let cur_config_binary = get_current_config_binary(&ufs_path.bsg_node)?;
+    let header_value = read_header(&cur_config_binary)?;
+
+    match header_value {
+        ufs_2_1::HEADER_LENGTH => {
+            println!("Provision UFS 2.1...");
+            provision_ufs_if_needed::<UFS2ConfigDescriptor>(
+                &ufs_path,
+                &cur_config_binary,
+                rescan_timeout,
+            )
+        }
+        ufs_3_1::HEADER_LENGTH => {
+            println!("Provision UFS 3.1...");
+            provision_ufs_if_needed::<UFS3ConfigDescriptor>(
+                &ufs_path,
+                &cur_config_binary,
+                rescan_timeout,
+            )
+        }
+        value => anyhow::bail!(
+            "Cannot parse current UFS config! Unknown header value: {}",
+            value
+        ),
+    }
+}
+
+/// Shows the current UFS config on DUT.
+pub fn action_show(_ufs_path: &UFSPath) -> Result<()> {
+    println!("Action show is not supported yet.");
+    Ok(())
+}
+
+/// Performs clobber.
+pub fn action_clobber(_ufs_path: &UFSPath) -> Result<()> {
+    println!("Action clobber is not supported yet.");
     Ok(())
 }
 
@@ -269,6 +316,7 @@ mod tests {
     use crate::factory_ufs::ufs_spec::ufs_config_descriptor::{
         UFS2ConfigDescriptor, UFS3ConfigDescriptor,
     };
+    use crate::factory_ufs::ufs_spec::{ufs_2_1, ufs_3_1, ufs_common};
 
     #[test]
     fn test_read_header() {
@@ -296,7 +344,10 @@ mod tests {
         let ufs2_config_descriptor =
             ufs_provision::deserialize_config::<UFS2ConfigDescriptor>(&ufs2_config_binary).unwrap();
 
-        assert_eq!(ufs2_config_descriptor.device_config.b_length, 0x90);
+        assert_eq!(
+            ufs2_config_descriptor.device_config.b_length,
+            ufs_2_1::HEADER_LENGTH
+        );
         assert_eq!(ufs2_config_descriptor.units_config[0].b_lu_enable, 0x1);
         // 119 = 0x77, 50 = 0x32
         assert_eq!(
@@ -305,7 +356,7 @@ mod tests {
         );
         assert_eq!(
             ufs2_config_descriptor.units_config[0].b_provisioning_type,
-            0x3
+            ufs_common::PROVISIONING_TYPE
         );
     }
 
@@ -314,12 +365,12 @@ mod tests {
         let mut ufs2_config = UFS2ConfigDescriptor::default();
         ufs2_config.units_config[0].b_lu_enable = 0x1;
         ufs2_config.units_config[0].d_num_alloc_units = 0x7732;
-        ufs2_config.units_config[0].b_provisioning_type = 0x3;
+        ufs2_config.units_config[0].b_provisioning_type = ufs_common::PROVISIONING_TYPE;
 
         let ufs2_config_binary =
             ufs_provision::serialize_config::<UFS2ConfigDescriptor>(&ufs2_config).unwrap();
 
-        assert_eq!(ufs2_config_binary, generate_ufs2_config_binary())
+        assert_eq!(ufs2_config_binary, generate_ufs2_config_binary());
     }
 
     #[test]
@@ -330,15 +381,15 @@ mod tests {
         let ufs3_config =
             ufs_provision::generate_new_config::<UFS3ConfigDescriptor>(alloc_units).unwrap();
 
-        assert_eq!(ufs2_config.device_config.b_length, 0x90);
+        assert_eq!(ufs2_config.device_config.b_length, ufs_2_1::HEADER_LENGTH);
         assert_eq!(ufs2_config.units_config[0].d_num_alloc_units, alloc_units);
 
-        assert_eq!(ufs3_config.device_config.b_length, 0xe6);
+        assert_eq!(ufs3_config.device_config.b_length, ufs_3_1::HEADER_LENGTH);
         assert_eq!(ufs3_config.units_config[0].d_num_alloc_units, alloc_units);
     }
 
-    fn create_geometry_descriptor_dir(ufs_dev_path: &Path) -> PathBuf {
-        let geometry_dir = ufs_dev_path.join("geometry_descriptor");
+    fn create_geometry_descriptor_dir(sys_dev_path: &Path) -> PathBuf {
+        let geometry_dir = sys_dev_path.join("geometry_descriptor");
         fs::create_dir(&geometry_dir).unwrap();
 
         geometry_dir.to_path_buf()
@@ -353,25 +404,25 @@ mod tests {
     #[test]
     fn test_read_geometry_descriptor() {
         let geometry_test_file = "geometry_test";
-        let ufs_dev_path = TempDir::new("test_ufs_dev").unwrap();
-        let geometry_dir = create_geometry_descriptor_dir(&ufs_dev_path.path());
+        let sys_dev_path = TempDir::new("test_sys_dev").unwrap();
+        let geometry_dir = create_geometry_descriptor_dir(&sys_dev_path.path());
         create_geometry_descriptor_files(&geometry_dir, &geometry_test_file, "0x1234");
 
         let val =
-            ufs_provision::read_geometry_descriptor(&ufs_dev_path.path(), &geometry_test_file)
+            ufs_provision::read_geometry_descriptor(&sys_dev_path.path(), &geometry_test_file)
                 .unwrap();
         assert_eq!(val, 0x1234);
     }
 
     #[test]
     fn test_get_alloc_units() {
-        let ufs_dev_path = TempDir::new("test_ufs_dev").unwrap();
-        let geometry_dir = create_geometry_descriptor_dir(&ufs_dev_path.path());
+        let sys_dev_path = TempDir::new("test_sys_dev").unwrap();
+        let geometry_dir = create_geometry_descriptor_dir(&sys_dev_path.path());
         create_geometry_descriptor_files(&geometry_dir, "raw_device_capacity", "0xee64000");
         create_geometry_descriptor_files(&geometry_dir, "segment_size", "0x2000");
         create_geometry_descriptor_files(&geometry_dir, "allocation_unit_size", "0x1");
 
-        let val = ufs_provision::get_alloc_units(&ufs_dev_path.path()).unwrap();
+        let val = ufs_provision::get_alloc_units(&sys_dev_path.path()).unwrap();
         assert_eq!(val, 30514);
     }
 }

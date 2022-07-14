@@ -36,10 +36,12 @@ pub struct DeviceConfigDescriptor {
     pub d_num_shared_write_booster_buffer_alloc_units: u32,
 }
 
+pub const HEADER_LENGTH: u8 = 0xe6;
+
 impl Default for DeviceConfigDescriptor {
     fn default() -> Self {
         DeviceConfigDescriptor {
-            b_length: 0xe6,
+            b_length: HEADER_LENGTH,
             b_descriptor_type: 0x01,
             b_conf_desc_continue: 0x00,
             b_boot_enable: 0x01,

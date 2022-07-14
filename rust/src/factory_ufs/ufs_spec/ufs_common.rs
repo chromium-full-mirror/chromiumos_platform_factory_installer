@@ -21,7 +21,7 @@ pub const SYS_DEV_PATTERN: &str = "/sys/devices/*/*/host*/ufs-bsg*";
 pub const UFS_CONFIG_NAME: &str = "config_desc_data_ind_0";
 
 pub const PCI_RESCAN_PATH: &str = "/sys/bus/pci/rescan";
-pub const PCI_RESCAN_WAIT_SEC: u32 = 10;
+pub const PCI_RESCAN_TIMEOUT_SEC: u32 = 10;
 
 pub trait CommonDescriptorTrait<'de>:
     Serialize + Deserialize<'de> + Default + Debug + PartialEq
