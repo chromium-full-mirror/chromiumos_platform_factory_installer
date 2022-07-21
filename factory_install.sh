@@ -366,7 +366,11 @@ enable_cr50_factory_mode() {
   fi
 
   # Once enabling factory mode, system should reboot automatically.
+  # cr50 version >= 0.5.110/0.6.110 won't auto reboot after enabling factory
+  # mode. Manually reboot after successfully enable factory mode.
   log "Successfully to enable factory mode and should reboot soon."
+  reboot
+
   # sleep indefinitely to avoid re-spawning rather than reboot.
   sleep 1d
 }
