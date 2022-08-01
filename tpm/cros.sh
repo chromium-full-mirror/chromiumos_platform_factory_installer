@@ -168,7 +168,11 @@ tpm_enable_factory_mode() {
   # Once enabling factory mode, system should reboot automatically.
   # cr50 version >= 0.5.110/0.6.110 won't auto reboot after enabling factory
   # mode. Manually reboot after successfully enable factory mode.
-  log "Successfully to enable factory mode and should reboot soon."
+
+  # Enabling factory model takes a while after the process termintaed. Sleep 5s
+  # here to make sure factory mode enabled before reboot.
+  log "Successfully to enable factory mode and should reboot in 5 seconds."
+  sleep 5s
   reboot
 
   # sleep indefinitely to avoid re-spawning rather than reboot.
