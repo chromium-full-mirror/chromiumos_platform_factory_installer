@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::factory_ufs::ufs_spec::ufs_common::CommonDescriptorTrait;
 use crate::factory_ufs::ufs_spec::ufs_device_descriptor::WriteBooster;
-use crate::factory_ufs::ufs_spec::ufs_unit_descriptor::{GetAllocUnits, ProvisionLun};
+use crate::factory_ufs::ufs_spec::ufs_unit_descriptor::{GetUnitField, ProvisionLun};
 use crate::factory_ufs::ufs_spec::{ufs_2_1, ufs_3_1};
 
 /// Defines the the config descriptor for UFS provisioning.
@@ -71,7 +71,7 @@ pub trait WriteBoosterConfig {
 impl<D, U> WriteBoosterConfig for ConfigDescriptor<D, U>
 where
     D: WriteBooster,
-    U: GetAllocUnits,
+    U: GetUnitField,
 {
     fn support_write_booster(&self) -> bool {
         self.device_config.support_write_booster()

@@ -6,8 +6,8 @@ use anyhow::{self, Result};
 use serde::{Deserialize, Serialize};
 
 use crate::factory_ufs::ufs_spec::ufs_common::{self, CommonDescriptorTrait};
-use crate::factory_ufs::ufs_spec::ufs_device_descriptor::WriteBooster;
-use crate::factory_ufs::ufs_spec::ufs_unit_descriptor::{GetAllocUnits, ProvisionLun};
+use crate::factory_ufs::ufs_spec::ufs_device_descriptor::{GetDeviceField, WriteBooster};
+use crate::factory_ufs::ufs_spec::ufs_unit_descriptor::{GetUnitField, ProvisionLun};
 use crate::utils::error::NotImplementedError;
 
 /// Defines the config descriptor for device.
@@ -61,6 +61,12 @@ impl Default for DeviceConfigDescriptor {
 }
 
 impl CommonDescriptorTrait<'_> for DeviceConfigDescriptor {}
+
+impl GetDeviceField for DeviceConfigDescriptor {
+    fn get_header_length(&self) -> u8 {
+        self.b_length
+    }
+}
 
 impl WriteBooster for DeviceConfigDescriptor {
     fn support_write_booster(&self) -> bool {
@@ -119,9 +125,15 @@ impl ProvisionLun for UnitConfigDescriptor {
     }
 }
 
-impl GetAllocUnits for UnitConfigDescriptor {
+impl GetUnitField for UnitConfigDescriptor {
     fn get_alloc_units(&self) -> u32 {
         self.d_num_alloc_units
+    }
+    fn get_lu_enabled(&self) -> u8 {
+        self.b_lu_enable
+    }
+    fn get_provisioning_type(&self) -> u8 {
+        self.b_provisioning_type
     }
 }
 

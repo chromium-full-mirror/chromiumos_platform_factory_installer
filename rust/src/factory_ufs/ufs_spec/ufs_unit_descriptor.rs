@@ -6,6 +6,8 @@ pub trait ProvisionLun {
     fn provision_lun(&mut self, alloc_units: u32);
 }
 
-pub trait GetAllocUnits {
+pub trait GetUnitField {
     fn get_alloc_units(&self) -> u32;
+    fn get_lu_enabled(&self) -> u8;
+    fn get_provisioning_type(&self) -> u8;
 }

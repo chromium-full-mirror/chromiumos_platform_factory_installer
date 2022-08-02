@@ -486,14 +486,16 @@ pub fn action_clobber(ufs_path: &UFSPath, purge_timeout: u32) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use std::fs::{self, File};
-    use std::path::{Path, PathBuf};
+    use std::path::Path;
 
     use tempdir::TempDir;
 
     use crate::factory_ufs::ufs_provision;
     use crate::factory_ufs::ufs_spec::ufs_config_descriptor::{
-        UFS2ConfigDescriptor, UFS3ConfigDescriptor,
+        ProvisionLun0, UFS2ConfigDescriptor, UFS3ConfigDescriptor,
     };
+    use crate::factory_ufs::ufs_spec::ufs_device_descriptor::GetDeviceField;
+    use crate::factory_ufs::ufs_spec::ufs_unit_descriptor::GetUnitField;
     use crate::factory_ufs::ufs_spec::{ufs_2_1, ufs_3_1, ufs_common};
 
     #[test]
@@ -504,51 +506,89 @@ mod tests {
         assert_eq!(header_value, config_binary[0]);
     }
 
-    fn generate_ufs2_config_binary() -> Vec<u8> {
-        vec![
-            144, 1, 0, 1, 0, 1, 127, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 119, 50, 0, 12,
-            3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 12, 0,
-            0, 0, 0, 0, 0,
-        ]
-    }
+    // The allocation units in FAKE_UFSX_CONFIG_BINARY.
+    const ALLOC_UNITS: u32 = 0x7732;
 
-    #[test]
-    fn test_deserialize_config() {
-        // TODO: (phoebewang) add ufs3
-        let ufs2_config_binary = generate_ufs2_config_binary();
-        let ufs2_config_descriptor =
-            ufs_provision::deserialize_config::<UFS2ConfigDescriptor>(&ufs2_config_binary).unwrap();
+    // FAKE_UFS2_CONFIG_BINARY and FAKE_UFS3_CONFIG_BINARY share similar
+    // values, except that the header length are different.
+    const FAKE_UFS2_CONFIG_BINARY: [u8; 144] = [
+        0x90, 0x1, 0x0, 0x1, 0x0, 0x1, 0x7f, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x1, 0x0,
+        0x0, 0x0, 0x0, 0x0, 0x77, 0x32, 0x0, 0xc, 0x3, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
+        0x0, 0x0, 0x0, 0x0, 0x0, 0xc, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
+        0x0, 0x0, 0x0, 0xc, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
+        0x0, 0xc, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0xc,
+        0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0xc, 0x0, 0x0,
+        0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0xc, 0x0, 0x0, 0x0, 0x0,
+        0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0xc, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
+    ];
 
+    const FAKE_UFS3_CONFIG_BINARY: [u8; 230] = [
+        0xe6, 0x1, 0x0, 0x1, 0x0, 0x1, 0x7f, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
+        0x0, 0x0, 0x0, 0x0, 0x1, 0x0, 0x0, 0x0, 0x0, 0x0, 0x77, 0x32, 0x0, 0xc, 0x3, 0x0, 0x0, 0x0,
+        0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
+        0x0, 0x0, 0x0, 0xc, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
+        0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0xc, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
+        0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
+        0x0, 0xc, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
+        0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0xc, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
+        0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0xc,
+        0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
+        0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0xc, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
+        0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0xc, 0x0, 0x0,
+        0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
+    ];
+
+    fn compare_unit0_descriptor<T: GetUnitField>(unit_descriptor: &T) {
+        // The input unit descriptor should have the same field values in the
+        // FAKE_UFSX_CONFIG_BINARY.
+        assert_eq!(unit_descriptor.get_lu_enabled(), 0x1);
+        assert_eq!(unit_descriptor.get_alloc_units(), ALLOC_UNITS);
         assert_eq!(
-            ufs2_config_descriptor.device_config.b_length,
-            ufs_2_1::HEADER_LENGTH
-        );
-        assert_eq!(ufs2_config_descriptor.units_config[0].b_lu_enable, 0x1);
-        // 119 = 0x77, 50 = 0x32
-        assert_eq!(
-            ufs2_config_descriptor.units_config[0].d_num_alloc_units,
-            0x7732
-        );
-        assert_eq!(
-            ufs2_config_descriptor.units_config[0].b_provisioning_type,
+            unit_descriptor.get_provisioning_type(),
             ufs_common::PROVISIONING_TYPE
         );
     }
 
     #[test]
+    fn test_deserialize_config() {
+        let ufs2_config_descriptor = ufs_provision::deserialize_config::<UFS2ConfigDescriptor>(
+            &FAKE_UFS2_CONFIG_BINARY.to_vec(),
+        )
+        .unwrap();
+
+        assert_eq!(
+            ufs2_config_descriptor.device_config.get_header_length(),
+            ufs_2_1::HEADER_LENGTH
+        );
+        compare_unit0_descriptor(&ufs2_config_descriptor.units_config[0]);
+
+        let ufs3_config_descriptor = ufs_provision::deserialize_config::<UFS3ConfigDescriptor>(
+            &FAKE_UFS3_CONFIG_BINARY.to_vec(),
+        )
+        .unwrap();
+
+        assert_eq!(
+            ufs3_config_descriptor.device_config.get_header_length(),
+            ufs_3_1::HEADER_LENGTH
+        );
+        compare_unit0_descriptor(&ufs3_config_descriptor.units_config[0]);
+    }
+
+    #[test]
     fn test_serialize_config() {
         let mut ufs2_config = UFS2ConfigDescriptor::default();
-        ufs2_config.units_config[0].b_lu_enable = 0x1;
-        ufs2_config.units_config[0].d_num_alloc_units = 0x7732;
-        ufs2_config.units_config[0].b_provisioning_type = ufs_common::PROVISIONING_TYPE;
-
+        ufs2_config.provision_lun_0(ALLOC_UNITS);
         let ufs2_config_binary =
             ufs_provision::serialize_config::<UFS2ConfigDescriptor>(&ufs2_config).unwrap();
 
-        assert_eq!(ufs2_config_binary, generate_ufs2_config_binary());
+        assert_eq!(ufs2_config_binary, FAKE_UFS2_CONFIG_BINARY);
+
+        let mut ufs3_config = UFS3ConfigDescriptor::default();
+        ufs3_config.provision_lun_0(ALLOC_UNITS);
+        let ufs3_config_binary =
+            ufs_provision::serialize_config::<UFS3ConfigDescriptor>(&ufs3_config).unwrap();
+
+        assert_eq!(ufs3_config_binary, FAKE_UFS3_CONFIG_BINARY);
     }
 
     #[test]
@@ -559,48 +599,61 @@ mod tests {
         let ufs3_config =
             ufs_provision::generate_new_config::<UFS3ConfigDescriptor>(alloc_units).unwrap();
 
-        assert_eq!(ufs2_config.device_config.b_length, ufs_2_1::HEADER_LENGTH);
-        assert_eq!(ufs2_config.units_config[0].d_num_alloc_units, alloc_units);
+        assert_eq!(
+            ufs2_config.device_config.get_header_length(),
+            ufs_2_1::HEADER_LENGTH
+        );
+        assert_eq!(ufs2_config.units_config[0].get_alloc_units(), alloc_units);
 
-        assert_eq!(ufs3_config.device_config.b_length, ufs_3_1::HEADER_LENGTH);
-        assert_eq!(ufs3_config.units_config[0].d_num_alloc_units, alloc_units);
+        assert_eq!(
+            ufs3_config.device_config.get_header_length(),
+            ufs_3_1::HEADER_LENGTH
+        );
+        assert_eq!(ufs3_config.units_config[0].get_alloc_units(), alloc_units);
     }
 
-    fn create_geometry_descriptor_dir(sys_dev_path: &Path) -> PathBuf {
-        let geometry_dir = sys_dev_path.join("geometry_descriptor");
-        fs::create_dir(&geometry_dir).unwrap();
-
-        geometry_dir.to_path_buf()
-    }
-
-    fn create_geometry_descriptor_files(geometry_dir: &Path, fname: &str, content: &str) {
-        let geometry_file_path = geometry_dir.join(fname);
-        File::create(&geometry_file_path).unwrap();
-        fs::write(geometry_file_path, content).unwrap();
+    fn create_sysfs_files(sys_dev_path: &Path, dir_name: &str, fname: &str, content: &str) {
+        let sysfs_dir = sys_dev_path.join(dir_name);
+        fs::create_dir_all(&sysfs_dir).unwrap();
+        let file_path = sys_dev_path.join(dir_name).join(fname);
+        File::create(&file_path).unwrap();
+        fs::write(file_path, content).unwrap();
     }
 
     #[test]
-    fn test_read_geometry_descriptor() {
-        let geometry_test_file = "geometry_test";
+    fn test_read_sysfs_files() {
+        let test_file = "sysfs_test_file";
+        let test_dir = "sysfs_test_dir";
         let sys_dev_path = TempDir::new("test_sys_dev").unwrap();
-        let geometry_dir = create_geometry_descriptor_dir(&sys_dev_path.path());
-        create_geometry_descriptor_files(&geometry_dir, &geometry_test_file, "0x1234");
+        create_sysfs_files(&sys_dev_path.path(), test_dir, test_file, "0x1234");
 
-        let val =
-            ufs_provision::read_geometry_descriptor(&sys_dev_path.path(), &geometry_test_file)
-                .unwrap();
+        let val = ufs_provision::read_sysfs(&sys_dev_path.path(), test_dir, test_file).unwrap();
         assert_eq!(val, 0x1234);
     }
 
     #[test]
     fn test_get_alloc_units() {
         let sys_dev_path = TempDir::new("test_sys_dev").unwrap();
-        let geometry_dir = create_geometry_descriptor_dir(&sys_dev_path.path());
-        create_geometry_descriptor_files(&geometry_dir, "raw_device_capacity", "0xee64000");
-        create_geometry_descriptor_files(&geometry_dir, "segment_size", "0x2000");
-        create_geometry_descriptor_files(&geometry_dir, "allocation_unit_size", "0x1");
+        create_sysfs_files(
+            &sys_dev_path.path(),
+            "geometry_descriptor",
+            "raw_device_capacity",
+            "0xee64000",
+        );
+        create_sysfs_files(
+            &sys_dev_path.path(),
+            "geometry_descriptor",
+            "segment_size",
+            "0x2000",
+        );
+        create_sysfs_files(
+            &sys_dev_path.path(),
+            "geometry_descriptor",
+            "allocation_unit_size",
+            "0x2",
+        );
 
         let val = ufs_provision::get_alloc_units(&sys_dev_path.path()).unwrap();
-        assert_eq!(val, 30514);
+        assert_eq!(val, 0x3b99);
     }
 }

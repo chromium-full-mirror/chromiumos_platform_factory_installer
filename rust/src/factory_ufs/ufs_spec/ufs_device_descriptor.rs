@@ -14,3 +14,7 @@ pub trait WriteBooster {
     ) -> Result<u32>;
     fn disable_write_booster(&mut self) -> Result<()>;
 }
+
+pub trait GetDeviceField {
+    fn get_header_length(&self) -> u8;
+}
