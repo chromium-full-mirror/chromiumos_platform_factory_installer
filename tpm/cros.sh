@@ -6,9 +6,10 @@
 # Because tpm/*.sh is installed in a different directory, we should use
 # absolute path.
 . "/usr/sbin/factory_common.sh"
+. "/usr/share/cros/gsc-constants.sh"
 
-GSCTOOL="gsctool"
-PROD_CR50_PATH="opt/google/cr50/firmware/cr50.bin.prod"
+GSCTOOL="gsctool_cmd"
+PROD_CR50_PATH="$(gsc_image_base_name | sed -E 's/^\///g').prod"
 
 
 _copy_prod_cr50_firmware() {
