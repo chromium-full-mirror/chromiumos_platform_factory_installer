@@ -89,22 +89,24 @@ patch_new_root() {
     sed -i 's/login-prompt-visible/started boot-services/' "${file}"
   fi
 
-  # Disable upstart jobs that will block execution for factory shim environment.
-  # syslog: it expects rsyslogd exists, but we don't have rsyslogd in factory
-  #     shim.
-  # journald: it expects systemd-journald exists, which is not available in
-  #     factory shim.
-  # ext-pci-drivers-allowlist: it depends on syslog.
-  local disabled_jobs
-  disabled_jobs="cdm-oemcrypto powerd swap syslog tpm-probe ui update-engine
-                 journald cryptohome-update-userdataauth
-                 ext-pci-drivers-allowlist activate_date tlsdated"
+  # Move conf files to a temp folder.
+  local temp_path="$(mktemp -d)"
+  mv "${new_root}"/etc/init/*.conf "${temp_path}"
 
-  for job in ${disabled_jobs}; do
-    file="${new_root}/etc/init/${job}.conf"
-    if check_exists "${file}" "${new_root}"; then
-      # Upstart honors the last 'start on' clause it finds.
-      echo "start on never" >>"${file}"
+  # Copy back allowed jobs only.
+  local allowed_jobs
+  allowed_jobs="boot-complete boot-services boot-splash chapsd cr50-result halt
+                cryptohomed-client cryptohome-proxy cryptohomed dbus shill
+                install-completed pre-startup reboot startup system-services
+                tpm_managerd udev-boot udev-trigger-early udev-trigger trunksd
+                network-services wpasupplicant cr50-update factory_shim udev"
+
+  for job in ${allowed_jobs}; do
+    file="${temp_path}/${job}.conf"
+    if [ -f "${file}" ]; then
+      cp "${file}" "${new_root}/etc/init/"
+    else
+      echo "${file} doesn't exist!!!"
     fi
   done
 
@@ -122,10 +124,6 @@ patch_new_root() {
       echo "exec true" >>"${file}"
     fi
   done
-
-  # We don't want any consoles to be executed.
-  # To debug using servo, please comment this line.
-  rm -f "${new_root}"/etc/init/console-*.conf
 
   # The laptop_mode may be triggered from udev.
   rm -f "${new_root}/etc/udev/rules.d/99-laptop-mode.rules"
