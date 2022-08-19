@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+pub mod action;
 pub mod args;
-pub mod ufs_provision;
-pub mod ufs_spec;
+pub mod ufs;
+pub mod utils;

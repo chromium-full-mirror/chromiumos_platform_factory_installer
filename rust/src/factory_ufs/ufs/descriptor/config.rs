@@ -5,10 +5,9 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
-use crate::factory_ufs::ufs_spec::ufs_common::CommonDescriptorTrait;
-use crate::factory_ufs::ufs_spec::ufs_device_descriptor::WriteBooster;
-use crate::factory_ufs::ufs_spec::ufs_unit_descriptor::{GetUnitField, ProvisionLun};
-use crate::factory_ufs::ufs_spec::{ufs_2_1, ufs_3_1};
+use crate::factory_ufs::ufs::descriptor::common::CommonDescriptorTrait;
+use crate::factory_ufs::ufs::descriptor::device::WriteBooster;
+use crate::factory_ufs::ufs::descriptor::unit::{GetUnitField, ProvisionLun};
 
 /// Defines the the config descriptor for UFS provisioning.
 ///
@@ -86,8 +85,3 @@ where
         self.device_config.disable_write_booster()
     }
 }
-
-pub type UFS2ConfigDescriptor =
-    ConfigDescriptor<ufs_2_1::DeviceConfigDescriptor, ufs_2_1::UnitConfigDescriptor>;
-pub type UFS3ConfigDescriptor =
-    ConfigDescriptor<ufs_3_1::DeviceConfigDescriptor, ufs_3_1::UnitConfigDescriptor>;

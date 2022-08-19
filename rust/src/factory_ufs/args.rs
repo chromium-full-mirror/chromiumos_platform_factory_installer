@@ -4,14 +4,15 @@
 
 pub use clap::{Parser, Subcommand};
 
-use crate::factory_ufs::ufs_spec::ufs_common;
+const PCI_RESCAN_DEFAUT_TIMEOUT_SEC: u32 = 10;
+const PURGE_DEFAULT_TIMEOUT_SEC: u32 = 300;
 
 #[derive(Debug, Subcommand)]
 pub enum Commands {
     /// Perform clobber to clean up the stateful partition
     Clobber {
         /// Timeout limit for the purge operation. Set to 0 to disable purge.
-        #[clap(short, long, default_value_t=ufs_common::PURGE_DEFAULT_TIMEOUT_SEC)]
+        #[clap(short, long, default_value_t=PURGE_DEFAULT_TIMEOUT_SEC)]
         purge_timeout: u32,
     },
     /// Print the current UFS config on DUT
@@ -19,7 +20,7 @@ pub enum Commands {
     /// Provision the UFS
     Provision {
         /// Timeout seconds for PCI rescan
-        #[clap(short, long, default_value_t=ufs_common::PCI_RESCAN_TIMEOUT_SEC)]
+        #[clap(short, long, default_value_t=PCI_RESCAN_DEFAUT_TIMEOUT_SEC)]
         rescan_timeout: u32,
     },
 }

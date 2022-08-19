@@ -84,6 +84,29 @@ where
     parse_dict_impl(lines, delimiter, true).unwrap()
 }
 
+/// Transform a hex string to an u32 integer.
+///
+/// # Arguments
+/// * `hex_str` - The hex string to be transformed.
+///
+/// # Return
+/// An u32 integer.
+/// # Examples
+/// ```
+/// use factory_installer::utils::string_utils;
+///
+/// let hex = string_utils::hex_to_u32("0x1234");
+/// ```
+pub fn hex_to_u32<S>(hex_str: S) -> Result<u32>
+where
+    S: AsRef<str>,
+{
+    Ok(u32::from_str_radix(
+        hex_str.as_ref().trim().trim_start_matches("0x"),
+        16,
+    )?)
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
@@ -142,5 +165,11 @@ mod tests {
         );
 
         assert_eq!(expected, parse_result);
+    }
+
+    #[test]
+    fn test_hex_to_u32() {
+        let ret = string_utils::hex_to_u32("0x1234").unwrap();
+        assert_eq!(4660, ret);
     }
 }

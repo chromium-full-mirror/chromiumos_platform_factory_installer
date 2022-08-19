@@ -5,17 +5,17 @@
 use std::path::Path;
 
 use anyhow::{self, Context, Result};
+use factory_installer::factory_ufs::action::{clobber, provision, show};
 use factory_installer::factory_ufs::args::{Args, Commands, Parser};
-use factory_installer::factory_ufs::ufs_provision::{
-    self, NoParentDirError, PathMatchError, UFSPath,
-};
+use factory_installer::factory_ufs::utils::path_utils::{self, PathMatchError, UFSPath};
+use factory_installer::utils::file_utils::NoParentDirError;
 
 const UFS_BSG_ERROR_MSG: &str = "Unexpected error occurs when finding";
 
 fn main() -> Result<()> {
     let args = Args::parse();
 
-    let ufs_bsg_node_path = ufs_provision::get_ufs_bsg_node();
+    let ufs_bsg_node_path = path_utils::get_ufs_bsg_node();
     let ufs_bsg_node_path = match ufs_bsg_node_path {
         Ok(path) => path,
         Err(err) => {
@@ -28,8 +28,8 @@ fn main() -> Result<()> {
             anyhow::bail!("{} UFS BSG node: {}", UFS_BSG_ERROR_MSG, err)
         }
     };
-    let ufs_bsg_sys_path = ufs_provision::get_ufs_bsg_sys()
-        .context(format!("{} UFS BSG sys path", UFS_BSG_ERROR_MSG))?;
+    let ufs_bsg_sys_path =
+        path_utils::get_ufs_bsg_sys().context(format!("{} UFS BSG sys path", UFS_BSG_ERROR_MSG))?;
     println!("UFS BSG node path: {}", ufs_bsg_node_path.display());
     println!("UFS BSG sys path: {}", ufs_bsg_sys_path.display());
 
@@ -48,12 +48,10 @@ fn main() -> Result<()> {
     };
 
     match args.command {
-        Commands::Clobber { purge_timeout } => {
-            ufs_provision::action_clobber(&ufs_path, purge_timeout)
-        }
-        Commands::Show => ufs_provision::action_show(&ufs_path),
+        Commands::Clobber { purge_timeout } => clobber::action_clobber(&ufs_path, purge_timeout),
+        Commands::Show => show::action_show(&ufs_path),
         Commands::Provision { rescan_timeout } => {
-            ufs_provision::action_provision(&ufs_path, rescan_timeout)
+            provision::action_provision(&ufs_path, rescan_timeout)
         }
     }
 }

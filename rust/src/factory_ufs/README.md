@@ -1,6 +1,11 @@
 # ChromeOS Factory UFS
 
-Factory UFS is used to do UFS provisioning.
+Factory UFS is a tool which supports:
+
+- provisioning the UFS (provision)
+- showing the content of a UFS config (show)
+- cleaning up the stateful partition of a UFS storage (clobber)
+
 
 ## Build
 Factory UFS is built with `factory_ufs`:
@@ -39,3 +44,30 @@ config.
 # Run the provisioning with 30 seconds PCI rescan timeout.
 > factory_ufs provision -p 30
 ```
+
+## File Hierarchy
+```
+factory_ufs
+|-- action
+|-- ufs
+|   |-- descriptor
+|   `-- spec
+`-- utils
+```
+
+- action
+  - Implements the clobber, provision and show subcommands.
+- ufs
+  - descriptor
+    - Contains four kinds of descriptors: common, config, device and unit.
+      - Common descriptor defines the common trait that every descriptor needs
+        to implement.
+      - Config descriptor consists of 1 device descriptor and 8 unit
+        descriptors.
+    - Defines the trait that each spec needs to implement.
+  - spec
+    - Defines the fields in device and unit descriptors.
+    - Implements the trait defined in `descriptor`.
+- utils
+  - Contains path searching and file reading functions specifically for
+    factory_ufs.
