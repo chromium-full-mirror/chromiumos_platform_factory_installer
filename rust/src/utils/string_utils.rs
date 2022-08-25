@@ -91,11 +91,12 @@ where
 ///
 /// # Return
 /// An u32 integer.
+///
 /// # Examples
 /// ```
 /// use factory_installer::utils::string_utils;
 ///
-/// let hex = string_utils::hex_to_u32("0x1234");
+/// let hex = string_utils::hex_to_u32("0x1234").unwrap();
 /// ```
 pub fn hex_to_u32<S>(hex_str: S) -> Result<u32>
 where
@@ -105,6 +106,24 @@ where
         hex_str.as_ref().trim().trim_start_matches("0x"),
         16,
     )?)
+}
+
+/// Transform an u32 integer to a lowercase hex string.
+///
+/// # Arguments
+/// * `num` - The u32 integer to be transformed.
+///
+/// # Return
+/// A lowercase hex string which begins with "0x".
+///
+/// # Examples
+/// ```
+/// use factory_installer::utils::string_utils;
+///
+/// let hex = string_utils::u32_to_hex(4660);
+/// ```
+pub fn u32_to_hex(num: u32) -> String {
+    format!("0x{:x}", num)
 }
 
 #[cfg(test)]
@@ -171,5 +190,11 @@ mod tests {
     fn test_hex_to_u32() {
         let ret = string_utils::hex_to_u32("0x1234").unwrap();
         assert_eq!(4660, ret);
+    }
+
+    #[test]
+    fn test_u32_to_hex() {
+        let ret = string_utils::u32_to_hex(4660);
+        assert_eq!("0x1234", ret);
     }
 }

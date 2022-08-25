@@ -180,7 +180,7 @@ pub fn read_header(ufs_config_binary: &Vec<u8>) -> Result<u8> {
 /// SLC (single level cell) NAND. To improve the write performance, we can
 /// configure part of the TLC NAND (normal storage) to SLC NAND (write buffer).
 /// Ref: 13.4.17.2 WriteBooster configuration from `UFS 3.1`
-fn config_write_booster_if_supported<T: WriteBoosterConfig>(
+fn config_write_booster<T: WriteBoosterConfig>(
     sys_dev_path: &Path,
     ufs_config: &mut T,
 ) -> Result<()> {
@@ -204,7 +204,7 @@ fn config_write_booster_if_supported<T: WriteBoosterConfig>(
 
     // Reads the GEOM_DESC.bSupportedWriteBoosterBufferTypes.
     let wb_sup_wb_type = file_utils::read_geometry_descriptor(&sys_dev_path, "wb_sup_wb_type")?;
-    let support_single_shared_buffer = match FromPrimitive::from_u32(wb_sup_red_type) {
+    let support_single_shared_buffer = match FromPrimitive::from_u32(wb_sup_wb_type) {
         Some(SupportedWBBufferTypes::SingleShared) | Some(SupportedWBBufferTypes::SupportBoth) => {
             true
         }
@@ -266,7 +266,7 @@ fn provision_ufs_if_needed<
     let alloc_units = get_alloc_units(&ufs_path.sys_dev)?;
     let mut new_config = generate_new_config::<T>(alloc_units)?;
 
-    config_write_booster_if_supported(&ufs_path.sys_dev, &mut new_config)?;
+    config_write_booster(&ufs_path.sys_dev, &mut new_config)?;
 
     println!("Current UFS config on DUT: {:#?}", cur_config);
 
@@ -317,9 +317,14 @@ pub fn action_provision(ufs_path: &UFSPath, rescan_timeout: u32) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
+    use std::cmp::min;
+    use std::path::Path;
+
     use tempdir::TempDir;
 
-    use crate::factory_ufs::action::provision;
+    use crate::factory_ufs::action::provision::{
+        self, SupportedWBBufferTypes, SupportedWBBufferUserSpaceReductionTypes,
+    };
     use crate::factory_ufs::ufs::descriptor::config::ProvisionLun0;
     use crate::factory_ufs::ufs::descriptor::device::GetDeviceField;
     use crate::factory_ufs::ufs::descriptor::unit::GetUnitField;
@@ -327,6 +332,7 @@ mod tests {
     use crate::factory_ufs::ufs::spec::ufs_2_1::{self, UFS2ConfigDescriptor};
     use crate::factory_ufs::ufs::spec::ufs_3_1::{self, UFS3ConfigDescriptor};
     use crate::utils::file_utils;
+    use crate::utils::string_utils;
 
     #[test]
     fn test_read_header() {
@@ -457,5 +463,101 @@ mod tests {
 
         let val = provision::get_alloc_units(&sys_dev_path.path()).unwrap();
         assert_eq!(val, 0x3b99);
+    }
+
+    #[test]
+    fn test_config_write_booster_unsupported() {
+        // UFS2_1 do not support write booster, so the config will not be modified.
+        let mut ufs2_config =
+            provision::generate_new_config::<UFS2ConfigDescriptor>(ALLOC_UNITS).unwrap();
+        provision::config_write_booster(Path::new("unused_path"), &mut ufs2_config).unwrap();
+        assert_eq!(
+            ufs2_config,
+            provision::generate_new_config::<UFS2ConfigDescriptor>(ALLOC_UNITS).unwrap()
+        );
+    }
+
+    fn setup_write_booster_test(
+        sys_dev_path: &Path,
+        ext_feature_sup: u32,
+        wb_sup_red_type: u32,
+        wb_sup_wb_type: u32,
+        wb_max_alloc_units: u32,
+    ) {
+        file_utils::create_file(
+            sys_dev_path
+                .join("device_descriptor")
+                .join("ext_feature_sup"),
+            string_utils::u32_to_hex(ext_feature_sup),
+        )
+        .unwrap();
+        file_utils::create_file(
+            sys_dev_path
+                .join("geometry_descriptor")
+                .join("wb_sup_red_type"),
+            string_utils::u32_to_hex(wb_sup_red_type),
+        )
+        .unwrap();
+        file_utils::create_file(
+            sys_dev_path
+                .join("geometry_descriptor")
+                .join("wb_sup_wb_type"),
+            string_utils::u32_to_hex(wb_sup_wb_type),
+        )
+        .unwrap();
+        file_utils::create_file(
+            sys_dev_path
+                .join("geometry_descriptor")
+                .join("wb_max_alloc_units"),
+            string_utils::u32_to_hex(wb_max_alloc_units),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn test_config_write_booster_enable() {
+        let sys_dev_path = TempDir::new("test_sys_dev").unwrap();
+        let wb_max_alloc_units: u32 = 0x1dcb;
+        let mut ufs3_config =
+            provision::generate_new_config::<UFS3ConfigDescriptor>(ALLOC_UNITS).unwrap();
+        setup_write_booster_test(
+            &sys_dev_path.path(),
+            provision::SUPPORT_WB_MASK,
+            SupportedWBBufferUserSpaceReductionTypes::EitherType as u32,
+            SupportedWBBufferTypes::SupportBoth as u32,
+            wb_max_alloc_units,
+        );
+        provision::config_write_booster(&sys_dev_path.path(), &mut ufs3_config).unwrap();
+        let device_config = ufs3_config.device_config;
+
+        assert_eq!(
+            device_config.b_write_booster_buffer_preserve_user_space_en,
+            0x1
+        );
+        assert_eq!(device_config.b_write_booster_buffer_type, 0x1);
+        assert_eq!(
+            device_config.d_num_shared_write_booster_buffer_alloc_units,
+            min((ALLOC_UNITS as f32 * 0.1) as u32, wb_max_alloc_units)
+        );
+    }
+
+    #[test]
+    fn test_config_write_booster_disable() {
+        let sys_dev_path = TempDir::new("test_sys_dev").unwrap();
+        let mut ufs3_config =
+            provision::generate_new_config::<UFS3ConfigDescriptor>(ALLOC_UNITS).unwrap();
+
+        setup_write_booster_test(&sys_dev_path.path(), 0, 0, 0, 0);
+        provision::config_write_booster(&sys_dev_path.path(), &mut ufs3_config).unwrap();
+        let device_config = ufs3_config.device_config;
+        assert_eq!(
+            device_config.b_write_booster_buffer_preserve_user_space_en,
+            0x0
+        );
+        assert_eq!(device_config.b_write_booster_buffer_type, 0x0);
+        assert_eq!(
+            device_config.d_num_shared_write_booster_buffer_alloc_units,
+            0x0
+        );
     }
 }
