@@ -86,6 +86,23 @@ where
     Ok(string_utils::hex_to_u32(raw_string)?)
 }
 
+/// Opens a file with given permission.
+///
+/// # Arguments
+/// * `path` - The path to the file.
+/// * `read` - Opens with read permission or not.
+/// * `write` - Opens with write permission or not.
+///
+/// # Return
+/// The opened file.
+pub fn open_file<P>(path: P, read: bool, write: bool) -> Result<File>
+where
+    P: AsRef<Path>,
+{
+    let path = path.as_ref();
+    Ok(File::options().read(read).write(write).open(path)?)
+}
+
 #[cfg(test)]
 mod tests {
     use std::fs;

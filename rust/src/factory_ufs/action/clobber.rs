@@ -13,6 +13,7 @@ use num_traits::FromPrimitive;
 use crate::device;
 use crate::factory_ufs::utils::file_utils;
 use crate::factory_ufs::utils::path_utils::UFSPath;
+use crate::utils::ioctl_utils;
 use crate::utils::process_utils::{Command, StringOutput};
 
 #[derive(FromPrimitive)]
@@ -42,14 +43,16 @@ fn set_purge_flag(bsg_node_path: &Path) -> Result<()> {
 
 fn discard_stateful() -> Result<()> {
     let stateful_dev = device::get_release_stateful_partition()?;
+    let size = ioctl_utils::get_block_dev_size(&stateful_dev)?;
     println!(
-        "Discard stateful partition {} using blkdiscard...",
-        stateful_dev
+        "Discard stateful partition {} with size: {:.2} GB.",
+        stateful_dev,
+        (size as f64 / u64::pow(2, 30) as f64)
     );
-    Command::new("blkdiscard")
-        .args([stateful_dev])
-        .output()?
-        .exit_ok()?;
+
+    // Discards the whole stateful partition.
+    ioctl_utils::discard_block_dev(&stateful_dev, 0, size)?;
+
     Ok(())
 }
 
