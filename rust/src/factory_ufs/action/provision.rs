@@ -17,6 +17,7 @@ use num_traits::FromPrimitive;
 use serde::{Deserialize, Serialize};
 use tempfile::NamedTempFile;
 
+use crate::factory_ufs::action::constants;
 use crate::factory_ufs::ufs::descriptor::common::CommonDescriptorTrait;
 use crate::factory_ufs::ufs::descriptor::config::{ProvisionLun0, WriteBoosterConfig};
 use crate::factory_ufs::ufs::spec::ufs_2_1::{self, UFS2ConfigDescriptor};
@@ -89,14 +90,14 @@ fn rescan_dev_and_sync(sys_dev_path: &Path, rescan_timeout: u32) -> Result<()> {
     );
 }
 
-/// Writes new UFS config using ufs-utils.
+/// Writes new UFS config using [constants::UFS_UTILS].
 fn write_ufs_config<T: Serialize>(bsg_node_path: &Path, ufs_config: &T) -> Result<()> {
     let config_path = NamedTempFile::new()?.path().display().to_string();
     let config_bin_vec = serialize_config::<T>(&ufs_config)?;
     fs::write(&config_path, config_bin_vec)?;
 
     println!("Write config to {}...", bsg_node_path.display());
-    let output = Command::new("ufs-utils")
+    let output = Command::new(constants::UFS_UTILS)
         .args([
             "desc",
             "-t",
@@ -149,11 +150,13 @@ fn get_alloc_units(sys_dev_path: &Path) -> Result<u32> {
     Ok(units)
 }
 
-/// Gets the current UFS config using ufs-utils.
+/// Gets the current UFS config using [constants::UFS_UTILS].
 pub fn get_current_config_binary(bsg_node_path: &Path) -> Result<Vec<u8>> {
     // Needs to switch to /tmp since ufs-utils dumps the config to cwd
     // with name `UFS_CONFIG_NAME`.
-    Command::new("ufs-utils")
+    let cur_config_path = env::temp_dir().join(UFS_CONFIG_NAME);
+    println!("Dumping current config to {}", cur_config_path.display());
+    Command::new(constants::UFS_UTILS)
         .args([
             "desc",
             "-t",
@@ -164,8 +167,8 @@ pub fn get_current_config_binary(bsg_node_path: &Path) -> Result<Vec<u8>> {
         .current_dir(env::temp_dir())
         .output()
         .ok();
-    let cur_config_path = env::temp_dir().join(UFS_CONFIG_NAME);
 
+    println!("Reading current config...");
     Ok(fs::read(cur_config_path)?)
 }
 
@@ -288,6 +291,7 @@ fn provision_ufs_if_needed<
 pub fn action_provision(ufs_path: &UFSPath, rescan_timeout: u32) -> Result<()> {
     // We need to parse the header of current UFS config to decide which UFS
     // spec to load.
+    println!("Running action_provision...");
     let cur_config_binary = get_current_config_binary(&ufs_path.bsg_node)?;
     let header_value = read_header(&cur_config_binary)?;
 

@@ -3,5 +3,6 @@
 // found in the LICENSE file.
 
 pub mod clobber;
+pub mod constants;
 pub mod provision;
 pub mod show;

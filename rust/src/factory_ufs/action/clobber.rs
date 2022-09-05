@@ -11,6 +11,7 @@ use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 
 use crate::device;
+use crate::factory_ufs::action::constants;
 use crate::factory_ufs::utils::file_utils;
 use crate::factory_ufs::utils::path_utils::UFSPath;
 use crate::utils::ioctl_utils;
@@ -27,7 +28,7 @@ enum PurgeStatus {
 
 fn set_purge_flag(bsg_node_path: &Path) -> Result<()> {
     // -t 6 is flag type `fPurgeEnable`
-    Command::new("ufs-utils")
+    Command::new(constants::UFS_UTILS)
         .args([
             "fl",
             "-t",
@@ -61,6 +62,7 @@ fn discard_stateful() -> Result<()> {
 /// This function first discards the stateful partition by calling `blkdiscard`.
 /// It then enables purge operation and waits until the operation is finished.
 pub fn action_clobber(ufs_path: &UFSPath, purge_timeout: u32) -> Result<()> {
+    println!("Running action_clobber...");
     discard_stateful()?;
     if purge_timeout == 0 {
         println!("Skip purging since it is disabled.");
