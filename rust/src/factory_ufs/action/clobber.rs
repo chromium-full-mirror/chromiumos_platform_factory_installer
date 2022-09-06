@@ -10,7 +10,6 @@ use anyhow::Result;
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 
-use crate::device;
 use crate::factory_ufs::action::constants;
 use crate::factory_ufs::utils::file_utils;
 use crate::factory_ufs::utils::path_utils::UFSPath;
@@ -42,17 +41,16 @@ fn set_purge_flag(bsg_node_path: &Path) -> Result<()> {
     Ok(())
 }
 
-fn discard_stateful() -> Result<()> {
-    let stateful_dev = device::get_release_stateful_partition()?;
-    let size = ioctl_utils::get_block_dev_size(&stateful_dev)?;
+fn discard_block_dev(block_dev: &Path) -> Result<()> {
+    let size = ioctl_utils::get_block_dev_size(&block_dev)?;
     println!(
-        "Discard stateful partition {} with size: {:.2} GB.",
-        stateful_dev,
+        "Discard block device {} with size: {:.2} GB.",
+        block_dev.display(),
         (size as f64 / u64::pow(2, 30) as f64)
     );
 
-    // Discards the whole stateful partition.
-    ioctl_utils::discard_block_dev(&stateful_dev, 0, size)?;
+    // Discards the whole block device.
+    ioctl_utils::discard_block_dev(&block_dev, 0, size)?;
 
     Ok(())
 }
@@ -61,9 +59,10 @@ fn discard_stateful() -> Result<()> {
 ///
 /// This function first discards the stateful partition by calling `blkdiscard`.
 /// It then enables purge operation and waits until the operation is finished.
-pub fn action_clobber(ufs_path: &UFSPath, purge_timeout: u32) -> Result<()> {
+pub fn action_clobber(ufs_path: &UFSPath, block_dev: &Path, purge_timeout: u32) -> Result<()> {
     println!("Running action_clobber...");
-    discard_stateful()?;
+    discard_block_dev(&block_dev)?;
+
     if purge_timeout == 0 {
         println!("Skip purging since it is disabled.");
         println!("Clobber completed successfully.");

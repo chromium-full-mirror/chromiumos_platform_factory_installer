@@ -22,13 +22,13 @@ then you can find the built binary in `/build/$BOARD/usr/sbin/factory_ufs`.
 Factory UFS provides three functions: clobber, show and provision.
 
 ### Clobber
-This function first discards the stateful partition by calling `blkdiscard`.
-It then enables purge operation and waits until the operation is finished.
+This function first discards the block device by calling `BLKDISCARD` ioctl.
+If purge operation is enabled, factory_ufs waits until the operation is finished.
 ```
-# Run clobber with default parameters.
-> factory_ufs clobber
-# Run clobber without purging.
-> factory_ufs clobber -p 0
+# Run clobber on /dev/sda1 without purging.
+> factory_ufs clobber /dev/sda1
+# Run clobber with purging timeout set to 300 seconds.
+> factory_ufs clobber /dev/sda1 -p 300
 ```
 
 ### Show
