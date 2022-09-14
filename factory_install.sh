@@ -855,6 +855,7 @@ factory_install_cros_payload() {
     # TODO(hungte) Check if we need to run --mode=recovery if WP is enabled.
     sh "${tmp_dir}/firmware" --force --mode=factory_install ||
       die "Firmware updating failed."
+    rm "${tmp_dir}/firmware"
   fi
   if [ -s "${tmp_dir}/complete" ]; then
     log "Found completion script."
