@@ -38,8 +38,8 @@ preserve_crx_cache() {
   PRESERVED_FILES=""
   STATE_PATH="/mnt/stateful_partition"
   mkdir -p "${STATE_PATH}"
-  mount "${STATE_DEV}" "${STATE_PATH}"
-  IMPORT_FILES="$(cd ${STATE_PATH};
+  mount -o ro "${STATE_DEV}" "${STATE_PATH}"
+  IMPORT_FILES="$(cd ${STATE_PATH} || exit;
                   echo unencrypted/import_extensions/extensions/*.crx)"
   if [ "${IMPORT_FILES}" != \
        "unencrypted/import_extensions/extensions/*.crx" ]; then
