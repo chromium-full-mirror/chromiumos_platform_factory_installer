@@ -1,6 +1,6 @@
 #!/bin/sh
 
-# Copyright (c) 2011 The Chromium OS Authors. All rights reserved.
+# Copyright 2011 The ChromiumOS Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -38,7 +38,7 @@ preserve_crx_cache() {
   PRESERVED_FILES=""
   STATE_PATH="/mnt/stateful_partition"
   mkdir -p "${STATE_PATH}"
-  mount "${STATE_DEV}" "${STATE_PATH}"
+  mount -o ro "${STATE_DEV}" "${STATE_PATH}"
   IMPORT_FILES="$(cd ${STATE_PATH};
                   echo unencrypted/import_extensions/extensions/*.crx)"
   if [ "${IMPORT_FILES}" != \
