@@ -4,7 +4,7 @@ Factory UFS is a tool which supports:
 
 - provisioning the UFS (provision)
 - showing the content of a UFS config (show)
-- cleaning up the stateful partition of a UFS storage (clobber)
+- cleaning up the block device of a UFS storage (purge)
 
 
 ## Build
@@ -19,17 +19,7 @@ emerge-$BOARD factory_ufs
 then you can find the built binary in `/build/$BOARD/usr/sbin/factory_ufs`.
 
 ## Run
-Factory UFS provides three functions: clobber, show and provision.
-
-### Clobber
-This function first discards the block device by calling `BLKDISCARD` ioctl.
-If purge operation is enabled, factory_ufs waits until the operation is finished.
-```
-# Run clobber on /dev/sda1 without purging.
-> factory_ufs clobber /dev/sda1
-# Run clobber with purging timeout set to 300 seconds.
-> factory_ufs clobber /dev/sda1 -p 300
-```
+Factory UFS provides three functions: show, provision and purge.
 
 ### Show
 TODO
@@ -45,6 +35,13 @@ config.
 > factory_ufs provision -p 30
 ```
 
+### Purge
+This function securely erased the BLKDISCARD'ed block device.
+```
+# Run purge operation with timeout set to 300 seconds.
+> factory_ufs purge -t 300
+```
+
 ## File Hierarchy
 ```
 factory_ufs
@@ -56,7 +53,7 @@ factory_ufs
 ```
 
 - action
-  - Implements the clobber, provision and show subcommands.
+  - Implements the show, provision and purge subcommands.
 - ufs
   - descriptor
     - Contains four kinds of descriptors: common, config, device and unit.
