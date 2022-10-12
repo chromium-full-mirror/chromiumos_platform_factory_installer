@@ -5,7 +5,7 @@
 use std::path::Path;
 
 use anyhow::{self, Context, Result};
-use factory_installer::factory_ufs::action::{clobber, provision, show};
+use factory_installer::factory_ufs::action::{provision, purge, show};
 use factory_installer::factory_ufs::args::{Args, Commands, Parser};
 use factory_installer::factory_ufs::utils::path_utils::{self, PathMatchError, UFSPath};
 use factory_installer::utils::file_utils::PathError;
@@ -48,10 +48,7 @@ fn main() -> Result<()> {
     };
 
     match args.command {
-        Commands::Clobber {
-            block_dev,
-            purge_timeout,
-        } => clobber::action_clobber(&ufs_path, &block_dev, purge_timeout),
+        Commands::Purge { timeout } => purge::action_purge(&ufs_path, timeout),
         Commands::Show => show::action_show(&ufs_path),
         Commands::Provision { rescan_timeout } => {
             provision::action_provision(&ufs_path, rescan_timeout)

@@ -14,7 +14,6 @@ use crate::factory_ufs::action::constants;
 use crate::factory_ufs::utils::file_utils;
 use crate::factory_ufs::utils::path_utils::UFSPath;
 use crate::factory_ufs::utils::sys_utils::{self, PowerControl};
-use crate::utils::ioctl_utils;
 use crate::utils::process_utils::{Command, StringOutput};
 
 #[derive(FromPrimitive)]
@@ -42,28 +41,14 @@ fn set_purge_flag(bsg_node_path: &Path) -> Result<()> {
     Ok(())
 }
 
-fn discard_block_dev(block_dev: &Path) -> Result<()> {
-    let size = ioctl_utils::get_block_dev_size(&block_dev)?;
-    println!(
-        "Discard block device {} with size: {:.2} GB.",
-        block_dev.display(),
-        (size as f64 / u64::pow(2, 30) as f64)
-    );
-
-    // Discards the whole block device.
-    ioctl_utils::discard_block_dev(&block_dev, 0, size)?;
-
-    Ok(())
-}
-
 /// Runs the purge operation.
-pub fn purge(ufs_path: &UFSPath, purge_timeout: u32) -> Result<()> {
+pub fn purge(ufs_path: &UFSPath, timeout: u32) -> Result<()> {
+    println!("Setting purge flag...");
     set_purge_flag(&ufs_path.bsg_node)?;
-
     println!("Running purge...");
-    for sec in 0..purge_timeout {
+    for sec in 0..timeout {
         let message: &str;
-        // Ref: UFS2.1 12.2.3.3 Purge operation
+        // Ref: UFS3.1 12.2.3.3 Purge operation
         let purge_status = file_utils::read_attributes(&ufs_path.sys_dev, "purge_status")?;
         match FromPrimitive::from_u32(purge_status) {
             Some(PurgeStatus::Idle) => {
@@ -91,32 +76,26 @@ pub fn purge(ufs_path: &UFSPath, purge_timeout: u32) -> Result<()> {
             println!(
                 "{}\nKeep waiting... (Time remained: {} seconds)",
                 message,
-                purge_timeout - sec
+                timeout - sec
             );
         }
         thread::sleep(Duration::from_secs(1));
     }
 
-    anyhow::bail!("Purge operation timeout after {} seconds!", purge_timeout);
+    anyhow::bail!("Purge operation timeout after {} seconds!", timeout);
 }
 
-/// Performs clobber to clean up the stateful partition.
+/// Performs purge to physically erase the deallocated logical blocks.
 ///
-/// This function first discards the stateful partition by calling `blkdiscard`.
-/// It then enables purge operation and waits until the operation is finished.
-pub fn action_clobber(ufs_path: &UFSPath, block_dev: &Path, purge_timeout: u32) -> Result<()> {
-    println!("Running action_clobber...");
-    discard_block_dev(&block_dev)?;
-
-    if purge_timeout == 0 {
-        println!("Skip purging since it is disabled.");
-        println!("Clobber completed successfully.");
-        return Ok(());
-    }
+/// This function runs purge operation and waits until it is finished.
+/// Before invoking this function, caller is responsible for deallocating the
+/// logical blocks first using `BLKDISCARD` ioctl.
+pub fn action_purge(ufs_path: &UFSPath, timeout: u32) -> Result<()> {
+    println!("Running action_purge...");
 
     // Disable auto-suspend to avoid kernel hung when running purge. (b/237721096)
     sys_utils::set_power_control(PowerControl::On)?;
-    purge(ufs_path, purge_timeout)?;
+    purge(ufs_path, timeout)?;
     sys_utils::set_power_control(PowerControl::Auto)?;
     Ok(())
 }
