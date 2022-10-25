@@ -1,4 +1,4 @@
-// Copyright 2022 The ChromiumOS Authors.
+// Copyright 2022 The ChromiumOS Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -93,7 +93,7 @@ fn signing_keys() -> Result<Value> {
 
     // Format of firmware manifest:
     //   {
-    //     MODEL_NAME: {
+    //     "${FIRMWARE_MANIFEST_KEY}": {
     //       "host": {
     //         "keys": {
     //           "root": ROOTKEY,
@@ -104,10 +104,10 @@ fn signing_keys() -> Result<Value> {
     //     },
     //     ...
     //   }
-    let model_name = device::get_model_name()?;
+    let firmware_manifest_key = device::get_firmware_manifest_key()?;
     Ok(output
-        .get(&model_name)
-        .context("Unable to get model name from manifest.")?
+        .get(&firmware_manifest_key)
+        .context("Unable to get firmware image from manifest.")?
         .get("host")
         .context("Unable to get firmware info from manifest.")?
         .get("keys")
