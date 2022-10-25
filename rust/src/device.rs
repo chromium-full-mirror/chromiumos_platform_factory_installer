@@ -1,4 +1,4 @@
-// Copyright 2022 The ChromiumOS Authors.
+// Copyright 2022 The ChromiumOS Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -131,6 +131,24 @@ pub fn get_model_name() -> Result<String> {
         .args(["/", "name"])
         .output()?
         .stdout())
+}
+
+/// Gets the firmware manifest key of device.
+pub fn get_firmware_manifest_key() -> Result<String> {
+    let crosid = string_utils::parse_dict_ignore_error(
+        Command::new("crosid")
+            .output()?
+            .stdout()
+            .trim()
+            .split("\n")
+            .collect::<Vec<&str>>(),
+        "=",
+    );
+    Ok(crosid
+        .get("FIRMWARE_MANIFEST_KEY")
+        .context("Unable to get firmware manifest key from crosid.")?
+        .trim_matches('\'')
+        .to_string())
 }
 
 /// Get the serial number of the device.
