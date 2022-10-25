@@ -1,5 +1,5 @@
 #!/bin/sh
-# Copyright 2018 The Chromium OS Authors. All rights reserved.
+# Copyright 2018 The ChromiumOS Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 #
@@ -99,7 +99,8 @@ patch_new_root() {
                 cryptohomed-client cryptohome-proxy cryptohomed dbus shill
                 install-completed pre-startup reboot startup system-services
                 tpm_managerd udev-boot udev-trigger-early udev-trigger trunksd
-                network-services wpasupplicant cr50-update factory_shim udev"
+                network-services wpasupplicant cr50-update factory_shim udev
+                cros_configfs"
 
   for job in ${allowed_jobs}; do
     file="${temp_path}/${job}.conf"
