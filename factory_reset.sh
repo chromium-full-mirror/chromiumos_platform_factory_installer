@@ -1,6 +1,6 @@
 #!/bin/sh
 
-# Copyright (c) 2011 The Chromium OS Authors. All rights reserved.
+# Copyright 2011 The ChromiumOS Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -20,7 +20,6 @@
 CUTOFF_DIR="/usr/share/cutoff"
 CUTOFF_SCRIPT="${CUTOFF_DIR}/cutoff.sh"
 INFORM_SHOPFLOOR_SCRIPT="${CUTOFF_DIR}/inform_shopfloor.sh"
-STARTUP_PATH="sbin/chromeos_startup.sh"
 
 usage() {
   echo "Usage: $0 disk [wipe|secure|verify]."
@@ -94,22 +93,8 @@ main() {
     STATE_MOUNT_POINT=/mnt/stateful_partition
     mount -o ro "${STATE_DEV}" "${STATE_MOUNT_POINT}"
 
-    # Mount RELEASE_ROOTFS and read the `USE_LVM_STATEFUL_PARTITION`.
-    release_rootfs_mount_point="$(mktemp -d)"
-    mount -o ro "${ROOT_DEV}" "${release_rootfs_mount_point}"
-    local chromeos_startup_path lvm_flag
-    chromeos_startup_path="${release_rootfs_mount_point}/${STARTUP_PATH}"
-
-    if grep -q 'USE_LVM_STATEFUL_PARTITION=1' \
-       "${chromeos_startup_path}"; then
-      lvm_flag="setup_lvm"
-    fi
-
-    umount "${release_rootfs_mount_point}" || true
-    rmdir "${release_rootfs_mount_point}" || true
-
     ROOT_DEV="${ROOT_DEV}" ROOT_DISK="${DEV}" \
-      clobber-state factory fast "${lvm_flag}"
+      clobber-state factory fast
 
     umount "${STATE_MOUNT_POINT}"
   fi
