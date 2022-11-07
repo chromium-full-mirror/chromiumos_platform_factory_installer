@@ -1,4 +1,4 @@
-// Copyright 2022 The ChromiumOS Authors.
+// Copyright 2022 The ChromiumOS Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -269,9 +269,6 @@ pub fn ap_ro_hash(bios_file: Option<&str>) -> Result<String> {
     Ok(calculate_hash(&bios_file, &sections).context("Failed to calculate AP RO hash.")?)
 }
 
-// TODO(b/244122974): Disabled since test timeout in CQ. Consider to test it with IO stream instead
-// of reading file directly.
-#[cfg(not(feature = "cq-test"))]
 #[cfg(test)]
 mod tests {
     use crate::tools::ap_ro_hash;

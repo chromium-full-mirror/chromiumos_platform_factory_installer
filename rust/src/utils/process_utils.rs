@@ -1,4 +1,4 @@
-// Copyright 2022 The Chromium OS Authors. All rights reserved.
+// Copyright 2022 The ChromiumOS Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -42,7 +42,6 @@ impl StringOutput for std::process::Output {
     }
 }
 
-#[cfg(not(feature = "cq-test"))]
 #[cfg(test)]
 mod tests {
     use crate::utils::process_utils::StringOutput;
