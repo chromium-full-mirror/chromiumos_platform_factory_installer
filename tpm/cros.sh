@@ -1,5 +1,5 @@
 #!/bin/bash
-# Copyright 2021 The Chromium OS Authors. All rights reserved.
+# Copyright 2021 The ChromiumOS Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -10,17 +10,34 @@
 
 GSCTOOL="gsctool_cmd"
 PROD_CR50_PATH="$(gsc_image_base_name | sed -E 's/^\///g').prod"
+TPM_NAME="$(gsc_name)"
 
+# Since ti50 fw version < 0.23.0 has boot issues on the second boot, we need
+# to update it on the first boot.
+need_to_update_ti50() {
+  if [ "${TPM_NAME}" != "ti50" ]; then
+    return 1;
+  fi;
+  local device_version device_version_major
+  device_version="$(_get_cr50_rw_version)"
+  device_version_major=$(_get_cr50_major_version "${device_version}")
+  [ "${device_version_major}" -lt 23 ]
+}
 
 _copy_prod_cr50_firmware() {
   # Create a copy of prod cr50 firmware in rootfs to a temporary file.
   # The caller is responsible for deleting the temp file.
-  local rootfs_dev="$(findLSBValue REAL_USB_DEV)"
-  [ -n "${rootfs_dev}" ] ||
-    die "Unknown media source. Please define REAL_USB_DEV."
-  local mount_point="$(mktemp -d)"
-  local firmware_path="${mount_point}/${PROD_CR50_PATH}"
-  local temp_firmware="$(mktemp)"
+  local rootfs_dev="$1"
+  if [ -z "${rootfs_dev}" ]; then
+    # Get the prod firmware from usb if rootfs_dev is not given.
+    rootfs_dev="$(findLSBValue REAL_USB_DEV)"
+    [ -n "${rootfs_dev}" ] ||
+      die "Unknown media source. Please define REAL_USB_DEV."
+  fi
+  local mount_point firmware_path temp_firmware
+  mount_point="$(mktemp -d)"
+  firmware_path="${mount_point}/${PROD_CR50_PATH}"
+  temp_firmware="$(mktemp)"
 
   mount -o ro "${rootfs_dev}" "${mount_point}"
   cp "${firmware_path}" "${temp_firmware}"
@@ -44,16 +61,26 @@ _get_cr50_image_rw_version() {
   _get_cr50_output_value "$(${GSCTOOL} -b -M "$1")" 'IMAGE_RW_FW_VER'
 }
 
+_get_cr50_major_version() {
+  echo "$1" | cut -d '.' -f 2
+}
+
+_get_cr50_minor_version() {
+  echo "$1" | cut -d '.' -f 3
+}
+
 _check_need_update_cr50() {
-  local temp_firmware="$(_copy_prod_cr50_firmware)"
-  local image_version="$(_get_cr50_image_rw_version "${temp_firmware}")"
-  local image_version_major=$(echo "${image_version}" | cut -d '.' -f 2)
-  local image_version_minor=$(echo "${image_version}" | cut -d '.' -f 3)
+  local temp_firmware image_version image_version_major image_version_minor
+  temp_firmware="$(_copy_prod_cr50_firmware)"
+  image_version="$(_get_cr50_image_rw_version "${temp_firmware}")"
+  image_version_major=$(_get_cr50_major_version "${image_version}")
+  image_version_minor=$(_get_cr50_minor_version "${image_version}")
   rm "${temp_firmware}"
 
-  local device_version="$(_get_cr50_rw_version)"
-  local device_version_major=$(echo "${device_version}" | cut -d '.' -f 2)
-  local device_version_minor=$(echo "${device_version}" | cut -d '.' -f 3)
+  local device_version device_version_major device_version_minor
+  device_version="$(_get_cr50_rw_version)"
+  device_version_major=$(_get_cr50_major_version "${device_version}")
+  device_version_minor=$(_get_cr50_minor_version "${device_version}")
 
   # Update only if cr50 version on the device is smaller than the cr50 version
   # in install shim. Some older devices may have cr50 version 0.0.*, 0.1.* or
@@ -112,7 +139,11 @@ tpm_check_rsu_support() {
 }
 
 tpm_update_firmware() {
-  local temp_firmware="$(_copy_prod_cr50_firmware)"
+  local rootfs_dev="$1"
+  local temp_firmware image_version
+  temp_firmware="$(_copy_prod_cr50_firmware "${rootfs_dev}")"
+  image_version="$(_get_cr50_image_rw_version "${temp_firmware}")"
+  echo "Attempt to update with the TPM prod fw (version: ${image_version})"
 
   local result=0
   "${GSCTOOL}" -a -u "${temp_firmware}" || result="$?"
@@ -122,25 +153,7 @@ tpm_update_firmware() {
   # Allow 0(no-op), 1(all_updated), 2(rw_updated), other return values are
   # considered fail.
   # See trunk/src/platform/ec/extra/usb_updater/gsctool.h for more detail.
-  case "${result}" in
-    "0" )
-      log "Cr50 not updated. Returning to shim menu."
-      # sleep for a while to show the messages
-      sleep 3
-      return 0
-      ;;
-    "1" | "2" )
-      log "Cr50 updated. System will reboot shortly."
-      # sleep for a while to show the messages
-      sleep 3
-      reboot
-      sleep 1d
-      return 0
-      ;;
-    *)
-      die "gsctool execution failed as ${result}."
-      ;;
-  esac
+  return "${result}"
 }
 
 tpm_enable_factory_mode() {
