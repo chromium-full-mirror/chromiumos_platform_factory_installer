@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Copyright 2015 The Chromium OS Authors. All rights reserved.
+# Copyright 2015 The ChromiumOS Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -1149,6 +1149,27 @@ is_valid_action_when_rsu_required() {
   echo "$1" | grep -q "^[${SUPPORTED_ACTIONS_RSU_REQUIRED}]$"
 }
 
+
+update_ti50_firmware_from_release_rootfs() {
+  log "Update ti50 firmware..."
+  local rootfs_dev result
+  rootfs_dev="$(make_partition_dev "${DST_DRIVE}" "${DST_RELEASE_ROOTFS_PART}")"
+  tpm_update_firmware "${rootfs_dev}"
+  local result="$?"
+  echo "ti50 update result: ${result}"
+  case "${result}" in
+    "0" )
+      log "ti50 FW not updated."
+      ;;
+    "1" | "2" )
+      log "ti50 FW updated."
+      ;;
+    *)
+      die "gsctool execution failed as ${result}."
+      ;;
+  esac
+}
+
 # Virtual function to show menu of board-specific actions.
 menu_board() {
   return 0
@@ -1265,6 +1286,10 @@ action_i() {
   # gbb flag here.
   log "Setting user-friendly gbb flags 0x39..."
   gbb_force_dev_mode
+
+  if need_to_update_ti50; then
+    update_ti50_firmware_from_release_rootfs
+  fi
 
   colorize green
   echo_huge_ok
@@ -1520,6 +1545,28 @@ action_t() {
 # U = Update TPM firmware
 action_u() {
   tpm_update_firmware
+  local result="$?"
+  echo "TPM update result: ${result}"
+
+  case "${result}" in
+    "0" )
+      log "TPM FW not updated. Returning to shim menu."
+      # sleep for a while to show the messages
+      sleep 3
+      return 0
+      ;;
+    "1" | "2" )
+      log "TPM FW updated. System will reboot shortly."
+      # sleep for a while to show the messages
+      sleep 3
+      reboot
+      sleep 1d
+      return 0
+      ;;
+    *)
+      die "gsctool execution failed as ${result}."
+      ;;
+  esac
 }
 
 # E = Perform RSU
