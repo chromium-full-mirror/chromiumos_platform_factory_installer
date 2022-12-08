@@ -1152,10 +1152,9 @@ is_valid_action_when_rsu_required() {
 
 update_ti50_firmware_from_release_rootfs() {
   log "Update ti50 firmware..."
-  local rootfs_dev result
+  local rootfs_dev result=0
   rootfs_dev="$(make_partition_dev "${DST_DRIVE}" "${DST_RELEASE_ROOTFS_PART}")"
-  tpm_update_firmware "${rootfs_dev}"
-  local result="$?"
+  tpm_update_firmware "${rootfs_dev}" || result="$?"
   echo "ti50 update result: ${result}"
   case "${result}" in
     "0" )
@@ -1544,8 +1543,8 @@ action_t() {
 
 # U = Update TPM firmware
 action_u() {
-  tpm_update_firmware
-  local result="$?"
+  local result=0
+  tpm_update_firmware || result="$?"
   echo "TPM update result: ${result}"
 
   case "${result}" in
