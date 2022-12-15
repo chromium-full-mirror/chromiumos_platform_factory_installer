@@ -112,18 +112,29 @@ class Rule:
                 f"{self.key!r} does not exist in FAI result."
             )
 
+        pattern = self.pattern
+        replace_keys = re.findall(r"\${([^}]*)}", pattern)
+        for key in replace_keys:
+            try:
+                pattern = pattern.replace(f"${{{key}}}", fai_result[key])
+            except ExtractKeyError:
+                return KeyNotFoundError(
+                    f"Failed to evaluate {self._pattern!r}: "
+                    f"{key!r} does not exist in FAI result."
+                )
+
         if self.rule_type == RuleType.match:
-            if not re.match(self._pattern, value):
+            if not re.match(pattern, value):
                 return MismatchError(
                     f"{self.key!r} should match {self.pattern!r}."
                 )
         elif self.rule_type == RuleType.include:
-            if self._pattern not in value:
+            if pattern not in value:
                 return MismatchError(
                     f"{self.key!r} should include {self.pattern!r}."
                 )
         elif self.rule_type == RuleType.exclude:
-            if self._pattern in value:
+            if pattern in value:
                 return MismatchError(
                     f"{self.key!r} should not include {self.pattern!r}."
                 )

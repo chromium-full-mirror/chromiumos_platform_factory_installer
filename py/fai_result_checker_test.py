@@ -89,6 +89,16 @@ class RuleTest(unittest.TestCase):
             fai_result_checker.Rule("key", "123", "match").validate(fai_result)
         )
 
+    def test_validate_match_replace_keys(self):
+        fai_result = fai_result_checker.FAIResult(
+            {"key1": "123", "key2": "123"}
+        )
+        self.assertIsNone(
+            fai_result_checker.Rule("key1", "${key2}", "match").validate(
+                fai_result
+            )
+        )
+
     def test_validate_not_match(self):
         fai_result = fai_result_checker.FAIResult({"key": "456"})
         self.assertIsInstance(
