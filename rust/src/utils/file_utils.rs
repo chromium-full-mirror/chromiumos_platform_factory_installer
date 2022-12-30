@@ -13,13 +13,19 @@ use glob;
 use crate::utils::string_utils;
 
 #[derive(Debug)]
-pub struct NoParentDirError;
+pub enum PathError {
+    NoParentDirError,
+    GetFilenameError,
+}
 
-impl Error for NoParentDirError {}
+impl Error for PathError {}
 
-impl Display for NoParentDirError {
+impl Display for PathError {
     fn fmt(&self, f: &mut Formatter) -> FMTResult {
-        write!(f, "No parent directory can be found.")
+        match self {
+            PathError::NoParentDirError => write!(f, "No parent directory can be found."),
+            PathError::GetFilenameError => write!(f, "Cannot get the file name."),
+        }
     }
 }
 
@@ -64,7 +70,7 @@ where
 {
     let path = path.as_ref();
     let content = content.as_ref();
-    let parent_path = path.parent().ok_or(NoParentDirError)?;
+    let parent_path = path.parent().ok_or(PathError::NoParentDirError)?;
     fs::create_dir_all(parent_path)?;
     File::create(path)?;
     Ok(fs::write(path, content)?)
@@ -101,6 +107,22 @@ where
 {
     let path = path.as_ref();
     Ok(File::options().read(read).write(write).open(path)?)
+}
+
+/// Gets the file name from a given path.
+///
+/// # Arguments
+/// * `path` - The path to the file.
+///
+/// # Return
+/// The file name. Will be None if path ends with `..`.
+pub fn get_file_name<P>(path: P) -> Option<String>
+where
+    P: AsRef<Path>,
+{
+    path.as_ref()
+        .file_name()
+        .map(|osstr| osstr.to_string_lossy().into_owned())
 }
 
 #[cfg(test)]
