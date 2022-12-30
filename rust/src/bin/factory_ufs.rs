@@ -1,4 +1,4 @@
-// Copyright 2022 The ChromiumOS Authors.
+// Copyright 2022 The ChromiumOS Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -8,7 +8,7 @@ use anyhow::{self, Context, Result};
 use factory_installer::factory_ufs::action::{clobber, provision, show};
 use factory_installer::factory_ufs::args::{Args, Commands, Parser};
 use factory_installer::factory_ufs::utils::path_utils::{self, PathMatchError, UFSPath};
-use factory_installer::utils::file_utils::NoParentDirError;
+use factory_installer::utils::file_utils::PathError;
 
 const UFS_BSG_ERROR_MSG: &str = "Unexpected error occurs when finding";
 
@@ -37,9 +37,9 @@ fn main() -> Result<()> {
     // but we actually want: /sys/devices/pcixxx/xxx.
     let ufs_dev_path = Path::new(&ufs_bsg_sys_path)
         .parent()
-        .ok_or(NoParentDirError)?
+        .ok_or(PathError::NoParentDirError)?
         .parent()
-        .ok_or(NoParentDirError)?
+        .ok_or(PathError::NoParentDirError)?
         .to_path_buf();
 
     let ufs_path = UFSPath {
