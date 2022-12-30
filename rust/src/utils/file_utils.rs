@@ -1,9 +1,9 @@
-// Copyright 2022 The ChromiumOS Authors.
+// Copyright 2022 The ChromiumOS Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 use std::error::Error;
-use std::fmt::{Debug, Display, Formatter, Result as fmt_Result};
+use std::fmt::{Debug, Display, Formatter, Result as FMTResult};
 use std::fs::{self, File};
 use std::path::{Path, PathBuf};
 
@@ -18,7 +18,7 @@ pub struct NoParentDirError;
 impl Error for NoParentDirError {}
 
 impl Display for NoParentDirError {
-    fn fmt(&self, f: &mut Formatter) -> fmt_Result {
+    fn fmt(&self, f: &mut Formatter) -> FMTResult {
         write!(f, "No parent directory can be found.")
     }
 }
