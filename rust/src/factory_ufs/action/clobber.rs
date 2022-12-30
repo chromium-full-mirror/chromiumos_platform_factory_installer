@@ -1,7 +1,9 @@
-// Copyright 2022 The ChromiumOS Authors.
+// Copyright 2022 The ChromiumOS Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::fmt::{Display, Formatter, Result as FMTResult};
+use std::fs;
 use std::path::Path;
 use std::thread;
 use std::time::Duration;
@@ -12,7 +14,7 @@ use num_traits::FromPrimitive;
 
 use crate::factory_ufs::action::constants;
 use crate::factory_ufs::utils::file_utils;
-use crate::factory_ufs::utils::path_utils::UFSPath;
+use crate::factory_ufs::utils::path_utils::{self, UFSPath};
 use crate::utils::ioctl_utils;
 use crate::utils::process_utils::{Command, StringOutput};
 
@@ -23,6 +25,20 @@ enum PurgeStatus {
     StoppedPrematurely = 0x2,
     Complete = 0x3,
     QueueNotEmpty = 0x4,
+}
+
+enum PowerControl {
+    On,
+    Auto,
+}
+
+impl Display for PowerControl {
+    fn fmt(&self, f: &mut Formatter) -> FMTResult {
+        match self {
+            PowerControl::On => write!(f, "on"),
+            PowerControl::Auto => write!(f, "auto"),
+        }
+    }
 }
 
 fn set_purge_flag(bsg_node_path: &Path) -> Result<()> {
@@ -55,20 +71,20 @@ fn discard_block_dev(block_dev: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Performs clobber to clean up the stateful partition.
-///
-/// This function first discards the stateful partition by calling `blkdiscard`.
-/// It then enables purge operation and waits until the operation is finished.
-pub fn action_clobber(ufs_path: &UFSPath, block_dev: &Path, purge_timeout: u32) -> Result<()> {
-    println!("Running action_clobber...");
-    discard_block_dev(&block_dev)?;
+/// Sets the power control mode to `on` or `auto`.
+fn set_power_control(mode: PowerControl) -> Result<()> {
+    let node = path_utils::get_power_control_node()?;
+    println!(
+        "Set power control mode of node {} to: {}",
+        node.display(),
+        mode
+    );
+    fs::write(&node, mode.to_string())?;
+    Ok(())
+}
 
-    if purge_timeout == 0 {
-        println!("Skip purging since it is disabled.");
-        println!("Clobber completed successfully.");
-        return Ok(());
-    }
-
+/// Runs the purge operation.
+pub fn purge(ufs_path: &UFSPath, purge_timeout: u32) -> Result<()> {
     set_purge_flag(&ufs_path.bsg_node)?;
 
     println!("Running purge...");
@@ -109,4 +125,25 @@ pub fn action_clobber(ufs_path: &UFSPath, block_dev: &Path, purge_timeout: u32) 
     }
 
     anyhow::bail!("Purge operation timeout after {} seconds!", purge_timeout);
+}
+
+/// Performs clobber to clean up the stateful partition.
+///
+/// This function first discards the stateful partition by calling `blkdiscard`.
+/// It then enables purge operation and waits until the operation is finished.
+pub fn action_clobber(ufs_path: &UFSPath, block_dev: &Path, purge_timeout: u32) -> Result<()> {
+    println!("Running action_clobber...");
+    discard_block_dev(&block_dev)?;
+
+    if purge_timeout == 0 {
+        println!("Skip purging since it is disabled.");
+        println!("Clobber completed successfully.");
+        return Ok(());
+    }
+
+    // Disable auto-suspend to avoid kernel hung when running purge. (b/237721096)
+    set_power_control(PowerControl::On)?;
+    purge(ufs_path, purge_timeout)?;
+    set_power_control(PowerControl::Auto)?;
+    Ok(())
 }
