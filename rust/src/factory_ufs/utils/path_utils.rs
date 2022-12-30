@@ -1,9 +1,9 @@
-// Copyright 2022 The ChromiumOS Authors.
+// Copyright 2022 The ChromiumOS Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 use std::error::Error;
-use std::fmt::{Debug, Display, Formatter, Result as fmt_Result};
+use std::fmt::{Debug, Display, Formatter, Result as FMTResult};
 use std::path::PathBuf;
 
 use anyhow::Result;
@@ -26,7 +26,7 @@ pub enum PathMatchError {
 impl Error for PathMatchError {}
 
 impl Display for PathMatchError {
-    fn fmt(&self, f: &mut Formatter) -> fmt_Result {
+    fn fmt(&self, f: &mut Formatter) -> FMTResult {
         match self {
             PathMatchError::PathNotFound => write!(f, "Path not found."),
             PathMatchError::MultiplePathFound => write!(f, "Multiple paths found."),
