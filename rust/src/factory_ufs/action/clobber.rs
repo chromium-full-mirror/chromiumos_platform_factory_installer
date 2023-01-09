@@ -2,8 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::fmt::{Display, Formatter, Result as FMTResult};
-use std::fs;
 use std::path::Path;
 use std::thread;
 use std::time::Duration;
@@ -14,7 +12,8 @@ use num_traits::FromPrimitive;
 
 use crate::factory_ufs::action::constants;
 use crate::factory_ufs::utils::file_utils;
-use crate::factory_ufs::utils::path_utils::{self, UFSPath};
+use crate::factory_ufs::utils::path_utils::UFSPath;
+use crate::factory_ufs::utils::sys_utils::{self, PowerControl};
 use crate::utils::ioctl_utils;
 use crate::utils::process_utils::{Command, StringOutput};
 
@@ -25,20 +24,6 @@ enum PurgeStatus {
     StoppedPrematurely = 0x2,
     Complete = 0x3,
     QueueNotEmpty = 0x4,
-}
-
-enum PowerControl {
-    On,
-    Auto,
-}
-
-impl Display for PowerControl {
-    fn fmt(&self, f: &mut Formatter) -> FMTResult {
-        match self {
-            PowerControl::On => write!(f, "on"),
-            PowerControl::Auto => write!(f, "auto"),
-        }
-    }
 }
 
 fn set_purge_flag(bsg_node_path: &Path) -> Result<()> {
@@ -68,18 +53,6 @@ fn discard_block_dev(block_dev: &Path) -> Result<()> {
     // Discards the whole block device.
     ioctl_utils::discard_block_dev(&block_dev, 0, size)?;
 
-    Ok(())
-}
-
-/// Sets the power control mode to `on` or `auto`.
-fn set_power_control(mode: PowerControl) -> Result<()> {
-    let node = path_utils::get_power_control_node()?;
-    println!(
-        "Set power control mode of node {} to: {}",
-        node.display(),
-        mode
-    );
-    fs::write(&node, mode.to_string())?;
     Ok(())
 }
 
@@ -142,8 +115,8 @@ pub fn action_clobber(ufs_path: &UFSPath, block_dev: &Path, purge_timeout: u32) 
     }
 
     // Disable auto-suspend to avoid kernel hung when running purge. (b/237721096)
-    set_power_control(PowerControl::On)?;
+    sys_utils::set_power_control(PowerControl::On)?;
     purge(ufs_path, purge_timeout)?;
-    set_power_control(PowerControl::Auto)?;
+    sys_utils::set_power_control(PowerControl::Auto)?;
     Ok(())
 }
