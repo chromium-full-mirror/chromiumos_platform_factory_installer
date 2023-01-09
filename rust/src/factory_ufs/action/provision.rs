@@ -1,4 +1,4 @@
-// Copyright 2022 The ChromiumOS Authors.
+// Copyright 2022 The ChromiumOS Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -24,6 +24,7 @@ use crate::factory_ufs::ufs::spec::ufs_2_1::{self, UFS2ConfigDescriptor};
 use crate::factory_ufs::ufs::spec::ufs_3_1::{self, UFS3ConfigDescriptor};
 use crate::factory_ufs::utils::file_utils;
 use crate::factory_ufs::utils::path_utils::{self, PathMatchError, UFSPath};
+use crate::factory_ufs::utils::sys_utils::{self, PowerControl};
 use crate::utils::process_utils::{Command, StringOutput};
 
 #[derive(FromPrimitive)]
@@ -295,6 +296,8 @@ pub fn action_provision(ufs_path: &UFSPath, rescan_timeout: u32) -> Result<()> {
     let cur_config_binary = get_current_config_binary(&ufs_path.bsg_node)?;
     let header_value = read_header(&cur_config_binary)?;
 
+    // Disable auto-suspend so that the descriptors can be queried. (b/263069232)
+    sys_utils::set_power_control(PowerControl::On)?;
     match header_value {
         ufs_2_1::HEADER_LENGTH => {
             println!("Provision UFS 2.1...");
@@ -302,7 +305,7 @@ pub fn action_provision(ufs_path: &UFSPath, rescan_timeout: u32) -> Result<()> {
                 &ufs_path,
                 &cur_config_binary,
                 rescan_timeout,
-            )
+            )?;
         }
         ufs_3_1::HEADER_LENGTH => {
             println!("Provision UFS 3.1...");
@@ -310,13 +313,15 @@ pub fn action_provision(ufs_path: &UFSPath, rescan_timeout: u32) -> Result<()> {
                 &ufs_path,
                 &cur_config_binary,
                 rescan_timeout,
-            )
+            )?;
         }
         value => anyhow::bail!(
             "Cannot parse current UFS config! Unknown header value: {}",
             value
         ),
     }
+    sys_utils::set_power_control(PowerControl::Auto)?;
+    Ok(())
 }
 
 #[cfg(test)]
