@@ -100,7 +100,7 @@ patch_new_root() {
                 install-completed pre-startup reboot startup system-services
                 tpm_managerd udev-boot udev-trigger-early udev-trigger trunksd
                 network-services wpasupplicant cr50-update factory_shim udev
-                cros_configfs"
+                cros_configfs syslog"
 
   for job in ${allowed_jobs}; do
     file="${temp_path}/${job}.conf"
