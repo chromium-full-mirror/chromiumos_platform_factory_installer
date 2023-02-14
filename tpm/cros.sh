@@ -14,17 +14,27 @@ PROD_CR50_PATH="opt/google/cr50/firmware/cr50.bin.prod"
 _copy_prod_cr50_firmware() {
   # Create a copy of prod cr50 firmware in rootfs to a temporary file.
   # The caller is responsible for deleting the temp file.
-  local rootfs_dev="$(findLSBValue REAL_USB_DEV)"
-  [ -n "${rootfs_dev}" ] ||
-    die "Unknown media source. Please define REAL_USB_DEV."
-  local mount_point="$(mktemp -d)"
-  local firmware_path="${mount_point}/${PROD_CR50_PATH}"
-  local temp_firmware="$(mktemp)"
+  local rootfs_dev="$1"
 
-  mount -o ro "${rootfs_dev}" "${mount_point}"
-  cp "${firmware_path}" "${temp_firmware}"
-  umount "${rootfs_dev}"
-  rmdir "${mount_point}"
+  local temp_firmware
+  temp_firmware="$(mktemp)"
+
+  if [ -z "${rootfs_dev}" ]; then
+    # rootfs_dev is not given, let's use the prod firmware from the rootfs of
+    # the factory shim. We don't need to find and mount the rootfs again.
+    # Because the content is already copied to the current root by
+    # `bootstrap.sh`.
+    cp "/${PROD_CR50_PATH}" "${temp_firmware}"
+  else
+    local mount_point firmware_path
+    mount_point="$(mktemp -d)"
+    firmware_path="${mount_point}/${PROD_CR50_PATH}"
+
+    mount -o ro "${rootfs_dev}" "${mount_point}"
+    cp "${firmware_path}" "${temp_firmware}"
+    umount "${rootfs_dev}"
+    rmdir "${mount_point}"
+  fi
 
   echo "${temp_firmware}"
 }
