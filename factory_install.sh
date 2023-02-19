@@ -1091,14 +1091,7 @@ gbb_force_dev_mode() {
   # VB2_GBB_FLAG_FORCE_DEV_BOOT_USB                0x00000010
   # VB2_GBB_FLAG_DISABLE_FW_ROLLBACK_CHECK         0x00000020
   flashrom -p host --wp-disable --wp-range 0,0 > /dev/null 2>&1
-  local tmp_file cur_flags new_flags
-  tmp_file="$(mktemp)"
-  flashrom -p host -i GBB -r "${tmp_file}"
-  cur_flags="$(futility gbb -g --flags "${tmp_file}")" # flags: %#x
-  new_flags=$(( "${cur_flags#flags: }" | 0x39))
-  futility gbb -s --flags "${new_flags}" "${tmp_file}"
-  flashrom -p host -i GBB -w "${tmp_file}"
-  rm "${tmp_file}"
+  /usr/bin/futility gbb --flash --set --flags="+0x39"
 }
 
 test_ec_flash_presence() {
