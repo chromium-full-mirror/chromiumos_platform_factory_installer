@@ -1,4 +1,4 @@
-// Copyright 2022 The ChromiumOS Authors.
+// Copyright 2022 The ChromiumOS Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -31,8 +31,6 @@ use regex::Regex;
 use tempfile;
 
 use crate::utils::process_utils::{Command, StringOutput};
-
-const FLASHROM_PATH: &str = "flashrom";
 
 #[cfg(not(test))]
 const FUTILITY_PATH: &str = "futility";
@@ -95,8 +93,8 @@ impl FirmwareSection {
 fn dump_bios() -> Result<PathBuf> {
     let tmpd = tempfile::tempdir()?.into_path();
     let bios_file = tmpd.join("bios.bin");
-    Command::new(FLASHROM_PATH)
-        .args(["-r", bios_file.as_path().to_str().unwrap()])
+    Command::new(FUTILITY_PATH)
+        .args(["read", bios_file.as_path().to_str().unwrap()])
         .output()?;
     Ok(bios_file)
 }
@@ -276,7 +274,7 @@ pub fn ap_ro_hash(bios_file: Option<&str>) -> Result<String> {
 mod tests {
     use crate::tools::ap_ro_hash;
 
-    // Golden BIOS dumped from `flashrom -r bios.bin` on DUT.
+    // Golden BIOS dumped from `futility read bios.bin` on DUT.
     const GOLDEN_BIOS: &str = "tests/bin/data/bios.bin";
     // Golden hash dumped from `gsctool -aA` on DUT.
     const GOLDEN_HASH: &str = "fc3d429569b2453b9dd540894c1fa1ac8f1965c66d7db6564070278679ccce59";
