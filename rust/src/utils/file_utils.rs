@@ -130,8 +130,6 @@ mod tests {
     use std::fs;
     use std::path::PathBuf;
 
-    use tempdir::TempDir;
-
     use crate::utils::file_utils;
 
     const TEST_FS: &str = "tests/test_fs";
@@ -144,7 +142,9 @@ mod tests {
 
     #[test]
     fn test_create_file() {
-        let test_file = TempDir::new("test_create_file")
+        let test_file = tempfile::Builder::new()
+            .prefix("test_create_file")
+            .tempdir()
             .unwrap()
             .path()
             .join("dir1")

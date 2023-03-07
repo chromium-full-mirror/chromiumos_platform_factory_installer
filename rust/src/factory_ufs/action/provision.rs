@@ -329,8 +329,6 @@ mod tests {
     use std::cmp::min;
     use std::path::Path;
 
-    use tempdir::TempDir;
-
     use crate::factory_ufs::action::provision::{
         self, SupportedWBBufferTypes, SupportedWBBufferUserSpaceReductionTypes,
     };
@@ -459,7 +457,10 @@ mod tests {
 
     #[test]
     fn test_get_alloc_units() {
-        let sys_dev_path = TempDir::new("test_sys_dev").unwrap();
+        let sys_dev_path = tempfile::Builder::new()
+            .prefix("test_sys_dev")
+            .tempdir()
+            .unwrap();
         let geometry_descriptor_path = sys_dev_path.path().join("geometry_descriptor");
         file_utils::create_file(
             geometry_descriptor_path.join("raw_device_capacity"),
@@ -525,7 +526,10 @@ mod tests {
 
     #[test]
     fn test_config_write_booster_enable() {
-        let sys_dev_path = TempDir::new("test_sys_dev").unwrap();
+        let sys_dev_path = tempfile::Builder::new()
+            .prefix("test_sys_dev")
+            .tempdir()
+            .unwrap();
         let wb_max_alloc_units: u32 = 0x1dcb;
         let mut ufs3_config =
             provision::generate_new_config::<UFS3ConfigDescriptor>(ALLOC_UNITS).unwrap();
@@ -552,7 +556,10 @@ mod tests {
 
     #[test]
     fn test_config_write_booster_disable() {
-        let sys_dev_path = TempDir::new("test_sys_dev").unwrap();
+        let sys_dev_path = tempfile::Builder::new()
+            .prefix("test_sys_dev")
+            .tempdir()
+            .unwrap();
         let mut ufs3_config =
             provision::generate_new_config::<UFS3ConfigDescriptor>(ALLOC_UNITS).unwrap();
 
