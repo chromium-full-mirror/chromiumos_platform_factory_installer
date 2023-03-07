@@ -55,7 +55,7 @@ call_dev_debug_vboot() {
 call_elogtool() {
   echo
   echo "## firmware event log:"
-  elogtool list || true
+  elogtool list --utc || true
 }
 
 sys_fw_log() {
