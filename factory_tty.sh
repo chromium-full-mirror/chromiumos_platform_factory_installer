@@ -112,6 +112,53 @@ tty_find_relative() {
   fi
 }
 
+#######################################
+# Configure TTY console with options
+# Arguments:
+#   Path to TTY (required as first argument).
+#   --enable_input (optional)
+#   --enable_cursor (optional)
+# Returns:
+#   None
+#######################################
+config_console() {
+  if [ $# -lt 1 ];
+    then
+    kernel_msg "Not enough input, please provide TTY path."
+    return
+    fi
+
+  local TTY="$1"
+  shift
+  if ! tty_is_valid "${TTY}"; then
+    kernel_msg "Invalid TTY ${TTY}."
+    return
+  fi
+
+  kernel_msg "Configuring ${TTY} ..."
+  while [ $# -ne 0 ]; do
+    case "$1" in
+      --enable_input)
+        printf "\033]input:on\a" > "${TTY}"
+        kernel_msg "Input enabled."
+        shift
+        ;;
+      --enable_cursor)
+        printf "\033[?25h" > "${TTY}"
+        kernel_msg "Cursor enabled."
+        shift
+        ;;
+      --*)
+        kernel_msg "Unknown option $1."
+        return
+        ;;
+      *)
+        break
+        ;;
+    esac
+  done
+}
+
 # Determine and setup (if needed) TTYs (TTY, LOG_TTY, INFO_TTY, DEBUG_TTY).
 # TTY is detected by following order:
 #  - The last non-empty console= from cmdline.
@@ -158,6 +205,13 @@ tty_init() {
   LOG_TTY="$(tty_find_relative "${TTY}" 1)"
   INFO_TTY="$(tty_find_relative "${TTY}" 2)"
   DEBUG_TTY="$(tty_find_relative "${TTY}" 3)"
+
+  # Sending escapes to enable input. Frecon is changing it's behavior
+  # to disable input and cursor by default. See b/271954812.
+  config_console "${TTY}" --enable_cursor --enable_input
+  config_console "${LOG_TTY}" --enable_input
+  config_console "${INFO_TTY}" --enable_input
+  config_console "${DEBUG_TTY}" --enable_input
 
   kernel_msg "TTY=${TTY} LOG=${LOG_TTY} INFO=${INFO_TTY} DEBUG=${DEBUG_TTY}"
 }
