@@ -16,7 +16,7 @@
 - key: "gsc_capabilities.State"
   pattern: "Locked"
   type: "include"
-- key: "gsc_capabilities.Capabilities.AllowUnverifiedRO"
+- key: "gsc_capabilities.Capabilities.AllowUnverifiedRo"
   pattern: "- Default"
   type: "match"
 - key: "release_image_stateful_partition"
