@@ -206,4 +206,5 @@ def main(argv: Optional[List[str]] = None) -> Optional[int]:
 
 
 if __name__ == "__main__":
+    logging.getLogger().setLevel(logging.INFO)
     sys.exit(main(sys.argv[1:]))
