@@ -852,8 +852,13 @@ factory_install_cros_payload() {
 
   if [ -s "${tmp_dir}/firmware" ]; then
     log "Found firmware updater."
+    # Only unlock the ME region of Yaviks* firmware.
+    local unlock_flag=""
+    if crosid | grep -q FIRMWARE_MANIFEST_KEY=\'yaviks; then
+      unlock_flag="--unlock_me"
+    fi
     # TODO(hungte) Check if we need to run --mode=recovery if WP is enabled.
-    sh "${tmp_dir}/firmware" --force --mode=factory_install ||
+    sh "${tmp_dir}/firmware" --force --mode=factory_install "${unlock_flag}" ||
       die "Firmware updating failed."
     rm "${tmp_dir}/firmware"
   fi
