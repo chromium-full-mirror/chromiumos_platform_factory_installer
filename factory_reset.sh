@@ -99,45 +99,6 @@ main() {
     umount "${STATE_MOUNT_POINT}"
   fi
 
-  if [ "$(findLSBValue DISPLAY_QRCODE)" = true ]; then
-    local frecon_pid
-    frecon_pid="$(cat /run/frecon/pid)"
-    local qrcode_path
-    qrcode_path="/proc/${frecon_pid}/root"
-    local sn
-    sn="$(vpd -g serial_number)"
-    local mlb_sn
-    mlb_sn="$(vpd -g mlb_serial_number)"
-    local hwid
-    hwid="$(crossystem hwid)"
-    declare -A info=( ["sn"]="${sn}" ["mlb_sn"]="${mlb_sn}" ["hwid"]="${hwid}" )
-
-    # Display the info of the DUT as QR codes. Use comma to separate info
-    # between QR codes. Use space to display multiple info in one QR code.
-    IFS="," read -r -a needed_info <<< "$(findLSBValue DISPLAY_INFO)"
-    clear
-    local i=0
-    while [ "${i}" -lt ${#needed_info[@]} ]; do
-      local arr=(${needed_info[${i}]})
-      local display_arr=()
-      local j=0
-      while [ "${j}" -lt ${#arr[@]} ]; do
-        display_arr[${j}]="${info[${arr[${j}]}]}"
-        j=$((j+1))
-      done
-      echo "display info=${needed_info[${i}]}"
-      echo "display string=${display_arr[*]}"
-      qrencode -s 5 -o "${qrcode_path}/qrcode.png" \
-                       "$(IFS=, ; echo "${display_arr[*]}")"
-      printf "\033]image:file=/qrcode.png\033\\" > /run/frecon/vt0
-      if [[ ${i} -lt $(((${#needed_info[@]})-1)) ]]; then
-        read -r -N 1 -p "Press any key to continue... "
-      fi
-      echo
-      i=$((i+1))
-    done
-  fi
-
   do_cutoff
   echo "Done"
 }
