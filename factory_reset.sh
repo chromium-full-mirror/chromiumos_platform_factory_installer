@@ -37,17 +37,9 @@ do_cutoff() {
   # request if SHOPFLOOR_URL is not set.
   "${INFORM_SHOPFLOOR_SCRIPT}" "" "factory_reset" || exit 1
 
-  local key
-  key="$(findLSBValue CONTINUE_KEY)"
-  local input
-  if [ -n "${key}" ]; then
-    while [ "${input}" != "${key}" ]; do
-      read -r -N 1 -p "Press ${key} to cutoff...> " input
-      echo
-    done
-  fi
-
-  "${CUTOFF_SCRIPT}"
+  # Since we don't have findLSBValue in cutoff.sh, pass the config instead of
+  # getting the key in cutoff.sh
+  "${CUTOFF_SCRIPT}" "--continue_key" "$(findLSBValue CONTINUE_KEY)"
 }
 
 main() {
@@ -114,21 +106,6 @@ main() {
     frecon_pid="$(cat /run/frecon/pid)"
     local qrcode_path
     qrcode_path="/proc/${frecon_pid}/root"
-    local sn
-    sn="$(vpd -g serial_number)"
-    local mlb_sn
-    mlb_sn="$(vpd -g mlb_serial_number)"
-    local hwid
-    hwid="$(crossystem hwid)"
-    local g_attr
-    g_attr="$(vpd -g gbind_attribute)"
-    local u_attr
-    u_attr="$(vpd -g ubind_attribute)"
-    declare -A info=( ["serial_number"]="${sn}" \
-                      ["mlb_serial_number"]="${mlb_sn}" \
-                      ["hwid"]="${hwid}" \
-                      ["gbind_attribute"]="${g_attr}" \
-                      ["ubind_attribute"]="${u_attr}" )
 
     # Display the info of the DUT as QR codes. Use comma to separate info
     # between QR codes. Use space to display multiple info in one QR code.
@@ -136,17 +113,23 @@ main() {
     clear
     local i=0
     while [ "${i}" -lt ${#needed_info[@]} ]; do
-      local arr=(${needed_info[${i}]})
-      local display_arr=()
-      local j=0
-      while [ "${j}" -lt ${#arr[@]} ]; do
-        display_arr[${j}]="${info[${arr[${j}]}]}"
-        j=$((j+1))
+      for info in ${needed_info[${i}]}; do
+        value=
+        if [ "${info}" = hwid ]; then
+          value="$(crossystem hwid)"
+        elif [ "${info}" = serial_number ]; then
+          value="$(vpd -g serial_number)"
+        elif [ "${info}" = mlb_serial_number ]; then
+          value="$(vpd -g mlb_serial_number)"
+        elif [ "${info}" = wifi_mac0 ]; then
+          value="$(vpd -g wifi_mac0)"
+        fi
+        display_string="${display_string:+${display_string} }${value}"
       done
       echo "display info=${needed_info[${i}]}"
-      echo "display string=${display_arr[*]}"
+      echo "display string=${display_string}"
       qrencode -s 5 -o "${qrcode_path}/qrcode.png" \
-                       "$(IFS=, ; echo "${display_arr[*]}")"
+                       "$(IFS=, ; echo "${display_string}")"
       printf "\033]image:file=/qrcode.png\033\\" > /run/frecon/vt0
       if [[ ${i} -lt $(((${#needed_info[@]})-1)) ]]; then
         read -r -N 1 -p "Press any key to continue... "
