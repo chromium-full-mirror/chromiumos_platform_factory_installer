@@ -232,16 +232,19 @@ check_hwwp() {
   crossystem 'wpsw_cur?1' 2>/dev/null
 }
 
-# Checks if firmware software write protection is enabled.
-# Args
-#   target: a "flashrom -p" descriptor. Defaults to "host".
-check_fw_swwp() {
-  local target="${1:-host}"
-  if [ "${target}" = "ec" ] && [ "${EC_PRESENT}" -eq 0 ]; then
+# Checks if host firmware software write protection is enabled.
+check_host_swwp() {
+  futility flash --wp-status --ignore-hw |
+    grep -q "WP status: enabled"
+}
+
+# Checks if ec firmware software write protection is enabled.
+check_ec_swwp() {
+  if [ "${EC_PRESENT}" -eq 0 ]; then
     echo "There is no EC, skip checking EC SWWP"
     return 0
   fi
-  flashrom -p "${target}" --wp-status 2>/dev/null |
+  flashrom -p ec --wp-status 2>/dev/null |
     grep -q "write protect is enabled"
 }
 
@@ -1071,10 +1074,10 @@ print_device_info() {
     echo -n "Dev mode: $(crossystem_on_or_off devsw_boot); "
     echo -n "Recovery mode: $(crossystem_on_or_off recoverysw_boot); "
     echo -n "HW write protect: $(crossystem_on_or_off wpsw_cur); "
-    echo "SW write protect: $(command_to_yes_or_no check_fw_swwp host)"
+    echo "SW write protect: $(command_to_yes_or_no check_host_swwp)"
     echo -n "EC present: $(bool_to_yes_or_no "${EC_PRESENT}"); "
     if [ "${EC_PRESENT}" -eq 1 ]; then
-      echo -n "EC SW write protect: $(command_to_yes_or_no check_fw_swwp ec); "
+      echo -n "EC SW write protect: $(command_to_yes_or_no check_ec_swwp); "
     fi
     echo -n "$(tpm_get_info)"
     echo
@@ -1371,7 +1374,7 @@ action_r() {
     return
   fi
 
-  check_fw_swwp host && check_fw_swwp ec || ! is_pvt_phase || \
+  check_host_swwp && check_ec_swwp || ! is_pvt_phase || \
     die "SW write protect is not enabled in the device with PVT phase."
 
   # Then check if the release rootfs has factory installed DLC metadata.
