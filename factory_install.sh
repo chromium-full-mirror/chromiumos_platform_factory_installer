@@ -253,7 +253,7 @@ clear_fwwp() {
   if [ "${EC_PRESENT}" -eq 1 ]; then
     flashrom -p ec --wp-disable
   fi
-  flashrom -p host --wp-disable --wp-range 0,0
+  futility flash --wp-disable
   log "WP registers should be cleared now"
 }
 
