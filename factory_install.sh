@@ -258,19 +258,17 @@ clear_fwwp() {
 }
 
 ensure_fwwp_consistency() {
-  local ec_wp main_wp
+  local ec_wp host_wp
 
   if [ "${EC_PRESENT}" -eq 0 ]; then
     return
   fi
 
-  ec_wp="$(flashrom -p ec --wp-status 2>/dev/null)" || return
-  main_wp="$(flashrom -p host --wp-status 2>/dev/null)"
-  ec_wp="$(echo "${ec_wp}" | sed -nr 's/WP.*(disabled|enabled).$/\1/pg')"
-  main_wp="$(echo "${main_wp}" | sed -nr 's/WP.*(disabled|enabled).$/\1/pg')"
-  if [ "${ec_wp}" != "${main_wp}" ]; then
+  ec_wp=$(command_to_yes_or_no check_ec_swwp)
+  host_wp=$(command_to_yes_or_no check_host_swwp)
+  if [ "${ec_wp}" != "${host_wp}" ]; then
     die "Inconsistent firmware write protection status: " \
-        "main=${main_wp}, ec=${ec_wp}." \
+        "host=${host_wp}, ec=${ec_wp}." \
         "Please disable Hardware Write Protection and restart again."
   fi
 }
