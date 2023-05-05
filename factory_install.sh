@@ -1003,7 +1003,6 @@ gbb_force_dev_mode() {
   # VB2_GBB_FLAG_FORCE_DEV_SWITCH_ON               0x00000008
   # VB2_GBB_FLAG_FORCE_DEV_BOOT_USB                0x00000010
   # VB2_GBB_FLAG_DISABLE_FW_ROLLBACK_CHECK         0x00000020
-  flashrom -p host --wp-disable --wp-range 0,0 > /dev/null 2>&1
   /usr/bin/futility gbb --flash --set --flags="+0x39"
 }
 
