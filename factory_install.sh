@@ -51,7 +51,6 @@ RMA_AUTORUN="$(findLSBValue RMA_AUTORUN)"
 
 # Global variables
 DST_DRIVE=""
-EC_PRESENT=0
 COMPLETE_SCRIPT=""
 
 # The ethernet interface to be used. It will be determined in
@@ -240,29 +239,19 @@ check_host_swwp() {
 
 # Checks if ec firmware software write protection is enabled.
 check_ec_swwp() {
-  if [ "${EC_PRESENT}" -eq 0 ]; then
-    echo "There is no EC, skip checking EC SWWP"
-    return 0
-  fi
   flashrom -p ec --wp-status 2>/dev/null |
     grep -q "write protect is enabled"
 }
 
 clear_fwwp() {
   log "Firmware Write Protect disabled, clearing status registers."
-  if [ "${EC_PRESENT}" -eq 1 ]; then
-    flashrom -p ec --wp-disable
-  fi
+  flashrom -p ec --wp-disable
   futility flash --wp-disable
   log "WP registers should be cleared now"
 }
 
 ensure_fwwp_consistency() {
   local ec_wp host_wp
-
-  if [ "${EC_PRESENT}" -eq 0 ]; then
-    return
-  fi
 
   ec_wp=$(command_to_yes_or_no check_ec_swwp)
   host_wp=$(command_to_yes_or_no check_host_swwp)
@@ -1007,17 +996,6 @@ gbb_force_dev_mode() {
   /usr/bin/futility gbb --flash --set --flags="+0x39"
 }
 
-test_ec_flash_presence() {
-  # If "flashrom -p ec --flash-size" command succeeds (returns 0),
-  # then EC flash chip is present in system. Otherwise, assume EC flash is not
-  # present or supported.
-  if flashrom -p ec --flash-size >/dev/null 2>&1; then
-    EC_PRESENT=1
-  else
-    EC_PRESENT=0
-  fi
-}
-
 # Echoes "on" or "off" based on the value of a crossystem Boolean flag.
 crossystem_on_or_off() {
   local value
@@ -1073,10 +1051,7 @@ print_device_info() {
     echo -n "Recovery mode: $(crossystem_on_or_off recoverysw_boot); "
     echo -n "HW write protect: $(crossystem_on_or_off wpsw_cur); "
     echo "SW write protect: $(command_to_yes_or_no check_host_swwp)"
-    echo -n "EC present: $(bool_to_yes_or_no "${EC_PRESENT}"); "
-    if [ "${EC_PRESENT}" -eq 1 ]; then
-      echo -n "EC SW write protect: $(command_to_yes_or_no check_ec_swwp); "
-    fi
+    echo -n "EC SW write protect: $(command_to_yes_or_no check_ec_swwp); "
     echo -n "$(tpm_get_info)"
     echo
     local description=""
