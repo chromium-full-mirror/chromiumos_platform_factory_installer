@@ -1177,7 +1177,9 @@ update_ti50_firmware_from_release_rootfs() {
         ;;
       *)
         if [ "${i}" == "${update_retries}" ]; then
-          die "Ti50 update failed."
+          log "Will run 'gsctool -a --reboot' in 5 seconds..."
+          sleep 5
+          gsctool -a --reboot
         fi
         log "gsctool execution failed as ${result}."
         log "Will try again after 60 seconds..."
