@@ -239,13 +239,12 @@ check_host_swwp() {
 
 # Checks if ec firmware software write protection is enabled.
 check_ec_swwp() {
-  flashrom -p ec --wp-status 2>/dev/null |
-    grep -q "write protect is enabled"
+  ectool flashprotect | grep "Flash protect flags" | grep "ro_at_boot"
 }
 
 clear_fwwp() {
   log "Firmware Write Protect disabled, clearing status registers."
-  flashrom -p ec --wp-disable
+  ectool flashprotect disable
   futility flash --wp-disable
   log "WP registers should be cleared now"
 }
