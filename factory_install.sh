@@ -1638,8 +1638,6 @@ main() {
   colorize white
   clear
 
-  test_ec_flash_presence
-
   # Check for any configuration overrides.
   overrides
 
