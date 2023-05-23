@@ -37,17 +37,9 @@ do_cutoff() {
   # request if SHOPFLOOR_URL is not set.
   "${INFORM_SHOPFLOOR_SCRIPT}" "" "factory_reset" || exit 1
 
-  local key
-  key="$(findLSBValue CONTINUE_KEY)"
-  local input
-  if [ -n "${key}" ]; then
-    while [ "${input}" != "${key}" ]; do
-      read -r -N 1 -p "Press ${key} to cutoff...> " input
-      echo
-    done
-  fi
-
-  "${CUTOFF_SCRIPT}"
+  # Since we don't have findLSBValue in cutoff.sh, pass the config instead of
+  # getting the key in cutoff.sh
+  "${CUTOFF_SCRIPT}" "--continue_key" "$(findLSBValue CONTINUE_KEY)"
 }
 
 main() {
@@ -129,10 +121,8 @@ main() {
           value="$(vpd -g serial_number)"
         elif [ "${info}" = mlb_serial_number ]; then
           value="$(vpd -g mlb_serial_number)"
-        elif [ "${info}" = gbind_attribute ]; then
-          value="$(vpd -i RW_VPD -g gbind_attribute)"
-        elif [ "${info}" = ubind_attribute ]; then
-          value="$(vpd -i RW_VPD -g ubind_attribute)"
+        elif [ "${info}" = wifi_mac0 ]; then
+          value="$(vpd -g wifi_mac0)"
         fi
         display_string="${display_string:+${display_string} }${value}"
       done
