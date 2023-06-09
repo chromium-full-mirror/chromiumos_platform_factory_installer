@@ -1209,6 +1209,12 @@ menu() {
 
 # I = Install.
 action_i() {
+  # `print_rma_info` prints the information about the usb shim.
+  # Skip printing when using netboot.
+  if ! is_netboot; then
+    print_rma_info
+  fi
+
   reset_chromeos_device
 
   log "Checking for Firmware Write Protect"
@@ -1219,12 +1225,6 @@ action_i() {
     clear_fwwp
   fi
   ensure_fwwp_consistency
-
-  # `print_rma_info` prints the information about the usb shim.
-  # Skip printing when using netboot.
-  if ! is_netboot; then
-    print_rma_info
-  fi
 
   if [ -z "${FACTORY_INSTALL_FROM_USB}" ]; then
 
