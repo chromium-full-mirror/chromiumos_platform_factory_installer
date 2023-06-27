@@ -1212,7 +1212,7 @@ action_i() {
   # `print_rma_info` prints the information about the usb shim.
   # Skip printing when using netboot.
   if ! is_netboot; then
-    print_rma_info
+    print_rma_info || true
   fi
 
   reset_chromeos_device
