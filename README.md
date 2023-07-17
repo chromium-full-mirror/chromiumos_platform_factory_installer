@@ -14,8 +14,8 @@ start an upstart service to display the menu.
 ## Building a factory shim
 Inside chroot, do:
 
-    build_packages --board $BOARD
-    build_image --board $BOARD factory_install
+    cros build-packages --board $BOARD
+    cros build-image --board $BOARD factory_install
 
 The output disk image is in
 `~/trunk/src/build/images/$BOARD/latest/factory_install_shim.bin`.
@@ -31,7 +31,7 @@ If you have local changes in `src/platform/initramfs`, please remember to do
     cros_workon --board $BOARD start chromeos-initramfs
 
 There's no need to emerge `chromeos-initramfs` because it's always re-built in
-`build_image` stage.
+`cros build-image` stage.
 
 ## Using factory shim
 Factory shims are signed in a special way for security reasons. It needs to
@@ -120,9 +120,9 @@ debug messages there.
 
 ### Getting a shell
 If you do need a shell to debug, add `cros_debug` to kernel command line. You
-can do this in `build_image`:
+can do this in `cros build-image`:
 
-    build_image --board $BOARD --boot_args cros_debug factory_install
+    cros build-image --board $BOARD --boot-args cros_debug factory_install
 
 For an existing image, you can use `make_dev_ssd.sh` to change kernel command
 line easily:
@@ -146,7 +146,7 @@ The `frecon` (or `frecon-lite`) provides text-based console. If you can't see
 anything on screen, redirect the console to another device, for example Servo
 consoles so you can check why `frecon` failed. To do this, add
 `console=ttyS0,115200n8` to kernel command line (use the `make_dev_ssd.sh` or
-add `--boot_args` as explained in previous section). Some devices may need
+add `--boot-args` as explained in previous section). Some devices may need
 different TTY name for example `ttyS1`. Please check the care-and-feed doc of
 your device.
 
@@ -170,7 +170,7 @@ console is `ttyS0`):
 Then,then re-build the `factory_installer` package and factory shim:
 
     emerge-$BOARD factory_installer
-    build_image --board $BOARD factory_install
+    cros build-image --board $BOARD factory_install
 
 3. Enable console service.
 
