@@ -21,8 +21,15 @@ Please upload the FAI data to issue tracker for Google review.
 ```
 
 by default, FAI data will be saved in the stateful partition of the factory shim
-with the filename `factory_fai_${MODEL}_${SN}.json`. You can mount the stateful
-partition in your computer to check the result.
+with the filename `factory_fai_${MODEL}_${SN}.json`.
+
+Assume that the USB drive is /dev/sdc, use the following commands to get the
+reports:
+```
+mkdir /tmp/mount_point
+mount /dev/sdc1 /tmp/mount_point
+cp /tmp/mount_point/factory_fai_${MODEL}_*.json ./
+```
 
 ## Development Guide
 
