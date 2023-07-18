@@ -80,17 +80,7 @@ by a prompt to select an action.
 
     action>
 
-The install shim also checks `/etc/lsb-factory` for flags that decides the
-default action of the shim menu (listed from high priority to low priority).
-  1. `NETBOOT_RAMFS=1`: This flag is automatically set when using netboot
-     firmware. The install shim will set the default action to **(I) Install**.
-  2. `RMA_AUTORUN=true`: This flag is set by `image_tool` when creating an RMA
-     shim. Please see
-     [RMA shim README](https://chromium.googlesource.com/chromiumos/platform/factory/+/HEAD/setup/RMA_SHIM.md)
-     for the behavior of this parameter.
-  3. `DEFAULT_ACTION=<action>`: This flag directly sets the default action
-     to **<action>**. For instance, `DEFAULT_ACTION=i` sets the default action
-     to **(I) Install**.
+Please check [Edit lsb-factory config in an RMA shim](https://chromium.googlesource.com/chromiumos/platform/factory/+/HEAD/setup/RMA_SHIM.md#edit-lsb_factory-config-in-an-rma-shim) for more information.
 
 ### Board-specific actions
 
