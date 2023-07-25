@@ -72,6 +72,10 @@ DST_STATE_PART=1
 SUPPORTED_ACTIONS=bcdefimrstuvyz
 SUPPORTED_ACTIONS_BOARD=
 
+# Supported actions when hardware writeprotect is enabled.
+# Add limitation of actions for security issue.
+SUPPORTED_ACTIONS_WP_ENABLED=bdefmrtuv
+
 # Supported actions when RSU is required.
 # We only support [e] RMA unlock to do RSU, and [u] Update Cr50 in case a device
 # has an older Cr50 version that doesn't support RSU.
@@ -1116,6 +1120,11 @@ is_valid_action_when_rsu_required() {
   echo "$1" | grep -q "^[${SUPPORTED_ACTIONS_RSU_REQUIRED}]$"
 }
 
+# Checks if the given action is valid and supported when
+# write protect is enabled.
+is_valid_action_when_wp_enabled() {
+  echo "$1" | grep -q "^[${SUPPORTED_ACTIONS_WP_ENABLED}]$"
+}
 
 update_ti50_firmware_from_release_rootfs() {
   log "Update ti50 firmware..."
@@ -1197,7 +1206,9 @@ menu() {
   ACTION="$(echo "${ACTION}" | tr 'A-Z' 'a-z')"
 
   if is_valid_action "${ACTION}"; then
-    return
+    if ! check_hwwp || is_valid_action_when_wp_enabled "${ACTION}"; then
+      return
+    fi
   fi
   echo "Invalid action; please select an action from the menu."
   ACTION=
@@ -1217,13 +1228,7 @@ action_i() {
 
   reset_chromeos_device
 
-  log "Checking for Firmware Write Protect"
-  # Check for physical firmware write protect. We'll only
-  # clear this stuff if the case is open.
-  if ! check_hwwp; then
-    # Clear software firmware write protect.
-    clear_fwwp
-  fi
+  clear_fwwp
   ensure_fwwp_consistency
 
   if [ -z "${FACTORY_INSTALL_FROM_USB}" ]; then
@@ -1650,6 +1655,13 @@ main() {
          ! is_valid_action_when_rsu_required "${DEFAULT_ACTION}"; then
       log "Action [${DEFAULT_ACTION}] is invalid when RSU is required."
       log "Only support ${SUPPORTED_ACTIONS_RSU_REQUIRED}."
+      log "Will fallback to normal menu..."
+      DEFAULT_ACTION=""
+      sleep 3
+    elif check_hwwp &&
+         ! is_valid_action_when_wp_enabled "${DEFAULT_ACTION}"; then
+      log "Action [${DEFAULT_ACTION}] is invalid when hwwp is enabled."
+      log "Only support ${SUPPORTED_ACTIONS_WP_ENABLED}."
       log "Will fallback to normal menu..."
       DEFAULT_ACTION=""
       sleep 3
