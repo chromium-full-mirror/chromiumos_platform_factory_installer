@@ -69,6 +69,16 @@ pub const DEFAULT_CONFIG: &str = r##"{
       }
     }
   },
+  "gsc_factory_config": {
+    "DataCommand": {
+      "cmd": "gsctool",
+      "args": ["-a", "-y"],
+      "parser": {
+        "type": "DictParser",
+        "delimiter": ": "
+      }
+    }
+  },
   "aprov_status": {
     "DataCommand": {
       "cmd": "gsctool",
