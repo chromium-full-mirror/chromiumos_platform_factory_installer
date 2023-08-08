@@ -1419,6 +1419,9 @@ action_r() {
 # B = Battery cutoff.
 action_b() {
   crossystem disable_dev_request=1
+
+  # Apply the cutoff settings in toolkit config.
+  cros_payload_patch_lsb_factory
   /usr/share/cutoff/cutoff.sh
 }
 

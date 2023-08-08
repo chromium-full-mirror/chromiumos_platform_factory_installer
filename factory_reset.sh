@@ -37,9 +37,10 @@ do_cutoff() {
   # request if SHOPFLOOR_URL is not set.
   "${INFORM_SHOPFLOOR_SCRIPT}" "" "factory_reset" || exit 1
 
-  # Since we don't have findLSBValue in cutoff.sh, pass the config instead of
-  # getting the key in cutoff.sh
-  "${CUTOFF_SCRIPT}" "--continue_key" "$(findLSBValue CONTINUE_KEY)"
+  # Apply the cutoff settings in toolkit config.
+  cros_payload_patch_lsb_factory
+
+  "${CUTOFF_SCRIPT}"
 }
 
 main() {
