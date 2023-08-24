@@ -10,6 +10,7 @@ byteorder = "1.4.3"
 clap = { version = "3.1.0", features = ["derive"] }
 glob = "0.3.0"
 hmac-sha256 = "0.1.7"
+lazy_static = "1.4.0"
 libc = "0.2.0"
 nix = "0.23.0"
 num-traits = "0.2.12"
