@@ -86,6 +86,21 @@ DLC_IDS=()
 DLC_COUNT=0
 TOTAL_DLC_PREALLOCATE_SIZE=0
 
+FAI_VPD_CONFIG='{
+  "ro_vpd": {
+    "DataFiles": {
+      "root": "/sys/firmware/vpd/ro",
+      "read_content": true
+    }
+  },
+  "rw_vpd": {
+    "DataFiles": {
+      "root": "/sys/firmware/vpd/rw",
+      "read_content": true
+    }
+  }
+}'
+
 # Define our own logging function.
 log() {
   echo "$*"
@@ -1434,11 +1449,13 @@ action_v() {
   (
     print_device_info
 
-    for partition in RO_VPD RW_VPD; do
-      echo
-      echo "${partition} contents:"
-      vpd -i "${partition}" -l || true
-    done
+    local temp_config
+    temp_config="$(mktemp)"
+    echo "${FAI_VPD_CONFIG}" > "${temp_config}"
+    echo
+    echo "VPD:"
+    /usr/sbin/factory_fai --config-path "${temp_config}" || true
+    rm "${temp_config}"
 
     echo
     echo "crossystem:"
