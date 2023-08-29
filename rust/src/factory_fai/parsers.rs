@@ -1,4 +1,4 @@
-// Copyright 2022 The Chromium OS Authors. All rights reserved.
+// Copyright 2022 The ChromiumOS Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -21,7 +21,6 @@ pub enum DataParser {
     DefaultParser(DefaultParser),
     DictParser(DictParser),
     RegexParser(RegexParser),
-    GSCCapsParser(GSCCapsParser),
 }
 
 impl Parser for DataParser {
@@ -30,7 +29,6 @@ impl Parser for DataParser {
             DataParser::DefaultParser(parser) => parser.parse(input),
             DataParser::DictParser(parser) => parser.parse(input),
             DataParser::RegexParser(parser) => parser.parse(input),
-            DataParser::GSCCapsParser(parser) => parser.parse(input),
         }
     }
 }
@@ -164,81 +162,9 @@ impl Parser for RegexParser {
     }
 }
 
-/// Parse the output of GSC capabilities.
-///
-/// The output of `gsctool -a -i -M` will be like:
-/// ```plain
-/// State: Locked
-/// Password: None
-/// Flags: 0x400004
-/// Capabilities, current and default:
-///   UartGscRxAPTx   Y Always
-///   FlashAP         Y Always  (IfOpened)
-///   APROCheckVC     - Default
-///   ...
-/// CCD caps bitmap: 0xfffff
-/// Capabilities are modified.
-/// TPM Mode: enabled (0)
-/// ```
-///
-/// We want to parse the capabilities like:
-/// ```plain
-///   FlashAP Y Always  (IfOpened) -> {"FlashAP": "Y Always  (IfOpened)"}
-/// ```
-/// and other lines as normal dict.
-#[derive(Serialize, Deserialize)]
-pub struct GSCCapsParser {}
-
-impl GSCCapsParser {
-    pub fn new() -> Self {
-        Self {}
-    }
-}
-
-impl Parser for GSCCapsParser {
-    fn parse(&self, input: String) -> Result<Value> {
-        let lines: Vec<&str> = input.split("\n").collect();
-        let mut output = string_utils::parse_dict_ignore_error(&lines, ":");
-        output.remove("Capabilities, current and default");
-
-        let mut caps = Map::new();
-
-        for line in lines {
-            // Parse caps. e.g:
-            //   FlashAP Y Always  (IfOpened) -> {"FlashAP": "Y Always  (IfOpened)"}
-            if let Some(matches) = Regex::new(r"\s*([A-Za-z0-9]+)\s*([Y\-] [^\n]+)")?.captures(line)
-            {
-                caps.insert(
-                    matches.get(1).unwrap().as_str().to_string(),
-                    Value::String(matches.get(2).unwrap().as_str().to_string()),
-                );
-            }
-        }
-
-        let mut output = serde_json::json!(output);
-        let output = output.as_object_mut().unwrap();
-        output.insert("Capabilities".to_string(), Value::Object(caps));
-
-        Ok(serde_json::json!(output))
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use crate::factory_fai::parsers::{DictParser, GSCCapsParser, Parser, RegexParser};
-
-    const GSC_CAP_OUTPUT: &str = r#"
-        State: Locked
-        Password: None
-        Flags: 0x400004
-        Capabilities, current and default:
-          UartGscRxAPTx   Y Always
-          FlashAP         Y Always  (IfOpened)
-          APROCheckVC     - Default
-        CCD caps bitmap: 0xfffff
-        Capabilities are modified.
-        TPM Mode: enabled (0)
-        "#;
+    use crate::factory_fai::parsers::{DictParser, Parser, RegexParser};
 
     #[test]
     fn test_dict_parser() {
@@ -297,26 +223,5 @@ mod tests {
 
         assert_eq!(output.get("key1").unwrap(), "value1");
         assert_eq!(output.get("key2").unwrap(), "value2");
-    }
-
-    #[test]
-    fn test_gsc_caps_parser() {
-        let parser = GSCCapsParser::new();
-        let expected = serde_json::json!({
-            "State": "Locked",
-            "Password": "None",
-            "Flags": "0x400004",
-            "Capabilities": {
-                "UartGscRxAPTx": "Y Always",
-                "FlashAP": "Y Always  (IfOpened)",
-                "APROCheckVC": "- Default"
-            },
-            "CCD caps bitmap": "0xfffff",
-            "TPM Mode": "enabled (0)"
-        });
-
-        let output = parser.parse(GSC_CAP_OUTPUT.to_string()).unwrap();
-
-        assert_eq!(output, expected);
     }
 }
