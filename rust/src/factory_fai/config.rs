@@ -80,23 +80,21 @@ pub const DEFAULT_CONFIG: &str = r##"{
   },
   "ap_write_protect": {
     "DataCommand": {
-      "cmd": "flashrom",
-      "args": ["-p", "host", "--wp-status"],
+      "cmd": "futility",
+      "args": ["flash", "--wp-status"],
       "parser": {
         "type": "RegexParser",
-        "pattern":
-          "(write protect is (?P<status>enabled|disabled))|(?P<range>start=0x\\d+, len=0x\\d+)"
+        "pattern": "WP status: (?P<status>enabled|disabled)"
       }
     }
   },
   "ec_write_protect": {
     "DataCommand": {
-      "cmd": "flashrom",
-      "args": ["-p", "ec", "--wp-status"],
+      "cmd": "ectool",
+      "args": ["flashprotect"],
       "parser": {
         "type": "RegexParser",
-        "pattern":
-          "(write protect is (?P<status>enabled|disabled))|(?P<range>start=0x\\d+, len=0x\\d+)"
+        "pattern": "Flash protect flags: 0x\\d+ (?P<flags>.*)"
       }
     }
   },
