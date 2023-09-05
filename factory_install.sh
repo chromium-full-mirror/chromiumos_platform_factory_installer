@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Copyright 2015 The Chromium OS Authors. All rights reserved.
+# Copyright 2015 The ChromiumOS Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -78,6 +78,12 @@ SUPPORTED_ACTIONS_RSU_REQUIRED=eu
 
 GSCTOOL="gsctool"
 PROD_CR50_PATH="opt/google/cr50/firmware/cr50.bin.prod"
+# Sensitive VPD values that need to be redacted.
+VPD_BLOCKLIST=(
+'"stable_device_secret_DO_NOT_SHARE"'
+'"ubind_attribute"'
+'"gbind_attribute"')
+
 
 # Define our own logging function.
 log() {
@@ -1243,10 +1249,18 @@ action_v() {
   (
     print_device_info
 
+    local vpd_vals
     for partition in RO_VPD RW_VPD; do
       echo
       echo "${partition} contents:"
-      vpd -i "${partition}" -l || true
+      vpd_vals="$(vpd -i "${partition}" -l)" || true
+      for blocked_vpd in "${VPD_BLOCKLIST[@]}"
+      do
+        # shellcheck disable=SC2001
+        vpd_vals="$(echo "${vpd_vals}" | \
+                  sed -E "s/(${blocked_vpd})=.*/\1=\"<redacted>\"/")"
+      done
+      echo "${vpd_vals}"
     done
 
     echo
