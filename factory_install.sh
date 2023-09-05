@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Copyright 2015 The Chromium OS Authors. All rights reserved.
+# Copyright 2015 The ChromiumOS Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -77,6 +77,12 @@ SUPPORTED_ACTIONS_BOARD=
 # We only support [e] RMA unlock to do RSU, and [u] Update Cr50 in case a device
 # has an older Cr50 version that doesn't support RSU.
 SUPPORTED_ACTIONS_RSU_REQUIRED=eu
+
+# Sensitive VPD values that need to be redacted.
+VPD_BLOCKLIST=(
+'"stable_device_secret_DO_NOT_SHARE"'
+'"ubind_attribute"'
+'"gbind_attribute"')
 
 # These two arrays are shared b/w get_dlc_image_from_dlc_factory_cach and
 # verify_dlc_hash.
@@ -1431,10 +1437,18 @@ action_v() {
   (
     print_device_info
 
+    local vpd_vals
     for partition in RO_VPD RW_VPD; do
       echo
       echo "${partition} contents:"
-      vpd -i "${partition}" -l || true
+      vpd_vals="$(vpd -i "${partition}" -l)" || true
+      for blocked_vpd in "${VPD_BLOCKLIST[@]}"
+      do
+        # shellcheck disable=SC2001
+        vpd_vals="$(echo "${vpd_vals}" | \
+                  sed -E "s/(${blocked_vpd})=.*/\1=\"<redacted>\"/")"
+      done
+      echo "${vpd_vals}"
     done
 
     echo
