@@ -81,7 +81,7 @@ pub const DEFAULT_CONFIG: &str = r##"{
   "ap_write_protect": {
     "DataCommand": {
       "cmd": "futility",
-      "args": ["flash", "--wp-status"],
+      "args": ["flash", "--wp-status", "--ignore-hw"],
       "parser": {
         "type": "RegexParser",
         "pattern": "WP status: (?P<status>enabled|disabled)"
