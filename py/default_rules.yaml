@@ -43,3 +43,6 @@
 - key: "tpm_status.Owner password set"
   pattern: "${tpm_status.Ownership status}"
   type: "match"
+- key: "gsc_board_id.BID_RLZ"
+  pattern: "${ro_gscvd_board_id}"
+  type: "match"
