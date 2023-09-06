@@ -68,6 +68,9 @@ pub const DEFAULT_CONFIG: &str = r##"{
       }
     }
   },
+  "ro_gscvd_board_id": {
+    "BuiltInCollector": "ro_gscvd_board_id"
+  },
   "crossystem": {
     "DataCommand": {
       "cmd": "crossystem",

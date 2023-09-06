@@ -2,7 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::fs;
+use std::fs::{self, File};
+use std::io::{Read, Seek, SeekFrom};
 
 use anyhow::{self, Context, Result};
 use regex::Regex;
@@ -17,6 +18,8 @@ use crate::utils::file_utils;
 use crate::utils::process_utils::{Command, StringOutput};
 use crate::utils::sys_utils;
 
+const GSCVD_RLZ_OFFSET: u64 = 12;
+
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum BuiltInCollector {
@@ -26,6 +29,7 @@ pub enum BuiltInCollector {
     CbiData,
     DeviceApRoHash,
     ReleaseImageStatefulPartition,
+    RoGscvdBoardId,
     #[cfg(test)]
     MockForTest, // Variant for unit test.
 }
@@ -39,6 +43,7 @@ impl BuiltInCollector {
             BuiltInCollector::CbiData => cbi_data(),
             BuiltInCollector::DeviceApRoHash => device_ap_ro_hash(),
             BuiltInCollector::ReleaseImageStatefulPartition => release_image_stateful_partition(),
+            BuiltInCollector::RoGscvdBoardId => ro_gscvd_board_id(),
             #[cfg(test)]
             BuiltInCollector::MockForTest => mock_for_test(),
         }
@@ -203,6 +208,27 @@ fn release_image_stateful_partition() -> Result<Value> {
         .iter()
         .map(|path| Value::String(path.display().to_string()))
         .collect())
+}
+
+fn ro_gscvd_board_id() -> Result<Value> {
+    let ro_gscvd_file = tempfile::Builder::new().prefix("ro_gscvd").tempfile()?;
+    Command::new("futility")
+        .args([
+            "read",
+            "--region",
+            "RO_GSCVD",
+            &ro_gscvd_file.path().display().to_string(),
+        ])
+        .output()?;
+    // Offset 12~15 contains the RLZ code.
+    let mut ro_gscvd_reader = File::open(ro_gscvd_file)?;
+    let mut rlz_bytes = vec![0; 4];
+    ro_gscvd_reader.seek(SeekFrom::Start(GSCVD_RLZ_OFFSET))?;
+    ro_gscvd_reader.read_exact(&mut rlz_bytes)?;
+
+    // Convert the byte string into little endian order.
+    rlz_bytes.reverse();
+    Ok(Value::String(String::from_utf8(rlz_bytes.to_vec())?))
 }
 
 #[cfg(test)]
