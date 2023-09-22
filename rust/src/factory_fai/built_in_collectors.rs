@@ -212,14 +212,19 @@ fn release_image_stateful_partition() -> Result<Value> {
 
 fn ro_gscvd_board_id() -> Result<Value> {
     let ro_gscvd_file = tempfile::Builder::new().prefix("ro_gscvd").tempfile()?;
-    Command::new("futility")
-        .args([
-            "read",
-            "--region",
-            "RO_GSCVD",
-            &ro_gscvd_file.path().display().to_string(),
-        ])
-        .output()?;
+    let mut futility = Command::new("futility");
+    let cmd = futility.args([
+        "read",
+        "--region",
+        "RO_GSCVD",
+        &ro_gscvd_file.path().display().to_string(),
+    ]);
+
+    if !cmd.status()?.success() {
+        println!("{}", cmd.output()?.stderr());
+        return Ok(Value::String(String::new()));
+    }
+
     // Offset 12~15 contains the RLZ code.
     let mut ro_gscvd_reader = File::open(ro_gscvd_file)?;
     let mut rlz_bytes = vec![0; 4];
