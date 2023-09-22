@@ -97,7 +97,7 @@ pub const DEFAULT_CONFIG: &str = r##"{
       "args": ["flashprotect"],
       "parser": {
         "type": "RegexParser",
-        "pattern": "Flash protect flags: 0x\\d+ (?P<flags>.*)"
+        "pattern": "Flash protect flags: (?P<flags>0x\\d+.*)"
       }
     }
   },
