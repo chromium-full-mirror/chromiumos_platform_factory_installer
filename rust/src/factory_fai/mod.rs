@@ -46,7 +46,9 @@ fn read_files<P: AsRef<Path>>(root: P, glob_string: P) -> Result<Value> {
     for path in file_utils::list_files(root, glob_string, true)? {
         let filename = path.display().to_string();
         let path = Path::new(root).join(&filename);
-        let content = fs::read_to_string(path.as_path())?.trim().to_string();
+        let content = String::from_utf8_lossy(&fs::read(path.as_path())?)
+            .trim()
+            .to_string();
         data.insert(filename, Value::String(content));
     }
     Ok(Value::Object(data))
