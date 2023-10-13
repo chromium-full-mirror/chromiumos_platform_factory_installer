@@ -124,12 +124,12 @@ _is_cr50_factory_mode_enabled() {
 }
 
 tpm_perform_rsu() {
-  /usr/share/cros/cr50-reset.sh
+  /usr/share/cros/hwsec-utils/cr50_reset
 }
 
 tpm_check_rsu_support() {
-  if ! command -v /usr/share/cros/cr50-reset.sh >/dev/null; then
-    # cr50-reset.sh is not available, we cannot perform RSU.
+  if ! command -v /usr/share/cros/hwsec-utils/cr50_reset >/dev/null; then
+    # cr50_reset is not available, we cannot perform RSU.
     echo "unsupported"
     return 0
   fi
