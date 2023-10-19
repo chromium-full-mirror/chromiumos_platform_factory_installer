@@ -1575,6 +1575,11 @@ action_u() {
 
 # E = Perform RSU
 action_e() {
+  echo
+  log "Follow OEM-provided instructions to temporarily disable " \
+      "write-protection and restart to proceed."
+  log "If you are a large-scale repair center, press any key to continue RSU."
+  read -N 1
   tpm_perform_rsu
 }
 
