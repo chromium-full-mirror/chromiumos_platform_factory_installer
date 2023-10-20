@@ -1590,7 +1590,7 @@ action_m() {
 
 # F = Perform Factory FAI process
 action_f() {
-  /usr/sbin/factory_fai --save-to-usb
+  /usr/sbin/factory_installer fai --save-to-usb
   colorize yellow
   log "Please upload the FAI data to issue tracker for Google review."
   colorize white

@@ -21,7 +21,8 @@ serde_json = "1.0.0"
 tempfile = "3.2.0"
 
 [features]
-default = ["factory-fai", "factory-ufs"]
+default = ["factory-fai", "factory-ufs", "factory-installer"]
 factory-fai = []
 factory-ufs = []
+factory-installer = ["factory-fai"]
 cq-test = []

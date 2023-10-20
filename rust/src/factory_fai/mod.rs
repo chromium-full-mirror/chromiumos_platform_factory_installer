@@ -174,3 +174,31 @@ mod tests {
         assert_eq!(vpd, *REDACTED_VPD);
     }
 }
+
+pub fn perform_fai(
+    output_path: Option<String>,
+    config_path: Option<String>,
+    dump_config: bool,
+    need_save_to_usb: bool,
+) -> Result<()> {
+    if dump_config {
+        println!("{}", config::DEFAULT_CONFIG);
+        return Ok(());
+    }
+
+    let fai_config = config::load_config(config_path).context("Failed to load config.")?;
+
+    let data = collect_fai_data(fai_config)?;
+
+    println!("{}", &data);
+    if need_save_to_usb {
+        let (dev, filename) = save_to_usb(&data)?;
+        eprintln!("Succeed to save {} in {}.", filename, dev);
+    }
+
+    if let Some(path) = output_path {
+        eprintln!("Writing result to {}.", path);
+        fs::write(path, &data).context("Failed to write result to output file.")?;
+    }
+    Ok(())
+}

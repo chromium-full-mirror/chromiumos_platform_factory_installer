@@ -1,35 +1,20 @@
-// Copyright 2022 The Chromium OS Authors. All rights reserved.
+// Copyright 2022 The ChromiumOS Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::fs;
-
-use anyhow::{Context, Result};
+use anyhow::Result;
 use factory_installer::factory_fai;
 use factory_installer::factory_fai::args::{Args, Parser};
-use factory_installer::factory_fai::config;
 
+// TODO(jasonchuang): Remove this file after we make all users
+// use factory_installer instead of this binary.
 fn main() -> Result<()> {
     let args = Args::parse();
 
-    if args.dump_config {
-        println!("{}", config::DEFAULT_CONFIG);
-        return Ok(());
-    }
-
-    let fai_config = config::load_config(args.config_path).context("Failed to load config.")?;
-
-    let data = factory_fai::collect_fai_data(fai_config)?;
-
-    println!("{}", &data);
-    if args.save_to_usb {
-        let (dev, filename) = factory_fai::save_to_usb(&data)?;
-        eprintln!("Succeed to save {} in {}.", filename, dev);
-    }
-
-    if let Some(path) = args.output_path {
-        eprintln!("Writing result to {}.", path);
-        fs::write(path, &data).context("Failed to write result to output file.")?;
-    }
-    Ok(())
+    factory_fai::perform_fai(
+        args.output_path,
+        args.config_path,
+        args.dump_config,
+        args.save_to_usb,
+    )
 }
