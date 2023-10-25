@@ -18,4 +18,3 @@ frecon-lite that are started in bootstrap stage (therefore before upstart)
 would create files under /tmp or /run, and we want to preserve these folders in
 upstart stage. upstart mounts /tmp and /run as tmpfs, which masks the original
 contents in these folders, so we have to overwrite upstart jobs to unmount them.
-

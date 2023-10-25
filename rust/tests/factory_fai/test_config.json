@@ -1,29 +1,37 @@
 {
   "data1": {
     "DataCommand": {
+      "args": [
+        "key1",
+        "=",
+        "value1",
+        "#",
+        "comment1"
+      ],
       "cmd": "echo",
-      "args": ["key1", "=", "value1", "#", "comment1"],
       "parser": {
-        "type": "DictParser",
+        "comment_mark": "#",
         "delimiter": "=",
-        "comment_mark": "#"
+        "type": "DictParser"
       }
     }
   },
   "data2": {
     "DataCommand": {
+      "args": [
+        "value1 some text value2"
+      ],
       "cmd": "echo",
-      "args": ["value1 some text value2"],
       "parser": {
-        "type": "RegexParser",
-        "pattern": "(?P<key1>value1)|(?P<key2>value2)"
+        "pattern": "(?P<key1>value1)|(?P<key2>value2)",
+        "type": "RegexParser"
       }
     }
   },
   "data3": {
     "DataFiles": {
-      "root": "tests/test_fs",
-      "read_content": true
+      "read_content": true,
+      "root": "tests/test_fs"
     }
   }
 }
