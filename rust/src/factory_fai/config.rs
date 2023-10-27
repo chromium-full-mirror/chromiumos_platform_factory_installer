@@ -68,6 +68,12 @@ pub const DEFAULT_CONFIG: &str = r##"{
       }
     }
   },
+  "aprov_status": {
+    "DataCommand": {
+      "cmd": "gsctool",
+      "args": ["-a", "-B"]
+    }
+  },
   "ro_gscvd_board_id": {
     "BuiltInCollector": "ro_gscvd_board_id"
   },
