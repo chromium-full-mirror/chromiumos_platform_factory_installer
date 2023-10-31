@@ -980,25 +980,26 @@ factory_install_network() {
 get_factory_installed_dlc_cnt_and_size() {
   local rootfs_mount_point="$1"
 
-  for d in "${rootfs_mount_point}"/opt/google/dlc/* ; do
-    # Read the metadata.
-    local metadata="${d}"/package/imageloader.json
-    if [ ! -f "${metadata}" ]; then
-      continue
-    fi
+  local metadata_cmd="dlc_metadata_util \
+    --metadata_dir=${rootfs_mount_point}/opt/google/dlc/"
 
-    # A DLC is factory installed DLC if `factory_install` is true.
-    if [ "$(jq '."factory-install"' "${metadata}")" = "true" ]; then
-      DLC_COUNT=$((DLC_COUNT + 1))
-      # The run time overhead of factory installed DLC images is
-      # `2 * pre-allocated-size`. We need to allocate additional space for
-      # this in `enlarge_partition`.
-      TOTAL_DLC_PREALLOCATE_SIZE=$((TOTAL_DLC_PREALLOCATE_SIZE + \
-        $(jq -r '."pre-allocated-size"' "${metadata}") * 2))
-    fi
-  done
+  local dlc_list
+  if dlc_list=$(${metadata_cmd} --list --factory_install); then
+    for dlc_id in $(echo "${dlc_list}" | jq -r '.[]'); do
+      local metadata
+      if metadata=$(${metadata_cmd} --get --id="${dlc_id}"); then
+        ((++DLC_COUNT))
+        local pre_alloc_size
+        pre_alloc_size=$(echo "${metadata}" | \
+          jq -r '."manifest"."pre-allocated-size"')
+        # The run time overhead of factory installed DLC images is
+        # `2 * pre-allocated-size`. We need to allocate additional space for
+        # this in `enlarge_partition`.
+        ((TOTAL_DLC_PREALLOCATE_SIZE += pre_alloc_size * 2))
+      fi
+    done
+  fi
 }
-
 
 get_dlc_image_from_dlc_factory_cache() {
   local dlc_factory_cache_dir="$1"
