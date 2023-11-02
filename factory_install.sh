@@ -154,6 +154,28 @@ is_netboot() {
   grep -qw cros_netboot /proc/cmdline
 }
 
+is_intel_platform() {
+  local fmap contain_desc
+  contain_desc=0
+  fmap="$(mktemp)"
+  flashrom -p internal -i FMAP -r "${fmap}"
+  fmap_decode "${fmap}" | grep -qw SI_DESC || contain_desc="$?"
+  rm "${fmap}"
+  return "${contain_desc}"
+}
+
+is_ME_locked() {
+  local cur_desc new_desc is_locked
+  is_locked=0
+  cur_desc="$(mktemp)"
+  new_desc="$(mktemp)"
+  flashrom -p internal -r "${cur_desc}" -i SI_DESC
+  ifdtool -p ifd2 -lr -O "${new_desc}" "${cur_desc}"
+  diff "${new_desc}" "${cur_desc}" || is_locked="$?"
+  rm "${cur_desc}" "${new_desc}"
+  return "${is_locked}"
+}
+
 explain_cros_debug() {
   log "To debug with a shell, boot factory shim in developer firmware (Ctrl-U)
    or add 'cros_debug' to your kernel command line:
@@ -874,8 +896,18 @@ factory_install_cros_payload() {
     # We flash the ME-unlocked firmware here to allow further firmware update
     # in the factory.
     # TODO(hungte) Check if we need to run --mode=recovery if WP is enabled.
+    local quirks
+    if is_intel_platform; then
+      log "DUT is Intel platform."
+      if is_ME_locked; then
+        log "ME has already been locked!"
+      else
+        log "ME is unlocked. Flash unlocked firmware..."
+        quirks="--quirks=unlock_csme_nissa"
+      fi
+    fi
     sh "${tmp_dir}/firmware" --force --mode=factory_install \
-      --quirks=unlock_csme_nissa || die "Firmware updating failed."
+      ${quirks:+"${quirks}"}  || die "Firmware updating failed."
     rm "${tmp_dir}/firmware"
   fi
   if [ -s "${tmp_dir}/complete" ]; then
