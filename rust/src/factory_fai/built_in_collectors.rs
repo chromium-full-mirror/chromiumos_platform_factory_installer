@@ -18,6 +18,7 @@ use crate::utils::file_utils;
 use crate::utils::process_utils::{Command, StringOutput};
 use crate::utils::sys_utils;
 
+const GSCVD_MAGIC: &[u8] = b"5afe";
 const GSCVD_RLZ_OFFSET: u64 = 12;
 
 #[derive(Serialize, Deserialize)]
@@ -225,14 +226,35 @@ fn ro_gscvd_board_id() -> Result<Value> {
         return Ok(Value::String(String::new()));
     }
 
-    // Offset 12~15 contains the RLZ code.
     let mut ro_gscvd_reader = File::open(ro_gscvd_file)?;
+    let mut magic = vec![0; 4];
+    ro_gscvd_reader.read_exact(&mut magic)?;
+    anyhow::ensure!(
+        magic == GSCVD_MAGIC,
+        format!(
+            "Failed to find magic number in RO_GSCVD! Expected: {:?}, Real: {:?}",
+            GSCVD_MAGIC, magic
+        )
+    );
+
+    // Offset 12~15 contains the RLZ code.
     let mut rlz_bytes = vec![0; 4];
     ro_gscvd_reader.seek(SeekFrom::Start(GSCVD_RLZ_OFFSET))?;
     ro_gscvd_reader.read_exact(&mut rlz_bytes)?;
 
     // Convert the byte string into little endian order.
     rlz_bytes.reverse();
+
+    anyhow::ensure!(
+        std::str::from_utf8(&rlz_bytes)?
+            .chars()
+            .any(|b| b.is_ascii_uppercase()),
+        format!(
+            "Each char in the RLZ code should be any char between A~Z. Found: {:?}",
+            rlz_bytes
+        )
+    );
+
     Ok(Value::String(String::from_utf8(rlz_bytes.to_vec())?))
 }
 
