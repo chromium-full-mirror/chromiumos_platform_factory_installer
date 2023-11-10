@@ -108,8 +108,10 @@ pub fn collect_fai_data(fai_config: FAIConfig) -> Result<String> {
     for (name, config) in fai_config.iter() {
         let data = match config {
             DataCollector::DataCommand(data_cmd) => {
-                let output = Command::new(&data_cmd.cmd).args(&data_cmd.args).output()?;
-                data_cmd.parser.parse(output.stdout())
+                match Command::new(&data_cmd.cmd).args(&data_cmd.args).output() {
+                    Ok(output) => data_cmd.parser.parse(output.stdout()),
+                    Err(e) => Err(e.into()),
+                }
             }
             DataCollector::DataFiles(data_files) => {
                 if data_files.read_content {
@@ -120,7 +122,13 @@ pub fn collect_fai_data(fai_config: FAIConfig) -> Result<String> {
             }
             DataCollector::BuiltInCollector(collector) => collector.collect(),
         };
-        let data = data.with_context(|| format!("Failed to collect \"{}\".", name))?;
+        let data = match data {
+            Ok(data) => data,
+            Err(e) => {
+                eprintln!("Error: Failed to collect \"{}\".", name);
+                Value::String(e.to_string())
+            }
+        };
 
         fai_data.insert(name.to_string(), data);
     }
