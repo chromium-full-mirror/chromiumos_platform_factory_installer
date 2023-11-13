@@ -15,6 +15,7 @@ use crate::device;
 use crate::factory_fai::parsers::{DictParser, Parser, RegexParser};
 use crate::tools::ap_ro_hash;
 use crate::utils::file_utils;
+use crate::utils::futility_utils;
 use crate::utils::process_utils::{Command, StringOutput};
 use crate::utils::sys_utils;
 
@@ -212,19 +213,11 @@ fn release_image_stateful_partition() -> Result<Value> {
 }
 
 fn ro_gscvd_board_id() -> Result<Value> {
-    let ro_gscvd_file = tempfile::Builder::new().prefix("ro_gscvd").tempfile()?;
-    let mut futility = Command::new("futility");
-    let cmd = futility.args([
-        "read",
-        "--region",
-        "RO_GSCVD",
-        &ro_gscvd_file.path().display().to_string(),
-    ]);
-
-    if !cmd.status()?.success() {
-        println!("{}", cmd.output()?.stderr());
-        return Ok(Value::String(String::new()));
+    if !futility_utils::get_fmap()?.contains_key("RO_GSCVD") {
+        return Ok(Value::String("No RO_GSCVD region found in FW.".to_string()));
     }
+
+    let ro_gscvd_file = futility_utils::read_region("RO_GSCVD")?;
 
     let mut ro_gscvd_reader = File::open(ro_gscvd_file)?;
     let mut magic = vec![0; 4];
