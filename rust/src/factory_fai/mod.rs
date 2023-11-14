@@ -104,6 +104,7 @@ pub fn redact_vpd_data(fai_data: &mut Map<String, Value>) -> Result<()> {
 pub fn collect_fai_data(fai_config: FAIConfig) -> Result<String> {
     let mut fai_data = Map::new();
     for (name, config) in fai_config.iter() {
+        eprintln!("Collecting \"{}\"...", name);
         let data = match config {
             DataCollector::DataCommand(data_cmd) => {
                 match Command::new(&data_cmd.cmd).args(&data_cmd.args).output() {
