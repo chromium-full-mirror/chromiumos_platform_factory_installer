@@ -22,22 +22,13 @@ use std::cmp;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
-use std::path::PathBuf;
 use std::usize;
 
 use anyhow::{Context, Result};
 use hmac_sha256::Hash;
 use regex::Regex;
-use tempfile;
 
-use crate::utils::process_utils::{Command, StringOutput};
-
-#[cfg(not(test))]
-const FUTILITY_PATH: &str = "futility";
-
-// Mock binaries for unit tests.
-#[cfg(test)]
-const FUTILITY_PATH: &str = "tests/bin/futility";
+use crate::utils::futility_utils::{self, FirmwareSection};
 
 // Blob structure
 // (ref: `src/platform/vboot_reference/firmware/2lib/include/2struct.h`)
@@ -66,75 +57,13 @@ const GBB_HWID_DIGEST_SIZE: usize = 32;
 // Buffer size to read BIOS.
 const BUFFER_SIZE: usize = 0x400000;
 
-/// The structure to represent a section in firmware.
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
-struct FirmwareSection {
-    pub start: usize,
-    pub end: usize,
-}
-
-impl FirmwareSection {
-    pub fn new(start: usize, end: usize) -> Self {
-        FirmwareSection {
-            start: start,
-            end: end,
-        }
-    }
-    pub fn size(&self) -> usize {
-        if self.start > self.end {
-            0
-        } else {
-            self.end - self.start
-        }
-    }
-}
-
-/// Dumps BIOS file from device and returns the path of dumped BIOS file.
-fn dump_bios() -> Result<PathBuf> {
-    let tmpd = tempfile::tempdir()?.into_path();
-    let bios_file = tmpd.join("bios.bin");
-    Command::new(FUTILITY_PATH)
-        .args(["read", bios_file.as_path().to_str().unwrap()])
-        .output()?;
-    Ok(bios_file)
-}
-
-/// Gets the FMAP sections from the BIOS file.
-fn get_fmap(bios_file: &str) -> Result<HashMap<String, FirmwareSection>> {
-    let mut fmap = HashMap::new();
-    let fmap_text = Command::new(FUTILITY_PATH)
-        .args(["dump_fmap", "-F", bios_file])
-        .output()?
-        .stdout();
-    for line in fmap_text.trim().split('\n') {
-        // Line format:
-        // start_offset:end_offset secton_name
-        // e.g.
-        // 0x00000000:0x003f7fff RO_SECTION
-        let line: Vec<&str> = line.split_whitespace().collect();
-        let (r, name) = (line[0], line[1]);
-        let r: Vec<&str> = r.split(':').map(|x| x.trim_start_matches("0x")).collect();
-        fmap.insert(
-            name.to_string(),
-            FirmwareSection::new(
-                usize::from_str_radix(r[0], 16)?,
-                usize::from_str_radix(r[1], 16)? + 1,
-            ),
-        );
-    }
-    Ok(fmap)
-}
-
 /// Gets the sections of HWID and HWID_DIGEST in GBB section.
 fn get_hwid_sections(
     bios_file: &str,
     gbb_section: &FirmwareSection,
 ) -> Result<HashMap<String, FirmwareSection>> {
     let mut sections = HashMap::new();
-    let bios_content = Command::new(FUTILITY_PATH)
-        .args(["show", bios_file])
-        .output()?
-        .stdout();
+    let bios_content = futility_utils::show(&bios_file)?;
     let caps = Regex::new(r"hwid\s+0x([0-9a-fA-F]+)\s+0x([0-9a-fA-F]+)")?
         .captures(&bios_content)
         .context("No HWID section in bios content.")?;
@@ -204,7 +133,8 @@ fn merge_and_exclude_firmware_sections(
 /// Gets the sections to be calculated for AP RO hash:
 /// `RO_SECTION + GBB - RO_VPD - HWID - HWID_DIGEST`
 fn get_ap_ro_sections(bios_file: &str) -> Result<Vec<FirmwareSection>> {
-    let fmap = get_fmap(bios_file).context(format!("Failed to get FMAP from {}", bios_file))?;
+    let fmap = futility_utils::get_fmap(bios_file)
+        .context(format!("Failed to get FMAP from {}", bios_file))?;
 
     let ro_section = fmap
         .get("RO_SECTION")
@@ -257,7 +187,7 @@ fn calculate_hash(bios_file: &str, sections: &Vec<FirmwareSection>) -> Result<St
 pub fn ap_ro_hash(bios_file: Option<&str>) -> Result<String> {
     let bios_file = match bios_file {
         Some(f) => f.to_string(),
-        None => dump_bios()
+        None => futility_utils::dump_bios()
             .context("Failed to dump BIOS.")?
             .display()
             .to_string(),
