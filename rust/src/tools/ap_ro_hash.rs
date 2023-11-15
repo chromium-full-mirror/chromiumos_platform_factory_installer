@@ -133,8 +133,7 @@ fn merge_and_exclude_firmware_sections(
 /// Gets the sections to be calculated for AP RO hash:
 /// `RO_SECTION + GBB - RO_VPD - HWID - HWID_DIGEST`
 fn get_ap_ro_sections(bios_file: &str) -> Result<Vec<FirmwareSection>> {
-    let fmap = futility_utils::get_fmap(bios_file)
-        .context(format!("Failed to get FMAP from {}", bios_file))?;
+    let fmap = futility_utils::get_fmap().context("Failed to get FMAP")?;
 
     let ro_section = fmap
         .get("RO_SECTION")
