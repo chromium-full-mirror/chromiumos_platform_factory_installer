@@ -1275,7 +1275,7 @@ action_i() {
   crossystem clear_tpm_owner_request=1 || true
 
   # The gbb flag which forces the dev switch on (0x8) is set when
-  # (1) installing the firmware-updater and (2) doing RSU using cr50_reset.
+  # (1) installing the firmware-updater and (2) doing RSU using gsc_reset.
   # However, if the factory bundle does not contain firmware-updater and at the
   # same time the hwwp is disabled via removing battery + action_m, then the
   # gbb flag will not be set. Therefore, after installation, the DUT will try
