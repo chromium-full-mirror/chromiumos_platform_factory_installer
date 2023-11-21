@@ -12,6 +12,7 @@ use serde_json;
 
 use crate::factory_fai::built_in_collectors::BuiltInCollector;
 use crate::factory_fai::parsers::DataParser;
+use crate::utils::gsc_utils;
 
 pub const DEFAULT_CONFIG: &str = r##"{
   "ro_vpd": {
@@ -74,9 +75,6 @@ pub const DEFAULT_CONFIG: &str = r##"{
       "args": ["-a", "-B"]
     }
   },
-  "ro_gscvd_board_id": {
-    "BuiltInCollector": "ro_gscvd_board_id"
-  },
   "crossystem": {
     "DataCommand": {
       "cmd": "crossystem",
@@ -138,7 +136,10 @@ pub const DEFAULT_CONFIG: &str = r##"{
         "delimiter": ":"
       }
     }
-  },
+  }
+}"##;
+
+pub const CR50_CONFIG: &str = r##"{
   "gsc_ap_ro_hash": {
     "DataCommand": {
       "cmd": "gsctool",
@@ -151,6 +152,12 @@ pub const DEFAULT_CONFIG: &str = r##"{
   },
   "device_ap_ro_hash": {
     "BuiltInCollector": "device_ap_ro_hash"
+  }
+}"##;
+
+pub const TI50_CONFIG: &str = r##"{
+  "ro_gscvd_board_id": {
+    "BuiltInCollector": "ro_gscvd_board_id"
   }
 }"##;
 
@@ -208,9 +215,24 @@ fn load_config_file<P: AsRef<Path>>(path: P) -> Result<FAIConfig> {
     Ok(serde_json::from_str(&config_content)?)
 }
 
+/// Loads the default config according to device properties.
+fn load_default_config() -> Result<FAIConfig> {
+    let mut default_config: FAIConfig = serde_json::from_str(DEFAULT_CONFIG)?;
+    let gsc_config: FAIConfig = if gsc_utils::is_ti50()? {
+        eprintln!("Device is using Ti50...");
+        serde_json::from_str(TI50_CONFIG)?
+    } else {
+        eprintln!("Device is using Cr50...");
+        serde_json::from_str(CR50_CONFIG)?
+    };
+
+    default_config.extend(gsc_config);
+    Ok(default_config)
+}
+
 pub fn load_config<P: AsRef<Path>>(config_path: Option<P>) -> Result<FAIConfig> {
     match config_path {
         Some(file_path) => load_config_file(&file_path),
-        None => Ok(serde_json::from_str(DEFAULT_CONFIG)?),
+        None => load_default_config(),
     }
 }
