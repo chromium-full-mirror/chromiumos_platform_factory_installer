@@ -213,10 +213,6 @@ fn release_image_stateful_partition() -> Result<Value> {
 }
 
 fn ro_gscvd_board_id() -> Result<Value> {
-    if !futility_utils::get_fmap()?.contains_key("RO_GSCVD") {
-        return Ok(Value::String("No RO_GSCVD region found in FW.".to_string()));
-    }
-
     let ro_gscvd_file = futility_utils::read_region("RO_GSCVD")?;
 
     let mut ro_gscvd_reader = File::open(ro_gscvd_file)?;
