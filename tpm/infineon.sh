@@ -42,5 +42,5 @@ tpm_get_info() {
 tpm_get_board_id_flags() {
   # Board ID format from cr50: xxxxxxxx:xxxxxxxx:xxxxxxxx
   # Retrieve the last 5 characters (4 + 1 newline) using tail command
-  /usr/share/cros/hwsec-utils/tpm2_read_board_id | cut -d ':' -f 3 | tail -c 5
+  /usr/sbin/tpm2_read_board_id | cut -d ':' -f 3 | tail -c 5
 }
