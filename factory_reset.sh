@@ -124,6 +124,8 @@ main() {
           value="$(vpd -g mlb_serial_number)"
         elif [ "${info}" = wifi_mac0 ]; then
           value="$(vpd -g wifi_mac0)"
+        elif [ "${info}" = service_tag ]; then
+          value="$(vpd -g service_tag)"
         fi
         display_string="${display_string:+${display_string} }${value}"
       done
