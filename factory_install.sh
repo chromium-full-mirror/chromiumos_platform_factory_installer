@@ -41,6 +41,7 @@ DEFAULT_ACTION="$(findLSBValue FACTORY_INSTALL_DEFAULT_ACTION)"
 # - Override this to enable/disable the countdown before doing default action.
 ACTION_COUNTDOWN="$(findLSBValue FACTORY_INSTALL_ACTION_COUNTDOWN)"
 # - Override this to 'false' to prevent waiting for prompt after installation.
+# shellcheck disable=SC2019 disable=SC2018
 COMPLETE_PROMPT="$(findLSBValue FACTORY_INSTALL_COMPLETE_PROMPT |
                    tr 'A-Z' 'a-z')"
 
@@ -215,10 +216,11 @@ die() {
 }
 
 is_rsu_required() {
-  log "Waiting for UserDataAuth service"
+  # TPM should support RSU.
+  [ "$(tpm_check_rsu_support)" = "supported" ] || return 1
+
   gdbus wait --system org.chromium.UserDataAuth
 
-  log "Checking if RSU is required."
   local flags
   local FWMP_DEV_DISABLE_CCD_UNLOCK="0x40"
 
@@ -250,6 +252,17 @@ is_rsu_required() {
 # Checks if hardware write protection is enabled.
 check_hwwp() {
   crossystem 'wpsw_cur?1' 2>/dev/null
+}
+
+# Get the supported actions under the current device status.
+get_supported_actions() {
+  if is_rsu_required; then
+    echo "${SUPPORTED_ACTIONS_RSU_REQUIRED}"
+  elif check_hwwp; then
+    echo "${SUPPORTED_ACTIONS_WP_ENABLED}"
+  else
+    echo "${SUPPORTED_ACTIONS}${SUPPORTED_ACTIONS_BOARD}"
+  fi
 }
 
 # Checks if host firmware software write protection is enabled.
@@ -1113,6 +1126,17 @@ print_rma_info() {
   rmdir "${mount_point}"
 }
 
+# Checks if the given action is supported.
+#
+# Args:
+#   $1: Single-character option name ("I" for install)
+#   $2: String containing all supported options
+is_supported_action() {
+  # busybox tr may not have '[:upper:]'.
+  # shellcheck disable=SC2019 disable=SC2018
+  echo "$1" | tr 'A-Z' 'a-z' | grep -q "^[$2]$"
+}
+
 # Displays a line in the menu.  Used in the menu function.
 #
 # Args:
@@ -1125,22 +1149,6 @@ menu_line() {
   echo -n "$1  "
   colorize white
   printf "%-22s%s\n" "$2" "$3"
-}
-
-# Checks if the given action is valid and supported.
-is_valid_action() {
-  echo "$1" | grep -q "^[${SUPPORTED_ACTIONS}${SUPPORTED_ACTIONS_BOARD}]$"
-}
-
-# Checks if the given action is valid and supported if RSU is required.
-is_valid_action_when_rsu_required() {
-  echo "$1" | grep -q "^[${SUPPORTED_ACTIONS_RSU_REQUIRED}]$"
-}
-
-# Checks if the given action is valid and supported when
-# write protect is enabled.
-is_valid_action_when_wp_enabled() {
-  echo "$1" | grep -q "^[${SUPPORTED_ACTIONS_WP_ENABLED}]$"
 }
 
 update_ti50_firmware_from_release_rootfs() {
@@ -1180,10 +1188,14 @@ menu_board() {
   return 0
 }
 
-# Displays a menu, saving the action (one of ${SUPPORTED_ACTIONS} or
-# ${SUPPORTED_ACTIONS_BOARD}, always lowercase) in the "ACTION" variable. If no
-# valid action is chosen, ACTION will be empty.
+# Displays a menu, saving the action (one of $1, always lowercase) in the
+# "ACTION" variable. If no supported action is chosen, ACTION will be empty.
+#
+# Args:
+#   $1: Supported actions
 menu() {
+  local supported_actions="$1"
+
   # Clear up terminal
   stty sane echo
   # Enable cursor (if tput is available)
@@ -1218,17 +1230,16 @@ menu() {
   echo
   read -p 'action> ' ACTION
   echo
+
+  if ! is_supported_action "${ACTION}" "${supported_actions}"; then
+    echo "Action [${ACTION}] is not supported."
+    echo "Please select a supported action from the menu."
+    ACTION=
+  fi
+
   # busybox tr may not have '[:upper:]'.
   # shellcheck disable=SC2019 disable=SC2018
   ACTION="$(echo "${ACTION}" | tr 'A-Z' 'a-z')"
-
-  if is_valid_action "${ACTION}"; then
-    if ! check_hwwp || is_valid_action_when_wp_enabled "${ACTION}"; then
-      return
-    fi
-  fi
-  echo "Invalid action; please select an action from the menu."
-  ACTION=
 }
 
 #
@@ -1673,28 +1684,16 @@ main() {
   # Check for any configuration overrides.
   overrides
 
+  local supported_actions
+  supported_actions="$(get_supported_actions)"
   read_default_option
 
-  # Validity check default action for mandantory RSU.
+  # Validate the default action.
   if [ -n "${DEFAULT_ACTION}" ]; then
     log "Default action: [${DEFAULT_ACTION}]."
-    if [ "$(tpm_check_rsu_support)" = "supported" ] && is_rsu_required &&
-         ! is_valid_action_when_rsu_required "${DEFAULT_ACTION}"; then
-      log "Action [${DEFAULT_ACTION}] is invalid when RSU is required."
-      log "Only support ${SUPPORTED_ACTIONS_RSU_REQUIRED}."
-      log "Will fallback to normal menu..."
-      DEFAULT_ACTION=""
-      sleep 3
-    elif check_hwwp &&
-         ! is_valid_action_when_wp_enabled "${DEFAULT_ACTION}"; then
-      log "Action [${DEFAULT_ACTION}] is invalid when hwwp is enabled."
-      log "Only support ${SUPPORTED_ACTIONS_WP_ENABLED}."
-      log "Will fallback to normal menu..."
-      DEFAULT_ACTION=""
-      sleep 3
-    elif ! is_valid_action "${DEFAULT_ACTION}"; then
-      log "Action [${DEFAULT_ACTION}] is invalid."
-      log "Only support ${SUPPORTED_ACTIONS}${SUPPORTED_ACTIONS_BOARD}."
+    if ! is_supported_action "${DEFAULT_ACTION}" "${supported_actions}"; then
+      log "Action [${DEFAULT_ACTION}] is not supported."
+      log "Only support ${supported_actions}."
       log "Will fallback to normal menu..."
       DEFAULT_ACTION=""
       sleep 3
@@ -1705,15 +1704,18 @@ main() {
     clear
     print_header
 
+    # If default action is set and ACTION_COUNTDOWN=true, give the user some
+    # time to abort the default action.
     local do_default_action=false
     if [ -n "${DEFAULT_ACTION}" ]; then
       do_default_action=true
       log "Will automatically perform action [${DEFAULT_ACTION}]."
       if [ "${ACTION_COUNTDOWN}" = "true" ]; then
-        # Give the user the chance to press any key to display the menu.
+        # Give the user the chance to press any key to abort the default action
+        # and display the menu.
         log "Press any key to show menu instead..."
         local timeout_secs=3
-        for i in $(seq ${timeout_secs} -1 1); do
+        for i in $(seq "${timeout_secs}" -1 1); do
           # Read with timeout doesn't reliably work multiple times without
           # a sub shell.
           if ( read -N 1 -p "Press any key within ${i} sec> " -t 1 ); then
@@ -1727,10 +1729,10 @@ main() {
     fi
 
     if ${do_default_action}; then
-      # Default action is set and no key pressed: perform the default action.
+      # Default action is set and not aborted: perform the default action.
       "action_${DEFAULT_ACTION}"
     else
-      if [ "$(tpm_check_rsu_support)" = "supported" ] && is_rsu_required; then
+      if is_rsu_required; then
         # RSU is required.
         colorize yellow
         echo
@@ -1746,7 +1748,7 @@ main() {
         action_e
       else
         # Display the menu for the user to select an option.
-        menu
+        menu "${supported_actions}"
         if [ -n "${ACTION}" ]; then
           # Perform the selected action.
           "action_${ACTION}"
