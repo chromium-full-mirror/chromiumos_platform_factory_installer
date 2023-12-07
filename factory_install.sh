@@ -707,9 +707,9 @@ factory_reset() {
 # Args:
 #   action: describe how to erase the drive.
 #     Allowed actions:
-#     - wipe: action Z
-#     - secure: action C
-#     - verify: action Y
+#     - wipe: action z
+#     - secure: action c
+#     - verify: action y
 factory_disk_action() {
   local action="$1"
   log "Performing factory disk ${action}"
@@ -1150,18 +1150,16 @@ print_rma_info() {
 # Checks if the given action is supported.
 #
 # Args:
-#   $1: Single-character option name ("I" for install)
+#   $1: Single-character option name ("i" for install)
 #   $2: String containing all supported options
 is_supported_action() {
-  # busybox tr may not have '[:upper:]'.
-  # shellcheck disable=SC2019 disable=SC2018
-  echo "$1" | tr 'A-Z' 'a-z' | grep -q "^[$2]$"
+  echo "$1" | grep -q "^[$2]$"
 }
 
 # Displays a line in the menu. Used in the menu function.
 #
 # Args:
-#   $1: Single-character option name ("I" for install)
+#   $1: Single-character option name ("i" for install)
 #   $2: String containing all supported options
 #   $3: Brief description
 #   $4: Further explanation
@@ -1233,36 +1231,36 @@ menu() {
   echo Please select an action and press Enter.
   echo
 
-  menu_line I "${supported_actions}" \
+  menu_line i "${supported_actions}" \
               "Install" "Performs a network or USB install"
-  menu_line R "${supported_actions}" \
+  menu_line r "${supported_actions}" \
               "Reset" "Performs a factory reset; finalized devices only"
-  menu_line B "${supported_actions}" \
+  menu_line b "${supported_actions}" \
               "Battery cutoff" "Performs a battery cutoff"
-  menu_line S "${supported_actions}" \
+  menu_line s "${supported_actions}" \
               "Shell" "Opens bash; available only with developer firmware"
-  menu_line V "${supported_actions}" \
+  menu_line v "${supported_actions}" \
               "View configuration" "Shows crossystem, VPD, etc."
-  menu_line D "${supported_actions}" \
+  menu_line d "${supported_actions}" \
               "Debug info and logs" \
               "Shows useful debugging information and kernel/firmware logs"
-  menu_line Z "${supported_actions}" \
+  menu_line z "${supported_actions}" \
               "Zero (wipe) storage" "Makes device completely unusable"
-  menu_line C "${supported_actions}" \
+  menu_line c "${supported_actions}" \
               "SeCure erase" \
               "Performs full storage erase, write a verification pattern"
-  menu_line Y "${supported_actions}" \
+  menu_line y "${supported_actions}" \
               "VerifY erase" \
               "Verifies the storage has been erased with option C"
-  menu_line T "${supported_actions}" \
+  menu_line t "${supported_actions}" \
               "Reset TPM" "Call chromeos-tpm-recovery"
-  menu_line U "${supported_actions}" \
+  menu_line u "${supported_actions}" \
               "Update TPM firmware" "Update TPM firmware"
-  menu_line E "${supported_actions}" \
+  menu_line e "${supported_actions}" \
               "Perform RSU" "Perform RSU (RMA Server Unlock)"
-  menu_line M "${supported_actions}" \
+  menu_line m "${supported_actions}" \
               "Enable factory mode" "Enable TPM factory mode"
-  menu_line F "${supported_actions}" \
+  menu_line f "${supported_actions}" \
               "Perform factory FAI" \
               "Perform Factory FAI (First Article Inspection)"
 
@@ -1278,17 +1276,13 @@ menu() {
     echo "Please select a supported action from the menu."
     ACTION=
   fi
-
-  # busybox tr may not have '[:upper:]'.
-  # shellcheck disable=SC2019 disable=SC2018
-  ACTION="$(echo "${ACTION}" | tr 'A-Z' 'a-z')"
 }
 
 #
 # Action handlers
 #
 
-# I = Install.
+# i = Install.
 action_i() {
   # `print_rma_info` prints the information about the usb shim.
   # Skip printing when using netboot.
@@ -1388,7 +1382,7 @@ action_i() {
   sleep 1d
 }
 
-# R = Factory reset.
+# r = Factory reset.
 action_r() {
   if [ -n "${NETBOOT_RAMFS}" ]; then
     # factory_reset.sh script is not available in netboot mode.
@@ -1478,7 +1472,7 @@ action_r() {
   factory_reset
 }
 
-# B = Battery cutoff.
+# b = Battery cutoff.
 action_b() {
   crossystem disable_dev_request=1
 
@@ -1487,7 +1481,7 @@ action_b() {
   /usr/share/cutoff/cutoff.sh
 }
 
-# S = Shell.
+# s = Shell.
 action_s() {
   if ! is_allow_debug && ! is_dev_firmware; then
     colorize red
@@ -1511,7 +1505,7 @@ action_s() {
   bash || true
 }
 
-# V = View configuration.
+# v = View configuration.
 action_v() {
   (
     print_device_info
@@ -1534,7 +1528,7 @@ action_v() {
   ) 2>&1 | secure_less.sh
 }
 
-# D = Debug info and logs.
+# d = Debug info and logs.
 action_d() {
   /usr/sbin/factory_debug.sh
 }
@@ -1574,17 +1568,17 @@ erase_drive() {
   fi
 }
 
-# Z = Zero
+# z = Zero
 action_z() {
   erase_drive wipe
 }
 
-# C = SeCure
+# c = SeCure
 action_c() {
   erase_drive secure
 }
 
-# Y = VerifY
+# y = VerifY
 action_y() {
   if [ -n "${NETBOOT_RAMFS}" ]; then
     # factory_reset.sh script is not available in netboot mode.
@@ -1596,12 +1590,12 @@ action_y() {
   factory_disk_action verify
 }
 
-# T = Reset TPM
+# t = Reset TPM
 action_t() {
   chromeos-tpm-recovery
 }
 
-# U = Update TPM firmware
+# u = Update TPM firmware
 action_u() {
   local result=0
   tpm_update_firmware || result="$?"
@@ -1628,7 +1622,7 @@ action_u() {
   esac
 }
 
-# E = Perform RSU
+# e = Perform RSU
 action_e() {
   echo
   log "Follow OEM-provided instructions to temporarily disable " \
@@ -1638,12 +1632,12 @@ action_e() {
   tpm_perform_rsu
 }
 
-# M = Enable TPM factory mode
+# m = Enable TPM factory mode
 action_m() {
   tpm_enable_factory_mode
 }
 
-# F = Perform Factory FAI process
+# f = Perform Factory FAI process
 action_f() {
   /usr/sbin/factory_installer fai --save-to-usb
   colorize yellow
@@ -1653,13 +1647,13 @@ action_f() {
 
 try_set_default_action_rsu() {
   if is_rsu_required; then
-    log "RSU is required. " \
-        "Set default action to (E) Perform RSU."
+    log "RSU is required."
+    log "Set default action to (e) Perform RSU."
     DEFAULT_ACTION=e
     return 0
   elif check_hwwp; then
-    log "Hardware write protection on. " \
-        "Set default action to (E) Perform RSU."
+    log "Hardware write protection on."
+    log "Set default action to (e) Perform RSU."
     DEFAULT_ACTION=e
     return 0
   fi
@@ -1667,8 +1661,8 @@ try_set_default_action_rsu() {
 }
 
 set_default_action_install() {
-  log "Hardware write protection off. " \
-      "Set default action to (I) Install."
+  log "Hardware write protection off. "
+  log "Set default action to (i) Install."
   DEFAULT_ACTION=i
   return 0
 }
@@ -1680,18 +1674,19 @@ read_default_rma_autorun_tpm_support_option() {
 read_default_option() {
   # Read default options
   if [ "${NETBOOT_RAMFS}" = 1 ]; then
-    log "Netbooting. Set default action to (I) Install."
+    log "Netbooting."
+    log "Set default action to (i) Install."
     DEFAULT_ACTION=i
   elif [ "${RMA_AUTORUN}" = "true" ]; then
     case "$(tpm_check_rsu_support)" in
       unsupported)
         if check_hwwp; then
-          log "Hardware write protection on. " \
-              "RSU is not supported, please disable hardware write protect."
+          log "Hardware write protection on."
+          log "RSU is not supported, please disable hardware write protect."
           DEFAULT_ACTION=""
         else
-          log "Hardware write protection off. " \
-              "Set default action to (I) Install."
+          log "Hardware write protection off."
+          log "Set default action to (i) Install."
           DEFAULT_ACTION=i
         fi
         ;;
@@ -1699,7 +1694,8 @@ read_default_option() {
         read_default_rma_autorun_tpm_support_option
         ;;
       need_update)
-          log "TPM version is old. Set default action to (U) Update TPM."
+          log "TPM version is old."
+          log "Set default action to (u) Update TPM."
           DEFAULT_ACTION=u
         ;;
     esac

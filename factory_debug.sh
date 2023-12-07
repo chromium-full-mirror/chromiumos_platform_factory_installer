@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Copyright 2019 The Chromium OS Authors. All rights reserved.
+# Copyright 2019 The ChromiumOS Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -182,7 +182,6 @@ main() {
     clear
     debug_menu
     read -p 'debug_action> ' action
-    action="$(echo "${action}" | tr 'A-Z' 'a-z')"
 
     case "${action}" in
       "a")

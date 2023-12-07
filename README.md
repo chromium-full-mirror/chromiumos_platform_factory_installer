@@ -64,19 +64,20 @@ by a prompt to select an action.
 
     Please select an action and press Enter.
 
-      I Install              Performs a network or USB install
-      R Reset                Performs a factory reset; finalized devices only
-      S Shell                Opens bash; available only with developer firmware
-      V View configuration   Shows crossystem, VPD, etc.
-      D Debug info and logs  Shows useful debugging information and kernel/firmware logs
-      Z Zero (wipe) storage  Makes device completely unusable
-      C SeCure erase         Performs full storage erase, write a verification pattern
-      Y VerifY erase         Verifies the storage has been erased with option C
-      T Reset TPM            Call chromeos-tpm-recovery
-      U Update TPM Firmware  Update TPM firmware
-      E Perform RSU          Perform RSU (RMA Server Unlock)
-      M Enable factory mode  Enable TPM factory mode
-      F Perform factory FAI  Perform Factory FAI (First Article Inspection)
+      i Install              Performs a network or USB install
+      r Reset                Performs a factory reset; finalized devices only
+      b Battery cutoff       Performs a battery cutoff
+      s Shell                Opens bash; available only with developer firmware
+      v View configuration   Shows crossystem, VPD, etc.
+      d Debug info and logs  Shows useful debugging information and kernel/firmware logs
+      z Zero (wipe) storage  Makes device completely unusable
+      c SeCure erase         Performs full storage erase, write a verification pattern
+      y VerifY erase         Verifies the storage has been erased with option c
+      t Reset TPM            Call chromeos-tpm-recovery
+      u Update TPM Firmware  Update TPM firmware
+      e Perform RSU          Perform RSU (RMA Server Unlock)
+      m Enable factory mode  Enable TPM factory mode
+      f Perform factory FAI  Perform Factory FAI (First Article Inspection)
 
     action>
 
@@ -95,7 +96,7 @@ and functions in `factory_install_board.sh` in private overlay. For example:
 SUPPORTED_ACTIONS_BOARD=x
 
 menu_board() {
-    menu_line X "Magic Command" "Run magic command"
+    menu_line x "Magic Command" "Run magic command"
 }
 
 action_x() {
@@ -128,7 +129,7 @@ Note `make_dev_ssd.sh` is also available on all Chrome OS image (even factory
 shim) - try `/usr/share/vboot/bin/make_dev_ssd.sh`.
 
 If you boot a factory shim with `cros_debug`, then you should have one shell in
-VT2 or VT3. Moreover, if you can enter the menu, 'S' will give you the full
+VT2 or VT3. Moreover, if you can enter the menu, 's' will give you the full
 shell.
 
 ### Fail to start frecon
