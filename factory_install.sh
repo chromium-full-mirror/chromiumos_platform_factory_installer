@@ -265,6 +265,27 @@ get_supported_actions() {
   fi
 }
 
+# Print helper messages when the supported actions are restricted.
+print_restricted_supported_actions_message() {
+  colorize yellow
+  if is_rsu_required; then
+    echo
+    echo "This device has FWMP and blocks developer mode."
+    echo "It is possibly a managed device."
+    echo "Please ask the admin to deprovision the device or perform"
+    echo "RSU (RMA Server Unlock)."
+    echo
+    echo "Some actions are unsupported and marked as red."
+    echo
+  elif check_hwwp; then
+    echo
+    echo "This device has hardware write protection enabled."
+    echo
+    echo "Some actions are unsupported and marked as red."
+    echo
+  fi
+  colorize white
+}
 # Checks if host firmware software write protection is enabled.
 check_host_swwp() {
   futility flash --wp-status --ignore-hw |
@@ -1137,18 +1158,23 @@ is_supported_action() {
   echo "$1" | tr 'A-Z' 'a-z' | grep -q "^[$2]$"
 }
 
-# Displays a line in the menu.  Used in the menu function.
+# Displays a line in the menu. Used in the menu function.
 #
 # Args:
 #   $1: Single-character option name ("I" for install)
-#   $2: Brief description
-#   $3: Further explanation
+#   $2: String containing all supported options
+#   $3: Brief description
+#   $4: Further explanation
 menu_line() {
   echo -n "  "
-  colorize boldwhite
+  if is_supported_action "$1" "$2"; then
+    colorize boldwhite
+  else
+    colorize red
+  fi
   echo -n "$1  "
   colorize white
-  printf "%-22s%s\n" "$2" "$3"
+  printf "%-22s%s\n" "$3" "$4"
 }
 
 update_ti50_firmware_from_release_rootfs() {
@@ -1201,32 +1227,48 @@ menu() {
   # Enable cursor (if tput is available)
   tput cnorm 2>/dev/null || true
 
+  colorize white
   echo
   echo
   echo Please select an action and press Enter.
   echo
 
-  menu_line I "Install" "Performs a network or USB install"
-  menu_line R "Reset" "Performs a factory reset; finalized devices only"
-  menu_line B "Battery cutoff" "Performs a battery cutoff"
-  menu_line S "Shell" "Opens bash; available only with developer firmware"
-  menu_line V "View configuration" "Shows crossystem, VPD, etc."
-  menu_line D "Debug info and logs" \
+  menu_line I "${supported_actions}" \
+              "Install" "Performs a network or USB install"
+  menu_line R "${supported_actions}" \
+              "Reset" "Performs a factory reset; finalized devices only"
+  menu_line B "${supported_actions}" \
+              "Battery cutoff" "Performs a battery cutoff"
+  menu_line S "${supported_actions}" \
+              "Shell" "Opens bash; available only with developer firmware"
+  menu_line V "${supported_actions}" \
+              "View configuration" "Shows crossystem, VPD, etc."
+  menu_line D "${supported_actions}" \
+              "Debug info and logs" \
               "Shows useful debugging information and kernel/firmware logs"
-  menu_line Z "Zero (wipe) storage" "Makes device completely unusable"
-  menu_line C "SeCure erase" \
+  menu_line Z "${supported_actions}" \
+              "Zero (wipe) storage" "Makes device completely unusable"
+  menu_line C "${supported_actions}" \
+              "SeCure erase" \
               "Performs full storage erase, write a verification pattern"
-  menu_line Y "VerifY erase" \
+  menu_line Y "${supported_actions}" \
+              "VerifY erase" \
               "Verifies the storage has been erased with option C"
-  menu_line T "Reset TPM" "Call chromeos-tpm-recovery"
-  menu_line U "Update TPM firmware" "Update TPM firmware"
-  menu_line E "Perform RSU" "Perform RSU (RMA Server Unlock)"
-  menu_line M "Enable factory mode" "Enable TPM factory mode"
-  menu_line F "Perform factory FAI" \
+  menu_line T "${supported_actions}" \
+              "Reset TPM" "Call chromeos-tpm-recovery"
+  menu_line U "${supported_actions}" \
+              "Update TPM firmware" "Update TPM firmware"
+  menu_line E "${supported_actions}" \
+              "Perform RSU" "Perform RSU (RMA Server Unlock)"
+  menu_line M "${supported_actions}" \
+              "Enable factory mode" "Enable TPM factory mode"
+  menu_line F "${supported_actions}" \
+              "Perform factory FAI" \
               "Perform Factory FAI (First Article Inspection)"
 
   menu_board
 
+  colorize white
   echo
   read -p 'action> ' ACTION
   echo
@@ -1732,27 +1774,14 @@ main() {
       # Default action is set and not aborted: perform the default action.
       "action_${DEFAULT_ACTION}"
     else
-      if is_rsu_required; then
-        # RSU is required.
-        colorize yellow
-        echo
-        echo "This device has FWMP and blocks developer mode."
-        echo "It is possibly a managed device."
-        echo "Please ask the admin to deprovision the device or perform"
-        echo "RSU (RMA Server Unlock)."
-        echo
-        colorize white
-        # Perform RSU.
-        echo "Defaulting to RSU"
-        sleep 2
-        action_e
-      else
-        # Display the menu for the user to select an option.
-        menu "${supported_actions}"
-        if [ -n "${ACTION}" ]; then
-          # Perform the selected action.
-          "action_${ACTION}"
-        fi
+      # Print messages when the actions are restricted.
+      print_restricted_supported_actions_message
+
+      # Display the menu for the user to select an option.
+      menu "${supported_actions}"
+      if [ -n "${ACTION}" ]; then
+        # Perform the selected action.
+        "action_${ACTION}"
       fi
     fi
 
