@@ -222,8 +222,10 @@ is_rsu_required() {
   local flags
   local FWMP_DEV_DISABLE_CCD_UNLOCK="0x40"
 
-  flags="$(cryptohome --action=get_firmware_management_parameters |
-           grep -o "flags=0x[0-9a-f]\+" | cut -d = -f 2)"
+  flags="$(device_management_client \
+           --action=get_firmware_management_parameters |
+           grep -o "flags=0x[0-9a-f]\+" |
+           cut -d = -f 2)"
 
   # FWMP_DEV_DISABLE_CCD_UNLOCK (0x40) is set during enterprise enrollment if
   # dev mode is blocked by the policy. We can use this flag to determine whether
