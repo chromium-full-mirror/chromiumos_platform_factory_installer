@@ -96,11 +96,12 @@ patch_new_root() {
   # Copy back allowed jobs only.
   local allowed_jobs
   allowed_jobs="boot-complete boot-services boot-splash chapsd cr50-result halt
-                cryptohomed-client cryptohome-proxy cryptohomed dbus shill
-                install-completed pre-startup reboot startup system-services
-                tpm_managerd udev-boot udev-trigger-early udev-trigger trunksd
-                network-services wpasupplicant cr50-update factory_shim udev
-                cros_configfs syslog"
+                cryptohomed-client cryptohome-proxy cryptohomed
+                device_managementd dbus shill install-completed pre-startup
+                reboot startup system-services tpm_managerd udev-boot
+                udev-trigger-early udev-trigger trunksd network-services
+                wpasupplicant cr50-update factory_shim udev cros_configfs
+                syslog"
 
   for job in ${allowed_jobs}; do
     file="${temp_path}/${job}.conf"
