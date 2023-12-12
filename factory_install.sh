@@ -217,7 +217,7 @@ die() {
 
 is_rsu_required() {
   # TPM should support RSU.
-  [ "$(tpm_check_rsu_support)" = "supported" ] || return 1
+  [ "$(tpm_check_rsu_support)" != "unsupported" ] || return 1
 
   gdbus wait --system org.chromium.UserDataAuth
 
