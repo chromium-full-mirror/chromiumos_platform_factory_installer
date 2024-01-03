@@ -2,7 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-pub use std::process::Command;
+use std::os::unix::process::ExitStatusExt;
+use std::process::ExitStatus;
 
 use anyhow::{self, Result};
 
@@ -17,21 +18,32 @@ use anyhow::{self, Result};
 /// assert_eq!(&output, "text\n");
 /// ```
 pub trait StringOutput {
+    fn new(status: i32, stdout: Option<String>, stderr: Option<String>) -> Self;
     fn stdout(&self) -> String;
     fn stderr(&self) -> String;
     fn exit_ok(&self) -> Result<()>;
 }
 
 impl StringOutput for std::process::Output {
+    fn new(status: i32, stdout: Option<String>, stderr: Option<String>) -> Self {
+        Self {
+            status: ExitStatus::from_raw(status),
+            stdout: stdout.unwrap_or_default().as_bytes().to_vec(),
+            stderr: stderr.unwrap_or_default().as_bytes().to_vec(),
+        }
+    }
     fn exit_ok(&self) -> Result<()> {
         if self.status.success() {
             Ok(())
         } else {
-            anyhow::bail!(
-                "Process returns error code: {}\nstderr: {}",
-                self.status.code().unwrap(),
-                self.stderr()
-            )
+            match self.status.code() {
+                Some(code) => anyhow::bail!(
+                    "Process returns error code: {}\nstderr: {}",
+                    code,
+                    self.stderr()
+                ),
+                None => anyhow::bail!("Process terminated by signal"),
+            }
         }
     }
     fn stdout(&self) -> String {
@@ -43,26 +55,103 @@ impl StringOutput for std::process::Output {
 }
 
 #[cfg(test)]
+mod mock {
+    use std::ffi::OsStr;
+    use std::path::Path;
+    use std::process::Output;
+
+    use mockall;
+
+    // The dead codes here provide signals for `mockall` to create mock objects and will only be
+    // compiled when testing.
+    #[allow(dead_code)]
+    struct Command;
+
+    mockall::mock! {
+        pub Command {
+            #[mockall::concretize]
+            pub fn new<S: AsRef<OsStr>>(_program: S) -> Self;
+            #[mockall::concretize]
+            pub fn output(&mut self) -> std::io::Result<Output>;
+        }
+    }
+
+    /// Mock Command for unit tests.
+    ///
+    /// # Examples
+    ///
+    /// Create a mocked command object:
+    /// ```
+    /// let expected_output = Output {
+    ///     status: ExitStatus::from_raw(1),
+    ///     stdout: Vec::new(),
+    ///     stderr: Vec::new(),
+    /// }
+    /// let mut cmd = Command::default();
+    /// cmd.expect_output().return_once(move || Ok(expected_output));
+    /// cmd.args(["arg1"]).output();
+    /// ```
+    impl MockCommand {
+        pub fn arg<S: AsRef<OsStr>>(&mut self, _arg: S) -> &mut Self {
+            self
+        }
+        pub fn args<I, S>(&mut self, _args: I) -> &mut Self
+        where
+            I: IntoIterator<Item = S>,
+            S: AsRef<OsStr>,
+        {
+            self
+        }
+        pub fn current_dir<P: AsRef<Path>>(&mut self, _dir: P) -> &mut Self {
+            self
+        }
+    }
+}
+
+#[cfg(not(test))]
+pub use std::process::Command;
+
+#[cfg(test)]
+pub use mock::MockCommand as Command;
+
+#[cfg(test)]
 mod tests {
-    use crate::utils::process_utils::StringOutput;
+    use crate::utils::process_utils::{Command, StringOutput};
 
     #[test]
     fn test_string_output_stdout_success() {
-        let output = std::process::Command::new("echo")
-            .args(["some", "text"])
-            .output()
-            .unwrap();
+        let expected_output = StringOutput::new(0, Some("some text".to_string()), None);
+        let mut cmd = Command::default();
+        cmd.expect_output().return_once(move || Ok(expected_output));
+        let output = cmd.output().unwrap();
+        assert!(output.exit_ok().is_ok());
+        assert_eq!("some text", output.stdout());
+    }
 
-        assert_eq!("some text\n", output.stdout());
+    #[test]
+    fn test_string_output_stderr_success() {
+        let expected_output = StringOutput::new(0, None, Some("some err".to_string()));
+        let mut cmd = Command::default();
+        cmd.expect_output().return_once(move || Ok(expected_output));
+        let output = cmd.output().unwrap();
+        assert!(output.exit_ok().is_ok());
+        assert_eq!("some err", output.stderr());
     }
 
     #[test]
     fn test_string_output_return_error() {
-        let output = std::process::Command::new("sh")
-            .args(["-c", "exit 1"])
-            .output()
-            .unwrap();
-
+        let expected_output = StringOutput::new(1, None, None);
+        let mut cmd = Command::default();
+        cmd.expect_output().return_once(move || Ok(expected_output));
+        let output = cmd.output().unwrap();
         assert!(output.exit_ok().is_err());
+    }
+
+    #[test]
+    fn test_mock_command_noop() {
+        let mut cmd = Command::default();
+        cmd.arg("arg1")
+            .args(["arg2", "arg3"])
+            .current_dir("/mock_dir");
     }
 }

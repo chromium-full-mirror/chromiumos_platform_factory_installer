@@ -2,9 +2,12 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+// TODO(wyuang): rewrite unit test with process_utils::Command.
+use std::process::Command;
+
 use anyhow::Result;
 
-use crate::utils::process_utils::{Command, StringOutput};
+use crate::utils::process_utils::StringOutput;
 
 #[cfg(not(test))]
 const GSC_CONSTANTS_PATH: &str = "/usr/share/cros/gsc-constants.sh";

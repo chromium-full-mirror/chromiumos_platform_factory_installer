@@ -4,12 +4,14 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
+// TODO(wyuang): rewrite unit test with process_utils::Command.
+use std::process::Command;
 
 use anyhow::Result;
 use regex::Regex;
 use tempfile;
 
-use crate::utils::process_utils::{Command, StringOutput};
+use crate::utils::process_utils::StringOutput;
 
 #[cfg(not(test))]
 const FUTILITY_PATH: &str = "futility";
