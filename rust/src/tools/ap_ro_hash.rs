@@ -24,10 +24,11 @@ use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 use std::usize;
 
-use anyhow::{Context, Result};
+use anyhow::{Context as _, Result};
 use hmac_sha256::Hash;
 use regex::Regex;
 
+use crate::system::context::Context;
 use crate::utils::futility_utils::{self, FirmwareSection};
 
 // Blob structure
@@ -59,11 +60,12 @@ const BUFFER_SIZE: usize = 0x400000;
 
 /// Gets the sections of HWID and HWID_DIGEST in GBB section.
 fn get_hwid_sections(
+    context: &mut dyn Context,
     bios_file: &str,
     gbb_section: &FirmwareSection,
 ) -> Result<HashMap<String, FirmwareSection>> {
     let mut sections = HashMap::new();
-    let bios_content = futility_utils::show(&bios_file)?;
+    let bios_content = futility_utils::show(context, &bios_file)?;
     let caps = Regex::new(r"hwid\s+0x([0-9a-fA-F]+)\s+0x([0-9a-fA-F]+)")?
         .captures(&bios_content)
         .context("No HWID section in bios content.")?;
@@ -132,8 +134,8 @@ fn merge_and_exclude_firmware_sections(
 
 /// Gets the sections to be calculated for AP RO hash:
 /// `RO_SECTION + GBB - RO_VPD - HWID - HWID_DIGEST`
-fn get_ap_ro_sections(bios_file: &str) -> Result<Vec<FirmwareSection>> {
-    let fmap = futility_utils::get_fmap().context("Failed to get FMAP")?;
+fn get_ap_ro_sections(context: &mut dyn Context, bios_file: &str) -> Result<Vec<FirmwareSection>> {
+    let fmap = futility_utils::get_fmap(context).context("Failed to get FMAP")?;
 
     let ro_section = fmap
         .get("RO_SECTION")
@@ -143,7 +145,7 @@ fn get_ap_ro_sections(bios_file: &str) -> Result<Vec<FirmwareSection>> {
         .get("RO_VPD")
         .context("RO_VPD not found in BIOS file")?;
 
-    let hwid_sections = get_hwid_sections(bios_file, gbb)
+    let hwid_sections = get_hwid_sections(context, bios_file, gbb)
         .context(format!("Failed to get HWID sections from {}", bios_file))?;
     let hwid = hwid_sections.get("HWID").unwrap();
     let hwid_digest = hwid_sections.get("HWID_DIGEST").unwrap();
@@ -183,31 +185,44 @@ fn calculate_hash(bios_file: &str, sections: &Vec<FirmwareSection>) -> Result<St
 ///
 /// # Return
 /// SHA-265 hash string of sections: RO_SECTION + GBB - RO_VPD - HWID - HWID_DIGEST.
-pub fn ap_ro_hash(bios_file: Option<&str>) -> Result<String> {
+pub fn ap_ro_hash(context: &mut dyn Context, bios_file: Option<&str>) -> Result<String> {
     let bios_file = match bios_file {
         Some(f) => f.to_string(),
-        None => futility_utils::dump_bios()
+        None => futility_utils::read(context, None)
             .context("Failed to dump BIOS.")?
             .display()
             .to_string(),
     };
 
-    let sections = get_ap_ro_sections(&bios_file).context("Failed to get AP RO hash sections.")?;
+    let sections =
+        get_ap_ro_sections(context, &bios_file).context("Failed to get AP RO hash sections.")?;
     Ok(calculate_hash(&bios_file, &sections).context("Failed to calculate AP RO hash.")?)
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::tools::ap_ro_hash;
+    use std::fs;
+    use std::process::Output;
 
-    // Golden BIOS dumped from `futility read bios.bin` on DUT.
+    use crate::system::context::ContextImpl;
+    use crate::tools::ap_ro_hash;
+    use crate::utils::process_utils::StringOutput;
+
+    // Golden BIOS info dumped from on DUT.
     const GOLDEN_BIOS: &str = "tests/bin/data/bios.bin";
+    const GOLDEN_FMAP: &str = "tests/bin/data/fmap";
+    const GOLDEN_SHOW: &str = "tests/bin/data/show";
+
     // Golden hash dumped from `gsctool -aA` on DUT.
     const GOLDEN_HASH: &str = "fc3d429569b2453b9dd540894c1fa1ac8f1965c66d7db6564070278679ccce59";
 
     #[test]
     fn test_ap_ro_hash() {
-        let hash = ap_ro_hash::ap_ro_hash(Some(GOLDEN_BIOS)).unwrap();
+        let mut context = ContextImpl::new();
+        context.set_command_output("futility", Output::new(0, None, None));
+        context.set_command_stdout("fmap_decode", fs::read_to_string(GOLDEN_FMAP).unwrap());
+        context.set_command_stdout("futility", fs::read_to_string(GOLDEN_SHOW).unwrap());
+        let hash = ap_ro_hash::ap_ro_hash(&mut context, Some(GOLDEN_BIOS)).unwrap();
         assert_eq!(GOLDEN_HASH, hash);
     }
 }

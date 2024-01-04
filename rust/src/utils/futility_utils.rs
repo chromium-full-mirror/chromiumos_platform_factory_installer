@@ -4,25 +4,16 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-// TODO(wyuang): rewrite unit test with process_utils::Command.
-use std::process::Command;
 
 use anyhow::Result;
 use regex::Regex;
 use tempfile;
 
+use crate::system::context::Context;
 use crate::utils::process_utils::StringOutput;
 
-#[cfg(not(test))]
 const FUTILITY_PATH: &str = "futility";
-#[cfg(not(test))]
 const FMAP_DECODE_PATH: &str = "fmap_decode";
-
-// Mock binaries for unit tests.
-#[cfg(test)]
-const FUTILITY_PATH: &str = "tests/bin/futility";
-#[cfg(test)]
-const FMAP_DECODE_PATH: &str = "tests/bin/fmap_decode";
 
 /// The structure to represent a section in firmware.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -48,45 +39,44 @@ impl FirmwareSection {
 }
 
 /// Dumps BIOS file from device and returns the path of dumped BIOS file.
-pub fn dump_bios() -> Result<PathBuf> {
+/// If `region` is given, dump the specified region only.
+pub fn read(context: &mut dyn Context, region: Option<&str>) -> Result<PathBuf> {
     let tmpd = tempfile::tempdir()?.into_path();
-    let bios_file = tmpd.join("bios.bin");
-    Command::new(FUTILITY_PATH)
-        .args(["read", bios_file.as_path().to_str().unwrap()])
-        .output()?;
-    Ok(bios_file)
+    let mut cmd = context.command(FUTILITY_PATH);
+    cmd.arg("read");
+    let output_file = if let Some(r) = region {
+        let prefix = tmpd.join("bios");
+        cmd.args([
+            "--region",
+            r,
+            "--split-output",
+            &prefix.display().to_string(),
+        ]);
+        PathBuf::from(format!("{}_{}", prefix.display(), r))
+    } else {
+        let path = tmpd.join("bios.bin");
+        cmd.arg(&path);
+        path
+    };
+    cmd.output()?;
+    Ok(output_file)
 }
 
 /// Displays the content of a given firmware.
-pub fn show(file: &str) -> Result<String> {
-    Ok(Command::new(FUTILITY_PATH)
+pub fn show(context: &mut dyn Context, file: &str) -> Result<String> {
+    Ok(context
+        .command(FUTILITY_PATH)
         .args(["show", file])
         .output()?
         .stdout())
 }
 
-/// Reads a certain region from FW and returns the path of dumped region file.
-pub fn read_region(region: &str) -> Result<PathBuf> {
-    let tmpd = tempfile::tempdir()?.into_path();
-    let prefix = tmpd.join("bios");
-    let output_file = format!("{}_{}", prefix.display(), region);
-    Command::new(FUTILITY_PATH)
-        .args([
-            "read",
-            "--region",
-            region,
-            "--split-output",
-            &prefix.display().to_string(),
-        ])
-        .output()?;
-    Ok(output_file.into())
-}
-
 /// Gets the FMAP sections.
-pub fn get_fmap() -> Result<HashMap<String, FirmwareSection>> {
+pub fn get_fmap(context: &mut dyn Context) -> Result<HashMap<String, FirmwareSection>> {
     let mut fmap = HashMap::new();
-    let fmap_bin = read_region("FMAP")?;
-    let fmap_text = Command::new(FMAP_DECODE_PATH)
+    let fmap_bin = read(context, Some("FMAP"))?;
+    let fmap_text = context
+        .command(FMAP_DECODE_PATH)
         .args([&fmap_bin.as_path().display().to_string()])
         .output()?
         .stdout();
@@ -111,4 +101,60 @@ pub fn get_fmap() -> Result<HashMap<String, FirmwareSection>> {
         }
     }
     Ok(fmap)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::process::Output;
+
+    use crate::system::context::ContextImpl;
+    use crate::utils::futility_utils::{self, FirmwareSection};
+    use crate::utils::process_utils::StringOutput;
+
+    const FMAP: &str = r##"header
+area_offset="0x00000000" area_size="0x00400000" area_name="WP_RO" area_flags_raw="0x00""##;
+
+    #[test]
+    fn test_futility_read_success() {
+        let mut context = ContextImpl::new();
+        context.set_command_output("futility", Output::new(0, None, None));
+        assert!(futility_utils::read(&mut context, None)
+            .unwrap()
+            .ends_with("bios.bin"))
+    }
+
+    #[test]
+    fn test_futility_read_region_success() {
+        let mut context = ContextImpl::new();
+        context.set_command_output("futility", Output::new(0, None, None));
+        assert!(futility_utils::read(&mut context, Some("FMAP"))
+            .unwrap()
+            .ends_with("bios_FMAP"))
+    }
+
+    #[test]
+    fn test_futility_show_success() {
+        let mut context = ContextImpl::new();
+        let output = "output_string";
+        context.set_command_stdout("futility", output.to_string());
+        assert_eq!(
+            futility_utils::show(&mut context, "filename").unwrap(),
+            output.to_string()
+        )
+    }
+
+    #[test]
+    fn test_futility_get_fmap_success() {
+        let mut context = ContextImpl::new();
+
+        context.set_command_output("futility", Output::new(0, None, None));
+        context.set_command_stdout("fmap_decode", FMAP.to_string());
+        assert_eq!(
+            futility_utils::get_fmap(&mut context)
+                .unwrap()
+                .get("WP_RO")
+                .unwrap(),
+            &FirmwareSection::new(0, 0x00400000)
+        )
+    }
 }

@@ -14,6 +14,7 @@ use tempfile;
 
 use crate::device;
 use crate::factory_fai::parsers::{DictParser, Parser, RegexParser};
+use crate::system::context;
 use crate::tools::ap_ro_hash;
 use crate::utils::error::RegexMatchError;
 use crate::utils::file_utils;
@@ -191,7 +192,10 @@ fn cbi_data() -> Result<Value> {
 }
 
 fn device_ap_ro_hash() -> Result<Value> {
-    Ok(Value::String(ap_ro_hash::ap_ro_hash(None)?))
+    Ok(Value::String(ap_ro_hash::ap_ro_hash(
+        &mut *context::global_context(),
+        None,
+    )?))
 }
 
 fn release_image_stateful_partition() -> Result<Value> {
@@ -230,7 +234,7 @@ fn release_image_stateful_partition() -> Result<Value> {
 }
 
 fn ro_gscvd_board_id() -> Result<Value> {
-    let ro_gscvd_file = futility_utils::read_region("RO_GSCVD")?;
+    let ro_gscvd_file = futility_utils::read(&mut *context::global_context(), Some("RO_GSCVD"))?;
 
     let mut ro_gscvd_reader = File::open(ro_gscvd_file)?;
     let mut magic = vec![0; 4];
