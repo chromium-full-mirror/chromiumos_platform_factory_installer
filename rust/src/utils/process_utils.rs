@@ -116,34 +116,35 @@ pub use mock::MockCommand as Command;
 
 #[cfg(test)]
 mod tests {
+    use crate::system::context::{self, Context};
     use crate::utils::process_utils::{Command, StringOutput};
 
     #[test]
     fn test_string_output_stdout_success() {
-        let expected_output = StringOutput::new(0, Some("some text".to_string()), None);
-        let mut cmd = Command::default();
-        cmd.expect_output().return_once(move || Ok(expected_output));
-        let output = cmd.output().unwrap();
+        let mut context = context::global_context();
+        context.set_command_stdout("cmd", "some text".to_string());
+        let output = context.command("cmd").output().unwrap();
         assert!(output.exit_ok().is_ok());
         assert_eq!("some text", output.stdout());
     }
 
     #[test]
     fn test_string_output_stderr_success() {
-        let expected_output = StringOutput::new(0, None, Some("some err".to_string()));
-        let mut cmd = Command::default();
-        cmd.expect_output().return_once(move || Ok(expected_output));
-        let output = cmd.output().unwrap();
+        let mut context = context::global_context();
+        context.set_command_output(
+            "cmd",
+            StringOutput::new(0, None, Some("some err".to_string())),
+        );
+        let output = context.command("cmd").output().unwrap();
         assert!(output.exit_ok().is_ok());
         assert_eq!("some err", output.stderr());
     }
 
     #[test]
     fn test_string_output_return_error() {
-        let expected_output = StringOutput::new(1, None, None);
-        let mut cmd = Command::default();
-        cmd.expect_output().return_once(move || Ok(expected_output));
-        let output = cmd.output().unwrap();
+        let mut context = context::global_context();
+        context.set_command_output("cmd", StringOutput::new(1, None, None));
+        let output = context.command("cmd").output().unwrap();
         assert!(output.exit_ok().is_err());
     }
 

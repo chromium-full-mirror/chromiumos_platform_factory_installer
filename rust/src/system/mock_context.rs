@@ -1,0 +1,79 @@
+// Copyright 2024 The ChromiumOS Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+use std::collections::{HashMap, VecDeque};
+use std::ffi::OsStr;
+use std::os::unix::process::ExitStatusExt;
+use std::path::{Path, PathBuf};
+use std::process::{ExitStatus, Output};
+
+use super::context::Context;
+use crate::utils::process_utils::Command;
+
+pub struct MockContext {
+    command_output: HashMap<String, VecDeque<Command>>,
+    root_dir: PathBuf,
+}
+
+/// Mocked implementation for system context.
+///
+/// # Mocking Command Line
+///
+/// You can use `set_command_output`/`set_command_stdout` to mock command line outputs. The context
+/// holds a mapping from commands to outputs in a FIFO manner. See examples below:
+/// ```
+/// use factory_installer::system::context::{Context, ContextImpl};
+/// use factory_installer::utils::process_utils::StringOutput;
+/// let mut context = ContextImpl::new();
+/// // 1. Sequecially call "cmd1" will get "123", "456 in order.
+/// // 2. Call "cmd2" will get "789".
+/// context.set_command_stdout("cmd1", "123");
+/// context.set_command_stdout("cmd2", "789");
+/// context.set_command_stdout("cmd1", "456");
+/// assert_eq!(context.command("cmd1").output().unwrap().stdout(), "123");
+/// assert_eq!(context.command("cmd1").output().unwrap().stdout(), "456");
+/// assert_eq!(context.command("cmd2").output().unwrap().stdout(), "789");
+/// ```
+impl MockContext {
+    pub fn new() -> Self {
+        Self {
+            command_output: HashMap::new(),
+            root_dir: tempfile::Builder::new()
+                .prefix("factory_installer_test")
+                .tempdir()
+                .expect("Failed to create mock root dir.")
+                .into_path(),
+        }
+    }
+    pub fn set_command_stdout<S: AsRef<OsStr>>(&mut self, program: S, stdout: String) {
+        let output = Output {
+            status: ExitStatus::from_raw(0),
+            stdout: stdout.as_bytes().to_vec(),
+            stderr: Vec::new(),
+        };
+        self.set_command_output(program, output);
+    }
+    pub fn set_command_output<S: AsRef<OsStr>>(&mut self, program: S, output: Output) {
+        let program = program.as_ref().to_os_string().into_string().unwrap();
+        let mut cmd = Command::default();
+        cmd.expect_output().return_once(move || Ok(output));
+        self.command_output
+            .entry(program.clone())
+            .or_insert(VecDeque::new())
+            .push_front(cmd);
+    }
+}
+
+impl Context for MockContext {
+    fn command(&mut self, program: &str) -> Command {
+        self.command_output
+            .get_mut(program)
+            .unwrap()
+            .pop_back()
+            .unwrap()
+    }
+    fn root_dir(&self) -> &Path {
+        self.root_dir.as_path()
+    }
+}

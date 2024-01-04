@@ -12,5 +12,6 @@ pub mod factory_fai;
 pub mod factory_installer;
 
 pub mod device;
+pub mod system;
 pub mod tools;
 pub mod utils;

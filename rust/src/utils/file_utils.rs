@@ -127,16 +127,19 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::fs;
+    use std::fs::{self, File};
     use std::path::PathBuf;
 
+    use crate::system::context::{self, Context};
     use crate::utils::file_utils;
-
-    const TEST_FS: &str = "tests/test_fs";
 
     #[test]
     fn test_list_files() {
-        let files = file_utils::list_files(TEST_FS, "**/*", true).unwrap();
+        let context = context::global_context();
+        let mut file_path = context.root_dir().to_path_buf();
+        file_path.push("a_file");
+        File::create(file_path.as_path()).unwrap();
+        let files = file_utils::list_files(context.root_dir(), "**/*", true).unwrap();
         assert_eq!(files, vec![PathBuf::from("a_file")]);
     }
 
