@@ -1,4 +1,4 @@
-// Copyright 2022 The ChromiumOS Authors.
+// Copyright 2022 The ChromiumOS Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -16,5 +16,20 @@ impl Display for NotImplementedError {
             f,
             "The function is not implemented and should not be called."
         )
+    }
+}
+
+#[derive(Debug)]
+pub enum RegexMatchError {
+    NamedGroupNotFoundError,
+}
+
+impl Error for RegexMatchError {}
+
+impl Display for RegexMatchError {
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        match self {
+            RegexMatchError::NamedGroupNotFoundError => write!(f, "Named group is not found!"),
+        }
     }
 }
