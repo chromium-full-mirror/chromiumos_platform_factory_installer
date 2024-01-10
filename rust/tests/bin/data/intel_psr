@@ -1,0 +1,36 @@
+--------------- Displaying PSR Log ---------------
+General:
+  PSR Version: 2.0
+  Log State: STARTED
+  Platform Service Record ID: 00-00-00-00-00-00-00-00
+  Unique Platform ID: 00-00-00-00-00-00-00-00
+Genesis Information:
+  Log Start Date: 2023-05-25 02:39:59 (UTC)
+  OEM Name: Google
+  OEM Make: ChromeOS
+  OEM Model: MTL vPro
+  Country of Manufacturer: CN
+  OEM Data:
+Ledger Information:
+  Cumulative number of seconds in S0: 12
+  Cumulative number of S0->S5: 0
+  Cumulative number of S0->S4: 0
+  Cumulative number of S0->S3: 0
+  Cumulative number of warm resets: 0
+  ISH register: 0
+  Cumulative number of ME resets: 0
+  Cumulative number of PRTC failures: 0
+  Cumulative number of recovery: 0
+  Cumulative number of DAM: 0
+  Cumulative number of unlock: 0
+  Cumulative number of SVN increase: 0
+  Cumulative number of excessive shock: 0
+  Cumulative number of excessive temperature: 0
+Events Information:
+Event Count: 2
+  Event Type: EVENT_LOG_START
+  Event time: 2023-05-25 02:39:59 (UTC)
+  Data: 0
+  Event Type: EVENT_LOG_END
+  Event time: 2023-05-25 02:40:11 (UTC)
+  Data: 0
