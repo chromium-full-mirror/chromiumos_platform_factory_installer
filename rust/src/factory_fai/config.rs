@@ -136,6 +136,15 @@ pub const DEFAULT_CONFIG: &str = r##"{
         "delimiter": ":"
       }
     }
+  },
+  "crosid": {
+    "DataCommand": {
+      "cmd": "crosid",
+      "parser": {
+        "type": "DictParser",
+        "delimiter": "="
+      }
+    }
   }
 }"##;
 
