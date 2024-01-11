@@ -2,13 +2,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::error::Error;
-use std::fmt::{Debug, Display, Formatter, Result as FMTResult};
+use std::fmt::Debug;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 use glob;
+use thiserror::Error;
 
 use crate::device;
 use crate::utils::file_utils::{self, PathError};
@@ -21,21 +21,12 @@ pub struct UFSPath {
     pub sys_dev: PathBuf,
 }
 
-#[derive(Debug)]
+#[derive(Error, Debug)]
 pub enum PathMatchError {
+    #[error("Path not found.")]
     PathNotFound,
+    #[error("Multiple paths found.")]
     MultiplePathFound,
-}
-
-impl Error for PathMatchError {}
-
-impl Display for PathMatchError {
-    fn fmt(&self, f: &mut Formatter) -> FMTResult {
-        match self {
-            PathMatchError::PathNotFound => write!(f, "Path not found."),
-            PathMatchError::MultiplePathFound => write!(f, "Multiple paths found."),
-        }
-    }
 }
 
 /// Gets one match path given a path regex.

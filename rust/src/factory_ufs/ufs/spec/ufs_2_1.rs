@@ -1,4 +1,4 @@
-// Copyright 2022 The ChromiumOS Authors.
+// Copyright 2022 The ChromiumOS Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,7 +10,7 @@ use crate::factory_ufs::ufs::descriptor::config::ConfigDescriptor;
 use crate::factory_ufs::ufs::descriptor::device::{GetDeviceField, WriteBooster};
 use crate::factory_ufs::ufs::descriptor::unit::{GetUnitField, ProvisionLun};
 use crate::factory_ufs::ufs::spec::constants;
-use crate::utils::error::NotImplementedError;
+use crate::utils::error::Error;
 
 /// Defines the config descriptor for device.
 ///
@@ -76,11 +76,11 @@ impl WriteBooster for DeviceConfigDescriptor {
     }
 
     fn enable_write_booster(&mut self, _: u32, _: u32) -> Result<u32> {
-        anyhow::bail!(NotImplementedError)
+        anyhow::bail!(Error::NotImplementedError)
     }
 
     fn disable_write_booster(&mut self) -> Result<()> {
-        anyhow::bail!(NotImplementedError)
+        anyhow::bail!(Error::NotImplementedError)
     }
 }
 
