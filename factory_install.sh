@@ -769,6 +769,31 @@ cros_payload_get_server_json_path() {
   fi
 }
 
+is_intel_platform() {
+  local tmp_dir contain_desc
+  tmp_dir="$(mktemp -d)"
+  contain_desc=0
+  futility read --region FMAP --split-output "${tmp_dir}"/bios
+  fmap_decode "${tmp_dir}"/bios_FMAP | grep -qw SI_DESC || contain_desc="$?"
+  rm "${tmp_dir}"/bios_FMAP
+  rmdir "${tmp_dir}"
+  return "${contain_desc}"
+}
+
+is_ME_locked() {
+  local tmp_dir cur_desc new_desc is_locked
+  tmp_dir="$(mktemp -d)"
+  is_locked=0
+  cur_desc="${tmp_dir}"/bios_SI_DESC
+  new_desc="$(mktemp)"
+  futility read --region SI_DESC --split-output "${tmp_dir}"/bios
+  ifdtool -p ifd2 -lr -O "${new_desc}" "${cur_desc}"
+  diff "${new_desc}" "${cur_desc}" || is_locked="$?"
+  rm "${cur_desc}" "${new_desc}"
+  rmdir "${tmp_dir}"
+  return "${is_locked}"
+}
+
 factory_install_cros_payload() {
   local src_media="$1"
   local json_path="$2"
@@ -862,9 +887,19 @@ factory_install_cros_payload() {
 
   if [ -s "${tmp_dir}/firmware" ]; then
     log "Found firmware updater."
+    local unlock_flag
+    if is_intel_platform; then
+      log "DUT is using Intel platform."
+      if is_ME_locked; then
+        log "ME has already been locked!"
+      else
+        log "ME is unlocked. Flash unlocked firmware..."
+        unlock_flag="--quirks=unlock_csme"
+      fi
+    fi
     # TODO(hungte) Check if we need to run --mode=recovery if WP is enabled.
-    sh "${tmp_dir}/firmware" --force --mode=factory_install ||
-      die "Firmware updating failed."
+    sh "${tmp_dir}/firmware" --force --mode=factory_install \
+      ${unlock_flag:+"${unlock_flag}"} || die "Firmware updating failed."
     rm "${tmp_dir}/firmware"
   fi
   if [ -s "${tmp_dir}/complete" ]; then
