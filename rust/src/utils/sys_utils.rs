@@ -1,4 +1,4 @@
-// Copyright 2022 The ChromiumOS Authors.
+// Copyright 2022 The ChromiumOS Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -52,6 +52,23 @@ pub fn umount<D: AsRef<OsStr>>(dst: D) -> Result<()> {
         anyhow::bail!("Failed to umount: {}", Error::last_os_error());
     }
     Ok(())
+}
+
+/// Mocked mount/umount for unit test.
+///
+/// the syscalls are unmockable so just do nothing in the unit tests.
+#[cfg(test)]
+pub mod mock {
+    use std::ffi::OsStr;
+
+    use anyhow::Result;
+
+    pub fn mount<S: AsRef<OsStr>, D: AsRef<OsStr>>(_src: S, _dst: D, _ro: bool) -> Result<()> {
+        Ok(())
+    }
+    pub fn umount<D: AsRef<OsStr>>(_dst: D) -> Result<()> {
+        Ok(())
+    }
 }
 
 #[cfg(test)]

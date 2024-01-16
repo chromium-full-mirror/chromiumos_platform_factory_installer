@@ -11,6 +11,7 @@ use glob;
 use thiserror::Error;
 
 use crate::device;
+use crate::system::context;
 use crate::utils::file_utils::{self, PathError};
 
 const UFS_NODE_PATTERN: &str = "/dev/bsg/ufs-bsg*";
@@ -65,7 +66,7 @@ pub fn get_ufs_bsg_sys() -> Result<PathBuf> {
 
 /// Returns the path to power control node.
 pub fn get_power_control_node() -> Result<PathBuf> {
-    let fixed_device_storage = device::get_fixed_device_storage()?;
+    let fixed_device_storage = device::get_fixed_device_storage(&mut *context::global_context())?;
     let rootdev = file_utils::get_file_name(Path::new(&fixed_device_storage))
         .ok_or(PathError::GetFilenameError)?;
     let path = fs::canonicalize(format!("/sys/block/{}/device/power/control", rootdev))?;

@@ -72,7 +72,6 @@ where
     let content = content.as_ref();
     let parent_path = path.parent().ok_or(PathError::NoParentDirError)?;
     fs::create_dir_all(parent_path)?;
-    File::create(path)?;
     Ok(fs::write(path, content)?)
 }
 

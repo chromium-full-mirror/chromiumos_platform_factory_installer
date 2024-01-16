@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
-use anyhow::{self, Context, Result};
+use anyhow::{self, Context as _, Result};
 use lazy_static;
 use serde_json;
 use serde_json::{Map, Value};
@@ -15,6 +15,7 @@ use tempfile;
 use crate::device;
 use crate::factory_fai::config::{DataCollector, FAIConfig};
 use crate::factory_fai::parsers::Parser;
+use crate::system::context::{Context, ContextImpl};
 use crate::utils::file_utils;
 use crate::utils::process_utils::{Command, StringOutput};
 use crate::utils::sys_utils;
@@ -64,13 +65,13 @@ fn list_files<P: AsRef<Path>>(root: P, glob_string: P) -> Result<Value> {
 /// Saves the data to the stateful partition of factory shim.
 /// # Returns
 /// Returns the tuple of information of saved `(device_partition, filename)`.
-pub fn save_to_usb(data: &str) -> Result<(String, String)> {
-    let usb = device::get_dev_stateful_partition()?;
+fn save_to_usb(context: &mut dyn Context, data: &str) -> Result<(String, String)> {
+    let usb = device::get_dev_stateful_partition(context)?;
     let mount_point = tempfile::tempdir()?.into_path();
     let filename = format!(
         "factory_fai_{}_{}.json",
-        device::get_model_name()?,
-        device::get_serial_number()?
+        device::get_model_name(context)?,
+        device::get_serial_number(context)?
     );
 
     sys_utils::mount(&usb, mount_point.as_os_str(), false).context(
@@ -103,7 +104,7 @@ pub fn redact_vpd_data(fai_data: &mut Map<String, Value>) -> Result<()> {
     Ok(())
 }
 
-pub fn collect_fai_data(fai_config: FAIConfig) -> Result<String> {
+fn collect_fai_data(context: &mut dyn Context, fai_config: FAIConfig) -> Result<String> {
     let mut fai_data = Map::new();
     for (name, config) in fai_config.iter() {
         eprintln!("Collecting \"{}\"...", name);
@@ -121,7 +122,7 @@ pub fn collect_fai_data(fai_config: FAIConfig) -> Result<String> {
                     list_files(&data_files.root, &data_files.glob)
                 }
             }
-            DataCollector::BuiltInCollector(collector) => collector.collect(),
+            DataCollector::BuiltInCollector(collector) => collector.collect(context),
         };
         let data = match data {
             Ok(data) => data,
@@ -135,6 +136,35 @@ pub fn collect_fai_data(fai_config: FAIConfig) -> Result<String> {
     }
     redact_vpd_data(&mut fai_data)?;
     Ok(serde_json::to_string_pretty(&fai_data)?)
+}
+
+pub fn perform_fai(
+    output_path: Option<String>,
+    config_path: Option<String>,
+    dump_config: bool,
+    need_save_to_usb: bool,
+) -> Result<()> {
+    let mut context = ContextImpl::new();
+    if dump_config {
+        println!("{}", config::DEFAULT_CONFIG);
+        return Ok(());
+    }
+
+    let fai_config = config::load_config(config_path).context("Failed to load config.")?;
+
+    let data = collect_fai_data(&mut context, fai_config)?;
+
+    println!("{}", &data);
+    if need_save_to_usb {
+        let (dev, filename) = save_to_usb(&mut context, &data)?;
+        eprintln!("Succeed to save {} in {}.", filename, dev);
+    }
+
+    if let Some(path) = output_path {
+        eprintln!("Writing result to {}.", path);
+        fs::write(path, &data).context("Failed to write result to output file.")?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -182,32 +212,4 @@ mod tests {
         factory_fai::redact_vpd_data(&mut vpd).unwrap();
         assert_eq!(vpd, *REDACTED_VPD);
     }
-}
-
-pub fn perform_fai(
-    output_path: Option<String>,
-    config_path: Option<String>,
-    dump_config: bool,
-    need_save_to_usb: bool,
-) -> Result<()> {
-    if dump_config {
-        println!("{}", config::DEFAULT_CONFIG);
-        return Ok(());
-    }
-
-    let fai_config = config::load_config(config_path).context("Failed to load config.")?;
-
-    let data = collect_fai_data(fai_config)?;
-
-    println!("{}", &data);
-    if need_save_to_usb {
-        let (dev, filename) = save_to_usb(&data)?;
-        eprintln!("Succeed to save {} in {}.", filename, dev);
-    }
-
-    if let Some(path) = output_path {
-        eprintln!("Writing result to {}.", path);
-        fs::write(path, &data).context("Failed to write result to output file.")?;
-    }
-    Ok(())
 }

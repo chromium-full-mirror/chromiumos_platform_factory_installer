@@ -4,10 +4,11 @@
 
 use std::fs;
 
-use anyhow::{Context, Result};
+use anyhow::{Context as _, Result};
 use regex::Regex;
 
-use crate::utils::process_utils::{Command, StringOutput};
+use crate::system::context::Context;
+use crate::utils::process_utils::StringOutput;
 use crate::utils::string_utils;
 
 const GET_FIXED_DST_DRIVE_CMD: &str =
@@ -17,8 +18,9 @@ const GET_FIXED_DST_DRIVE_CMD: &str =
 ///
 /// # Return
 /// The return string will be a path of device like `/dev/sda` or `/dev/mmcnlk0`.
-pub fn get_fixed_device_storage() -> Result<String> {
-    Ok(Command::new("sh")
+pub fn get_fixed_device_storage(context: &mut dyn Context) -> Result<String> {
+    Ok(context
+        .command("sh")
         .args(["-c", GET_FIXED_DST_DRIVE_CMD])
         .output()?
         .stdout()
@@ -30,8 +32,8 @@ pub fn get_fixed_device_storage() -> Result<String> {
 /// There're two cases of storage device path:
 ///   /dev/sda -> release rootfs at /dev/sda5
 ///   /dev/mmcblk0 -> release rootfs at /dev/mmcblk0p5
-pub fn get_release_rootfs_partition() -> Result<String> {
-    let mut fixed_device_storage = get_fixed_device_storage()?;
+pub fn get_release_rootfs_partition(context: &mut dyn Context) -> Result<String> {
+    let mut fixed_device_storage = get_fixed_device_storage(context)?;
     // If the last character is digit, it is the case of `/dev/mmcblk0`, Otherwise is the case of
     // `/dev/sda`.
     if fixed_device_storage
@@ -53,8 +55,8 @@ pub fn get_release_rootfs_partition() -> Result<String> {
 ///   /dev/mmcblk0 -> release stateful at /dev/mmcblk0p1
 ///
 /// If the device enables LVM stateful partition, get the partition path from `pvdisplay`.
-pub fn get_release_stateful_partition() -> Result<String> {
-    let mut fixed_device_storage = get_fixed_device_storage()?;
+pub fn get_release_stateful_partition(context: &mut dyn Context) -> Result<String> {
+    let mut fixed_device_storage = get_fixed_device_storage(context)?;
     // If the last character is digit, it is the case of `/dev/mmcblk0`, Otherwise is the case of
     // `/dev/sda`.
     if fixed_device_storage
@@ -69,7 +71,8 @@ pub fn get_release_stateful_partition() -> Result<String> {
     }
 
     // Get the device path to LVM stateful partition.
-    let mut vg_name = Command::new("pvdisplay")
+    let mut vg_name = context
+        .command("pvdisplay")
         .args([
             "-C",
             "--quiet",
@@ -85,7 +88,8 @@ pub fn get_release_stateful_partition() -> Result<String> {
     vg_name.retain(|c| !c.is_whitespace());
 
     if vg_name.len() > 0 {
-        Command::new("vgchange")
+        context
+            .command("vgchange")
             .args(["-ay", &vg_name])
             .output()?
             .exit_ok()?;
@@ -96,15 +100,19 @@ pub fn get_release_stateful_partition() -> Result<String> {
 }
 
 /// Gets the stateful partition of dev image.
-pub fn get_dev_stateful_partition() -> Result<String> {
+pub fn get_dev_stateful_partition(context: &dyn Context) -> Result<String> {
     // The format of `lsb-factory` is "shell-executable" which may contain "#" comments and empty
     // lines.
     let lsb_factory = string_utils::parse_dict_ignore_error(
-        fs::read_to_string("/mnt/stateful_partition/dev_image/etc/lsb-factory")?
-            .trim()
-            .split("\n")
-            .map(|line| line.split("#").nth(0).unwrap())
-            .collect::<Vec<&str>>(),
+        fs::read_to_string(
+            context
+                .root_dir()
+                .join("mnt/stateful_partition/dev_image/etc/lsb-factory"),
+        )?
+        .trim()
+        .split("\n")
+        .map(|line| line.split("#").nth(0).unwrap())
+        .collect::<Vec<&str>>(),
         "=",
     );
 
@@ -126,17 +134,19 @@ pub fn get_dev_stateful_partition() -> Result<String> {
 }
 
 /// Gets the model name of device.
-pub fn get_model_name() -> Result<String> {
-    Ok(Command::new("cros_config")
+pub fn get_model_name(context: &mut dyn Context) -> Result<String> {
+    Ok(context
+        .command("cros_config")
         .args(["/", "name"])
         .output()?
         .stdout())
 }
 
 /// Gets the firmware manifest key of device.
-pub fn get_firmware_manifest_key() -> Result<String> {
+pub fn get_firmware_manifest_key(context: &mut dyn Context) -> Result<String> {
     let crosid = string_utils::parse_dict_ignore_error(
-        Command::new("crosid")
+        context
+            .command("crosid")
             .output()?
             .stdout()
             .trim()
@@ -152,6 +162,128 @@ pub fn get_firmware_manifest_key() -> Result<String> {
 }
 
 /// Get the serial number of the device.
-pub fn get_serial_number() -> Result<String> {
-    Ok(fs::read_to_string("/sys/firmware/vpd/ro/serial_number")?)
+pub fn get_serial_number(context: &dyn Context) -> Result<String> {
+    Ok(fs::read_to_string(
+        context.root_dir().join("sys/firmware/vpd/ro/serial_number"),
+    )?)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+    use std::process::Output;
+
+    use crate::device;
+    use crate::system::context::{Context, ContextImpl};
+    use crate::utils::file_utils;
+    use crate::utils::process_utils::StringOutput;
+
+    #[test]
+    fn test_get_fix_device_storage_success() {
+        let mut context = ContextImpl::new();
+        context.set_command_stdout("sh", "/dev/sda".to_string());
+        assert_eq!(
+            device::get_fixed_device_storage(&mut context).unwrap(),
+            "/dev/sda".to_string()
+        );
+    }
+
+    #[test]
+    fn test_get_release_rootfs_partition_success_dev_sda() {
+        let mut context = ContextImpl::new();
+        context.set_command_stdout("sh", "/dev/sda".to_string());
+        assert_eq!(
+            device::get_release_rootfs_partition(&mut context).unwrap(),
+            "/dev/sda5".to_string()
+        );
+    }
+
+    #[test]
+    fn test_get_release_rootfs_partition_success_dev_mmcblk0() {
+        let mut context = ContextImpl::new();
+        context.set_command_stdout("sh", "/dev/mmcblk0".to_string());
+        assert_eq!(
+            device::get_release_rootfs_partition(&mut context).unwrap(),
+            "/dev/mmcblk0p5".to_string()
+        );
+    }
+
+    #[test]
+    fn test_get_release_stateful_partition_success_dev_sda() {
+        let mut context = ContextImpl::new();
+        context.set_command_stdout("sh", "/dev/sda".to_string());
+        context.set_command_stdout("pvdisplay", "".to_string());
+        assert_eq!(
+            device::get_release_stateful_partition(&mut context).unwrap(),
+            "/dev/sda1".to_string()
+        );
+    }
+
+    #[test]
+    fn test_get_release_stateful_partition_success_dev_mmcblk0() {
+        let mut context = ContextImpl::new();
+        context.set_command_stdout("sh", "/dev/mmcblk0".to_string());
+        context.set_command_stdout("pvdisplay", "".to_string());
+        assert_eq!(
+            device::get_release_stateful_partition(&mut context).unwrap(),
+            "/dev/mmcblk0p1".to_string()
+        );
+    }
+
+    #[test]
+    fn test_get_release_stateful_partition_success_lvm() {
+        let mut context = ContextImpl::new();
+        context.set_command_stdout("sh", "/dev/sda".to_string());
+        context.set_command_stdout("pvdisplay", "vg_name".to_string());
+        context.set_command_output("vgchange", Output::new(0, None, None));
+        assert_eq!(
+            device::get_release_stateful_partition(&mut context).unwrap(),
+            "/dev/vg_name/unencrypted".to_string()
+        );
+    }
+
+    #[test]
+    fn test_get_dev_stateful_partition_success() {
+        let context = ContextImpl::new();
+        let dir = context
+            .root_dir()
+            .join("mnt/stateful_partition/dev_image/etc");
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("lsb-factory"), "REAL_USB_DEV=/dev/sda3").unwrap();
+        assert_eq!(
+            device::get_dev_stateful_partition(&context).unwrap(),
+            "/dev/sda1".to_string()
+        );
+    }
+
+    #[test]
+    fn test_get_model_name_success() {
+        let mut context = ContextImpl::new();
+        context.set_command_stdout("cros_config", "model".to_string());
+        assert_eq!(
+            device::get_model_name(&mut context).unwrap(),
+            "model".to_string()
+        );
+    }
+
+    #[test]
+    fn test_get_firmware_manifest_key_success() {
+        let mut context = ContextImpl::new();
+        context.set_command_stdout("crosid", "FIRMWARE_MANIFEST_KEY=key".to_string());
+        assert_eq!(
+            device::get_firmware_manifest_key(&mut context).unwrap(),
+            "key".to_string()
+        );
+    }
+
+    #[test]
+    fn test_get_serial_number_success() {
+        let context = ContextImpl::new();
+        let filepath = context.root_dir().join("sys/firmware/vpd/ro/serial_number");
+        file_utils::create_file(filepath, "a_serial_number").unwrap();
+        assert_eq!(
+            device::get_serial_number(&context).unwrap(),
+            "a_serial_number".to_string()
+        );
+    }
 }

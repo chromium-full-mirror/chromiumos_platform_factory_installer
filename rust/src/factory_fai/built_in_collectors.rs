@@ -4,31 +4,29 @@
 
 use std::fs::{self, File};
 use std::io::{Read, Seek, SeekFrom};
-use std::process::Command;
 
-use anyhow::{self, Context, Result};
+use anyhow::{self, Context as _, Result};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
-use tempfile;
 
 use crate::device;
 use crate::factory_fai::parsers::{DictParser, Parser, RegexParser};
-use crate::system::context;
+use crate::system::context::Context;
 use crate::tools::ap_ro_hash;
 use crate::utils::error::RegexMatchError;
 use crate::utils::file_utils;
 use crate::utils::futility_utils;
 use crate::utils::process_utils::StringOutput;
+#[cfg(not(test))]
 use crate::utils::sys_utils;
+#[cfg(test)]
+use crate::utils::sys_utils::mock as sys_utils;
 
 const GSCVD_MAGIC: &[u8] = b"5afe";
 const GSCVD_RLZ_OFFSET: u64 = 12;
 
-#[cfg(not(test))]
 const INTEL_PSRTOOL_PATH: &str = "intel-psrtool";
-#[cfg(test)]
-const INTEL_PSRTOOL_PATH: &str = "tests/bin/intel-psrtool";
 
 const PSR_UNSUPPORTED: &str = "PSR is not supported on this device";
 const PSR_KEYS: [&'static str; 4] = [
@@ -49,33 +47,32 @@ pub enum BuiltInCollector {
     ReleaseImageStatefulPartition,
     RoGscvdBoardId,
     IntelPsr,
-    #[cfg(test)]
-    MockForTest, // Variant for unit test.
 }
 
 impl BuiltInCollector {
-    pub fn collect(&self) -> Result<Value> {
+    pub fn collect(&self, context: &mut dyn Context) -> Result<Value> {
         match self {
-            BuiltInCollector::PartitionTable => partition_table(),
-            BuiltInCollector::ReleaseImageInfo => release_image_info(),
-            BuiltInCollector::SigningKeys => signing_keys(),
-            BuiltInCollector::CbiData => cbi_data(),
-            BuiltInCollector::DeviceApRoHash => device_ap_ro_hash(),
-            BuiltInCollector::ReleaseImageStatefulPartition => release_image_stateful_partition(),
-            BuiltInCollector::RoGscvdBoardId => ro_gscvd_board_id(),
-            BuiltInCollector::IntelPsr => intel_psr(),
-            #[cfg(test)]
-            BuiltInCollector::MockForTest => mock_for_test(),
+            BuiltInCollector::PartitionTable => partition_table(context),
+            BuiltInCollector::ReleaseImageInfo => release_image_info(context),
+            BuiltInCollector::SigningKeys => signing_keys(context),
+            BuiltInCollector::CbiData => cbi_data(context),
+            BuiltInCollector::DeviceApRoHash => device_ap_ro_hash(context),
+            BuiltInCollector::ReleaseImageStatefulPartition => {
+                release_image_stateful_partition(context)
+            }
+            BuiltInCollector::RoGscvdBoardId => ro_gscvd_board_id(context),
+            BuiltInCollector::IntelPsr => intel_psr(context),
         }
     }
 }
 
-fn partition_table() -> Result<Value> {
-    let fixed_device_storage = device::get_fixed_device_storage()?;
+fn partition_table(context: &mut dyn Context) -> Result<Value> {
+    let fixed_device_storage = device::get_fixed_device_storage(context)?;
     let parser = RegexParser::new(
         r"(?P<start>\d+)\s+(?P<size>\d+)\s+(?P<partition>\d+)\s+(?P<type>.+)".to_string(),
     );
-    let output = Command::new("cgpt")
+    let output = context
+        .command("cgpt")
         .args(["show", "-q", &fixed_device_storage])
         .output()?
         .stdout()
@@ -92,9 +89,9 @@ fn partition_table() -> Result<Value> {
     Ok(Value::Array(output))
 }
 
-fn release_image_info() -> Result<Value> {
-    let rootfs_partition = device::get_release_rootfs_partition()?;
-    let mount_point = tempfile::tempdir()?.into_path();
+fn release_image_info(context: &mut dyn Context) -> Result<Value> {
+    let rootfs_partition = device::get_release_rootfs_partition(context)?;
+    let mount_point = context.tempdir(None)?;
 
     sys_utils::mount(rootfs_partition, mount_point.as_os_str(), true)?;
     let output = fs::read_to_string(mount_point.join("etc/lsb-release"))?.to_string();
@@ -103,13 +100,18 @@ fn release_image_info() -> Result<Value> {
     Ok(DictParser::new("=".to_string()).parse(output)?)
 }
 
-fn signing_keys() -> Result<Value> {
-    let rootfs_partition = device::get_release_rootfs_partition()?;
-    let mount_point = tempfile::tempdir()?.into_path();
+fn signing_keys(context: &mut dyn Context) -> Result<Value> {
+    let rootfs_partition = device::get_release_rootfs_partition(context)?;
+    let mount_point = context.tempdir(None)?;
 
     sys_utils::mount(rootfs_partition, mount_point.as_os_str(), true)?;
     let output: Map<String, Value> = serde_json::from_str(
-        &Command::new(mount_point.join("usr/sbin/chromeos-firmwareupdate"))
+        &context
+            .command(
+                &mount_point
+                    .join("usr/sbin/chromeos-firmwareupdate")
+                    .to_string_lossy(),
+            )
             .arg("--manifest")
             .output()?
             .stdout(),
@@ -129,7 +131,7 @@ fn signing_keys() -> Result<Value> {
     //     },
     //     ...
     //   }
-    let firmware_manifest_key = device::get_firmware_manifest_key()?;
+    let firmware_manifest_key = device::get_firmware_manifest_key(context)?;
     Ok(output
         .get(&firmware_manifest_key)
         .context("Unable to get firmware image from manifest.")?
@@ -140,7 +142,7 @@ fn signing_keys() -> Result<Value> {
         .context("Unabel to get keys from manifest.")?)
 }
 
-fn cbi_data() -> Result<Value> {
+fn cbi_data(context: &mut dyn Context) -> Result<Value> {
     let mut data = Map::new();
 
     // Parse the CBI usage:
@@ -152,7 +154,8 @@ fn cbi_data() -> Result<Value> {
     //       ...
     //     <other usage>
     //     ...
-    let cbi_usage = Command::new("ectool")
+    let cbi_usage = context
+        .command("ectool")
         .args(["cbi", "get"])
         .output()?
         .stderr();
@@ -165,7 +168,8 @@ fn cbi_data() -> Result<Value> {
                 let tag = matches.get(2).unwrap().as_str().to_string();
 
                 // Execute `ectool cbi get <tag>` to obtain CBI data.
-                let output = Command::new("ectool")
+                let output = context
+                    .command("ectool")
                     .args(["cbi", "get", &id])
                     .output()?
                     .stdout();
@@ -191,16 +195,13 @@ fn cbi_data() -> Result<Value> {
     Ok(Value::Object(data))
 }
 
-fn device_ap_ro_hash() -> Result<Value> {
-    Ok(Value::String(ap_ro_hash::ap_ro_hash(
-        &mut *context::global_context(),
-        None,
-    )?))
+fn device_ap_ro_hash(context: &mut dyn Context) -> Result<Value> {
+    Ok(Value::String(ap_ro_hash::ap_ro_hash(context, None)?))
 }
 
-fn release_image_stateful_partition() -> Result<Value> {
-    let stateful_partition = device::get_release_stateful_partition()?;
-    let mount_point = tempfile::tempdir()?.into_path();
+fn release_image_stateful_partition(context: &mut dyn Context) -> Result<Value> {
+    let stateful_partition = device::get_release_stateful_partition(context)?;
+    let mount_point = context.tempdir(None)?;
 
     sys_utils::mount(stateful_partition, mount_point.as_os_str(), true)?;
     let mut file_list = Vec::new();
@@ -233,8 +234,8 @@ fn release_image_stateful_partition() -> Result<Value> {
         .collect())
 }
 
-fn ro_gscvd_board_id() -> Result<Value> {
-    let ro_gscvd_file = futility_utils::read(&mut *context::global_context(), Some("RO_GSCVD"))?;
+fn ro_gscvd_board_id(context: &mut dyn Context) -> Result<Value> {
+    let ro_gscvd_file = futility_utils::read(context, Some("RO_GSCVD"))?;
 
     let mut ro_gscvd_reader = File::open(ro_gscvd_file)?;
     let mut magic = vec![0; 4];
@@ -268,11 +269,18 @@ fn ro_gscvd_board_id() -> Result<Value> {
     Ok(Value::String(String::from_utf8(rlz_bytes.to_vec())?))
 }
 
-fn is_intel_psr_unsupported(psrtool_output: &str) -> Result<bool> {
-    Ok(Regex::new(PSR_UNSUPPORTED)?.is_match(&psrtool_output))
-}
+fn intel_psr(context: &mut dyn Context) -> Result<Value> {
+    let output = context
+        .command(INTEL_PSRTOOL_PATH)
+        .args(["-d"])
+        .output()?
+        .stdout();
+    if Regex::new(PSR_UNSUPPORTED)?.is_match(&output) {
+        return Ok(Value::String(
+            "PSR is either unsupported or has not been provisioned.".to_string(),
+        ));
+    }
 
-fn parse_psr_provisioned_data(psrtool_output: &str) -> Result<Map<String, Value>> {
     // Example output if PSR is supported and has been provisioned.
     // ...
     // Genesis Information:
@@ -287,7 +295,7 @@ fn parse_psr_provisioned_data(psrtool_output: &str) -> Result<Map<String, Value>
     let psr_supported_regex = format!(r"(?P<key>({joined_keys})): (?P<value>.+)");
 
     let mut psr_data = Map::new();
-    for captures in Regex::new(psr_supported_regex.as_str())?.captures_iter(&psrtool_output) {
+    for captures in Regex::new(psr_supported_regex.as_str())?.captures_iter(&output) {
         let key = captures
             .name("key")
             .ok_or(RegexMatchError::NamedGroupNotFoundError)?
@@ -298,10 +306,7 @@ fn parse_psr_provisioned_data(psrtool_output: &str) -> Result<Map<String, Value>
             .as_str();
         psr_data.insert(key.to_string(), value.into());
     }
-    Ok(psr_data)
-}
 
-fn check_psr_missing_keys(psr_data: &Map<String, Value>) -> Result<()> {
     let mut missing_keys = Vec::new();
     for key in PSR_KEYS {
         if !psr_data.contains_key(key) {
@@ -316,45 +321,211 @@ fn check_psr_missing_keys(psr_data: &Map<String, Value>) -> Result<()> {
             INTEL_PSRTOOL_PATH
         );
     }
-    Ok(())
-}
-
-fn intel_psr() -> Result<Value> {
-    let output = Command::new(INTEL_PSRTOOL_PATH)
-        .args(["-d"])
-        .output()?
-        .stdout();
-    if is_intel_psr_unsupported(&output)? {
-        return Ok(Value::String(
-            "PSR is either unsupported or has not been provisioned.".to_string(),
-        ));
-    }
-    let psr_data = parse_psr_provisioned_data(&output)?;
-    check_psr_missing_keys(&psr_data)?;
     Ok(Value::Object(psr_data))
 }
 
 #[cfg(test)]
-fn mock_for_test() -> Result<Value> {
-    Ok(Value::String("text for test".to_string()))
-}
-
-#[cfg(test)]
 mod tests {
-    use serde_json::{self, Map};
+    use std::fs;
+    use std::process::Output;
+
+    use serde_json;
 
     use crate::factory_fai::built_in_collectors::{self, BuiltInCollector};
+    use crate::system::context::{Context, ContextImpl};
+    use crate::utils::file_utils;
+    use crate::utils::process_utils::StringOutput;
 
     #[test]
-    fn test_collect() {
-        let output = BuiltInCollector::MockForTest.collect().unwrap();
+    fn test_partition_table_success() {
+        let mut context = ContextImpl::new();
+        context.set_command_stdout("sh", "/dev/sda".to_string());
+        let cgpt_output: &str = "
+            17321984    43487184       1  Linux data
+            405504         65536       2  ChromeOS kernel";
+        context.set_command_stdout("cgpt", cgpt_output.to_string());
+        let output = BuiltInCollector::PartitionTable
+            .collect(&mut context)
+            .unwrap();
+        let expected = serde_json::json!([
+            {"start": "17321984", "size": "43487184", "partition": "1", "type": "Linux data"},
+            {"start": "405504", "size": "65536", "partition": "2", "type": "ChromeOS kernel"}
+        ]);
+        assert_eq!(output, expected);
+    }
 
-        assert_eq!(output, "text for test");
+    #[test]
+    fn test_release_image_info_success() {
+        let mut context = ContextImpl::new();
+        context.set_command_stdout("sh", "/dev/sda".to_string());
+        let lsb_release: &str = "
+            CHROMEOS_RELEASE_VERSION=15702.0.0
+            CHROMEOS_RELEASE_KEYSET=devkeys";
+        file_utils::create_file(
+            context.tempdir(None).unwrap().join("etc/lsb-release"),
+            lsb_release,
+        )
+        .unwrap();
+        let expected = serde_json::json!({
+            "CHROMEOS_RELEASE_VERSION": "15702.0.0",
+            "CHROMEOS_RELEASE_KEYSET": "devkeys"
+        });
+        let output = BuiltInCollector::ReleaseImageInfo
+            .collect(&mut context)
+            .unwrap();
+        assert_eq!(output, expected);
+    }
+
+    #[test]
+    fn test_signing_keys_success() {
+        let mut context = ContextImpl::new();
+        let fw_updater = context
+            .tempdir(None)
+            .unwrap()
+            .join("usr/sbin/chromeos-firmwareupdate");
+        let fw_manifest = serde_json::json!({
+            "foo": {
+                "host": {
+                    "keys": {
+                        "root": "ROOTKEY",
+                        "recovery": "RECOVERY_KEY"
+                    }
+                }
+            }
+        });
+        context.set_command_stdout("sh", "/dev/sda".to_string());
+        context.set_command_stdout("crosid", "FIRMWARE_MANIFEST_KEY=foo".to_string());
+        context.set_command_stdout(
+            fw_updater.to_string_lossy().into_owned(),
+            serde_json::to_string(&fw_manifest).unwrap(),
+        );
+        let output = BuiltInCollector::SigningKeys.collect(&mut context).unwrap();
+        let expected = serde_json::json!({
+            "root": "ROOTKEY",
+            "recovery": "RECOVERY_KEY"
+        });
+        assert_eq!(output, expected);
+    }
+
+    #[test]
+    fn test_cbi_data_success() {
+        let mut context = ContextImpl::new();
+        let ectool_usage: &str = "\
+            Usage: ectool cbi get <tag> [get_flag]
+            Usage: ectool cbi set <tag> <value/string> <size> [set_flag]
+              <tag> is one of:
+                0: BOARD_VERSION
+                1: OEM_ID";
+        context.set_command_output(
+            "ectool",
+            Output::new(0, None, Some(ectool_usage.to_string())),
+        );
+        context.set_command_stdout("ectool", "As uint: 3 (0x3)".to_string());
+        context.set_command_stdout("ectool", "some value".to_string());
+        let output = BuiltInCollector::CbiData.collect(&mut context).unwrap();
+        let expected = serde_json::json!({
+            "BOARD_VERSION": 3,
+            "OEM_ID": "some value"
+        });
+        assert_eq!(output, expected);
+    }
+
+    #[test]
+    fn test_release_image_stateful_partition_success() {
+        let mut context = ContextImpl::new();
+        context.set_command_stdout("sh", "/dev/sda".to_string());
+        context.set_command_stdout("pvdisplay", "".to_string());
+        let stateful_dir = context.tempdir(None).unwrap();
+        file_utils::create_file(stateful_dir.join("top_level_file"), "").unwrap();
+        file_utils::create_file(stateful_dir.join("dev_image/dev_image_file"), "").unwrap();
+        file_utils::create_file(
+            stateful_dir.join("unencrypted/import_extensions/extensions/preserved.crx"),
+            "",
+        )
+        .unwrap();
+        file_utils::create_file(
+            stateful_dir.join("unencrypted/dlc-factory-images/dlc/package/dlc.img"),
+            "",
+        )
+        .unwrap();
+        file_utils::create_file(stateful_dir.join("unencrypted/this/should/be/excluded"), "")
+            .unwrap();
+        let output = BuiltInCollector::ReleaseImageStatefulPartition
+            .collect(&mut context)
+            .unwrap();
+        let expected = serde_json::json!([
+            "dev_image",
+            "top_level_file",
+            "unencrypted",
+            "dev_image/dev_image_file",
+            "unencrypted/import_extensions/extensions/preserved.crx",
+            "unencrypted/dlc-factory-images/dlc/package/dlc.img",
+        ]);
+        assert_eq!(output, expected);
+    }
+
+    #[test]
+    fn test_ro_gscvd_board_id_success() {
+        let mut context = ContextImpl::new();
+        context.set_command_output("futility", Output::new(0, None, None));
+        let ro_gscvd = context.tempdir(None).unwrap().join("bios_RO_GSCVD");
+        fs::write(ro_gscvd, "5afe00000000RCZZ".as_bytes()).unwrap();
+        let output = BuiltInCollector::RoGscvdBoardId
+            .collect(&mut context)
+            .unwrap();
+        assert_eq!(output, "ZZCR".to_string());
+    }
+
+    #[test]
+    fn test_ro_gscvd_board_id_magic_not_found() {
+        let mut context = ContextImpl::new();
+        context.set_command_output("futility", Output::new(0, None, None));
+        let ro_gscvd = context.tempdir(None).unwrap().join("bios_RO_GSCVD");
+        fs::write(ro_gscvd, "000000000000RCZZ".as_bytes()).unwrap();
+        let err = BuiltInCollector::RoGscvdBoardId
+            .collect(&mut context)
+            .err()
+            .unwrap();
+        assert_eq!(
+            err.root_cause().to_string(),
+            "Failed to find magic number in RO_GSCVD! \
+            Expected: [53, 97, 102, 101], \
+            Real: [48, 48, 48, 48]"
+                .to_string()
+        );
+    }
+
+    #[test]
+    fn test_ro_gscvd_board_id_magic_rlz_not_char() {
+        let mut context = ContextImpl::new();
+        context.set_command_output("futility", Output::new(0, None, None));
+        let ro_gscvd = context.tempdir(None).unwrap().join("bios_RO_GSCVD");
+        fs::write(ro_gscvd, "5afe000000000000".as_bytes()).unwrap();
+        let err = BuiltInCollector::RoGscvdBoardId
+            .collect(&mut context)
+            .err()
+            .unwrap();
+        assert_eq!(
+            err.root_cause().to_string(),
+            "Each char in the RLZ code should be any char between A~Z. \
+            Found: [48, 48, 48, 48]"
+                .to_string()
+        );
     }
 
     #[test]
     fn test_intel_psr_provisioned_successfully() {
-        let actual = BuiltInCollector::IntelPsr.collect().unwrap();
+        let output: &str = "
+            Genesis Information:
+                Log Start Date: 2023-05-25 02:39:59 (UTC)
+                OEM Name: Google
+                OEM Make: ChromeOS
+                OEM Model: MTL vPro
+                Country of Manufacturer: CN
+                OEM Data:";
+        let mut context = ContextImpl::new();
+        context.set_command_stdout("intel-psrtool", output.to_string());
+        let actual = BuiltInCollector::IntelPsr.collect(&mut context).unwrap();
         let expected = serde_json::json!({
           "OEM Name": "Google",
           "OEM Make": "ChromeOS",
@@ -366,23 +537,28 @@ mod tests {
     }
 
     #[test]
-    fn is_intel_psr_unsupported() {
-        let mock_psrtool_output = "PSR is not supported on this device.";
-        assert_eq!(
-            true,
-            built_in_collectors::is_intel_psr_unsupported(&mock_psrtool_output).unwrap()
-        );
+    fn test_intel_psr_unsupported() {
+        let output = "PSR is not supported on this device.";
+        let mut context = ContextImpl::new();
+        context.set_command_stdout("intel-psrtool", output.to_string());
+        let actual = BuiltInCollector::IntelPsr.collect(&mut context).unwrap();
+        let expected = "PSR is either unsupported or has not been provisioned.".to_string();
+        assert_eq!(actual, expected);
     }
 
     #[test]
     fn test_check_psr_missing_data() {
-        let mock_psr_data = Map::new();
-        let actual_error = format!(
-            "{}",
-            built_in_collectors::check_psr_missing_keys(&mock_psr_data)
-                .unwrap_err()
-                .root_cause()
-        );
+        let output: &str = "
+            Genesis Information:
+                Log Start Date: 2023-05-25 02:39:59 (UTC)
+                OEM Data:";
+        let mut context = ContextImpl::new();
+        context.set_command_stdout("intel-psrtool", output.to_string());
+        let actual_error = BuiltInCollector::IntelPsr
+            .collect(&mut context)
+            .unwrap_err()
+            .root_cause()
+            .to_string();
         let expected_error = format!(
             "Missing keys: {:?} from `{} -d`.",
             vec![
