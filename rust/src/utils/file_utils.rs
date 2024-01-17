@@ -145,11 +145,10 @@ mod tests {
 
     #[test]
     fn test_create_file() {
-        let test_file = tempfile::Builder::new()
-            .prefix("test_create_file")
-            .tempdir()
+        let context = context::global_context();
+        let test_file = context
+            .tempdir(None)
             .unwrap()
-            .path()
             .join("dir1")
             .join("dir2")
             .join("test_file");

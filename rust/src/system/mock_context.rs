@@ -8,12 +8,15 @@ use std::os::unix::process::ExitStatusExt;
 use std::path::{Path, PathBuf};
 use std::process::{ExitStatus, Output};
 
+use anyhow::Result;
+
 use super::context::Context;
 use crate::utils::process_utils::Command;
 
 pub struct MockContext {
     command_output: HashMap<String, VecDeque<Command>>,
     root_dir: PathBuf,
+    tempdir: PathBuf,
 }
 
 /// Mocked implementation for system context.
@@ -43,6 +46,10 @@ impl MockContext {
                 .prefix("factory_installer_test")
                 .tempdir()
                 .expect("Failed to create mock root dir.")
+                .into_path(),
+            tempdir: tempfile::Builder::new()
+                .tempdir()
+                .expect("Failed to create mock tempdir.")
                 .into_path(),
         }
     }
@@ -75,5 +82,12 @@ impl Context for MockContext {
     }
     fn root_dir(&self) -> &Path {
         self.root_dir.as_path()
+    }
+    fn tempdir(&self, _prefix: Option<&str>) -> Result<PathBuf> {
+        // TODO: An alternative is holding a queue of tempdir, and introducing a new method like
+        // MockContext::create_tempdir to control the creation of tempdir in unit tests.
+        // Currently we don't have this requirement in any test case so we use the simplest approach
+        // at this moment.
+        Ok(self.tempdir.clone())
     }
 }

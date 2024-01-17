@@ -7,7 +7,6 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 use regex::Regex;
-use tempfile;
 
 use crate::system::context::Context;
 use crate::utils::process_utils::StringOutput;
@@ -41,7 +40,7 @@ impl FirmwareSection {
 /// Dumps BIOS file from device and returns the path of dumped BIOS file.
 /// If `region` is given, dump the specified region only.
 pub fn read(context: &mut dyn Context, region: Option<&str>) -> Result<PathBuf> {
-    let tmpd = tempfile::tempdir()?.into_path();
+    let tmpd = context.tempdir(None)?;
     let mut cmd = context.command(FUTILITY_PATH);
     cmd.arg("read");
     let output_file = if let Some(r) = region {
