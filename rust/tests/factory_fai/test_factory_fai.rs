@@ -5,6 +5,7 @@
 use std::fs;
 
 use factory_installer::factory_fai;
+use factory_installer::system::context::ContextImpl;
 use tempfile::Builder;
 
 const TEST_CONFIG_PATH: &str = "tests/factory_fai/test_config.json";
@@ -13,7 +14,9 @@ const TEST_EXPECTED_DATA_PATH: &str = "tests/factory_fai/test_expected_data.json
 #[test]
 fn test_perform_fai_success() {
     let output_file = Builder::new().tempfile().unwrap();
+    let mut context = ContextImpl::new();
     factory_fai::perform_fai(
+        &mut context,
         Some(output_file.path().display().to_string()),
         Some(TEST_CONFIG_PATH.to_string()),
         false,

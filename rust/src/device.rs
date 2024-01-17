@@ -168,6 +168,16 @@ pub fn get_serial_number(context: &dyn Context) -> Result<String> {
     )?)
 }
 
+/// Returns True if the device is using Ti50.
+pub fn is_ti50(context: &mut dyn Context) -> Result<bool> {
+    let gsc_name = context
+        .command("sh")
+        .args(["-c", ". /usr/share/cros/gsc-constants.sh && gsc_name"])
+        .output()?
+        .stdout();
+    Ok(gsc_name == "ti50")
+}
+
 #[cfg(test)]
 mod tests {
     use std::fs;
@@ -285,5 +295,19 @@ mod tests {
             device::get_serial_number(&context).unwrap(),
             "a_serial_number".to_string()
         );
+    }
+
+    #[test]
+    fn test_is_ti50_true() {
+        let mut context = ContextImpl::new();
+        context.set_command_stdout("sh", "ti50".to_string());
+        assert!(device::is_ti50(&mut context).unwrap());
+    }
+
+    #[test]
+    fn test_is_ti50_false() {
+        let mut context = ContextImpl::new();
+        context.set_command_stdout("sh", "cr50".to_string());
+        assert!(!device::is_ti50(&mut context).unwrap());
     }
 }

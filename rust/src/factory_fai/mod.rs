@@ -4,21 +4,23 @@
 
 use std::collections::HashMap;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::{self, Context as _, Result};
 use lazy_static;
 use serde_json;
 use serde_json::{Map, Value};
-use tempfile;
 
 use crate::device;
-use crate::factory_fai::config::{DataCollector, FAIConfig};
+use crate::factory_fai::config::{ConfigOptions, DataCollector, FAIConfig};
 use crate::factory_fai::parsers::Parser;
-use crate::system::context::{Context, ContextImpl};
+use crate::system::context::Context;
 use crate::utils::file_utils;
 use crate::utils::process_utils::{Command, StringOutput};
+#[cfg(not(test))]
 use crate::utils::sys_utils;
+#[cfg(test)]
+use crate::utils::sys_utils::mock as sys_utils;
 
 pub mod args;
 pub mod built_in_collectors;
@@ -67,7 +69,7 @@ fn list_files<P: AsRef<Path>>(root: P, glob_string: P) -> Result<Value> {
 /// Returns the tuple of information of saved `(device_partition, filename)`.
 fn save_to_usb(context: &mut dyn Context, data: &str) -> Result<(String, String)> {
     let usb = device::get_dev_stateful_partition(context)?;
-    let mount_point = tempfile::tempdir()?.into_path();
+    let mount_point = context.tempdir(None)?;
     let filename = format!(
         "factory_fai_{}_{}.json",
         device::get_model_name(context)?,
@@ -84,7 +86,7 @@ fn save_to_usb(context: &mut dyn Context, data: &str) -> Result<(String, String)
 }
 
 /// Redacts VPDs that might cause privacy issues.
-pub fn redact_vpd_data(fai_data: &mut Map<String, Value>) -> Result<()> {
+fn redact_vpd_data(fai_data: &mut Map<String, Value>) -> Result<()> {
     for (partition, blocked_vals) in VPD_BLOCKLIST.iter() {
         match fai_data.get_mut::<str>(partition) {
             Some(vpd) => {
@@ -139,24 +141,32 @@ fn collect_fai_data(context: &mut dyn Context, fai_config: FAIConfig) -> Result<
 }
 
 pub fn perform_fai(
+    context: &mut dyn Context,
     output_path: Option<String>,
     config_path: Option<String>,
     dump_config: bool,
     need_save_to_usb: bool,
 ) -> Result<()> {
-    let mut context = ContextImpl::new();
+    let config_options = ConfigOptions {
+        config_path: match config_path {
+            Some(path_str) => Some(PathBuf::from(path_str)),
+            None => None,
+        },
+        is_ti50: device::is_ti50(context)?,
+    };
+
+    let fai_config = config::load_config(&config_options).context("Failed to load config.")?;
+
     if dump_config {
-        println!("{}", config::DEFAULT_CONFIG);
+        println!("{}", serde_json::to_string(&fai_config)?);
         return Ok(());
     }
 
-    let fai_config = config::load_config(config_path).context("Failed to load config.")?;
-
-    let data = collect_fai_data(&mut context, fai_config)?;
+    let data = collect_fai_data(context, fai_config)?;
 
     println!("{}", &data);
     if need_save_to_usb {
-        let (dev, filename) = save_to_usb(&mut context, &data)?;
+        let (dev, filename) = save_to_usb(context, &data)?;
         eprintln!("Succeed to save {} in {}.", filename, dev);
     }
 
@@ -169,47 +179,104 @@ pub fn perform_fai(
 
 #[cfg(test)]
 mod tests {
-    use lazy_static;
-    use serde_json::{Map, Value};
+    use std::fs;
+
+    use serde_json::Value;
 
     use crate::factory_fai;
+    use crate::system::context::{Context, ContextImpl};
+    use crate::utils::file_utils;
 
-    lazy_static::lazy_static! {
-        #[derive(Debug)]
-        static ref REDACTED_VPD: Map<String, Value> = {
-            let mut redacted_vpd = Map::new();
-            redacted_vpd.insert("ro_vpd".to_string(), serde_json::json!({
-                "oem_name": "Google",
-                "stable_device_secret_DO_NOT_SHARE": "<redacted>"
-            }));
-            redacted_vpd.insert("rw_vpd".to_string(), serde_json::json!({
-                    "gbind_attribute": "<redacted>",
-                    "should_send_rlz_ping": "1",
-                    "ubind_attribute": "<redacted>"
-            }));
-            redacted_vpd
-        };
+    #[test]
+    fn test_perform_fai_success_save_to_usb() {
+        let mut context = ContextImpl::new();
+        context.set_command_stdout("sh", "ti50".to_string());
+        file_utils::create_file(
+            context
+                .root_dir()
+                .join("mnt/stateful_partition/dev_image/etc/lsb-factory"),
+            "REAL_USB_DEV=/dev/sda3",
+        )
+        .unwrap();
+        // The output JSON filename should be "factory_fai_<model>_<serial_number>.json".
+        file_utils::create_file(
+            context.root_dir().join("sys/firmware/vpd/ro/serial_number"),
+            "sn12345",
+        )
+        .unwrap();
+        context.set_command_stdout("cros_config", "model".to_string());
+        let config_path = context.tempdir(None).unwrap().join("config.json");
+        file_utils::create_file(&config_path, "{}").unwrap();
+        factory_fai::perform_fai(
+            &mut context,
+            None,
+            Some(config_path.to_string_lossy().into_owned()),
+            false,
+            true,
+        )
+        .unwrap();
+        let output_path = context
+            .tempdir(None)
+            .unwrap()
+            .join("factory_fai_model_sn12345.json");
+        assert!(output_path.as_path().exists());
     }
 
     #[test]
-    fn test_redact_vpd_data() {
-        let mut vpd = Map::new();
-        vpd.insert(
-            "ro_vpd".to_string(),
-            serde_json::json!({
+    fn test_perform_fai_success_redact_vpd_data() {
+        let mut context = ContextImpl::new();
+        context.set_command_stdout("sh", "ti50".to_string());
+        let output_path = context.tempdir(None).unwrap().join("output.json");
+        let config_path = context.tempdir(None).unwrap().join("config.json");
+        let ro_vpd = context.root_dir().join("sys/firmware/vpd/ro");
+        let rw_vpd = context.root_dir().join("sys/firmware/vpd/rw");
+        let config = serde_json::json!({
+          "ro_vpd": {
+              "DataFiles": {
+                  "root": ro_vpd,
+                  "read_content": true
+              }
+          },
+          "rw_vpd": {
+              "DataFiles": {
+                  "root": rw_vpd,
+                  "read_content": true
+              }
+          }
+        });
+        file_utils::create_file(&config_path, serde_json::to_string(&config).unwrap()).unwrap();
+        file_utils::create_file(ro_vpd.join("oem_name"), "Google").unwrap();
+        file_utils::create_file(
+            ro_vpd.join("stable_device_secret_DO_NOT_SHARE"),
+            "stable_device_secret",
+        )
+        .unwrap();
+        file_utils::create_file(rw_vpd.join("gbind_attribute"), "gbind_val").unwrap();
+        file_utils::create_file(rw_vpd.join("should_send_rlz_ping"), "1").unwrap();
+        file_utils::create_file(rw_vpd.join("ubind_attribute"), "ubind_val").unwrap();
+
+        factory_fai::perform_fai(
+            &mut context,
+            Some(output_path.to_string_lossy().into_owned()),
+            Some(config_path.to_string_lossy().into_owned()),
+            false,
+            false,
+        )
+        .unwrap();
+        let output: Value =
+            serde_json::from_str(&fs::read_to_string(output_path).unwrap()).unwrap();
+
+        let expected = serde_json::json!({
+            "ro_vpd": {
                 "oem_name": "Google",
-                "stable_device_secret_DO_NOT_SHARE": "stable_device_secret"
-            }),
-        );
-        vpd.insert(
-            "rw_vpd".to_string(),
-            serde_json::json!({
-                "gbind_attribute": "gbind_val",
+                "stable_device_secret_DO_NOT_SHARE": "<redacted>"
+            },
+            "rw_vpd": {
+                "gbind_attribute": "<redacted>",
                 "should_send_rlz_ping": "1",
-                "ubind_attribute": "ubind_val"
-            }),
-        );
-        factory_fai::redact_vpd_data(&mut vpd).unwrap();
-        assert_eq!(vpd, *REDACTED_VPD);
+                "ubind_attribute": "<redacted>"
+            }
+        });
+        assert_eq!(expected, output);
     }
 }

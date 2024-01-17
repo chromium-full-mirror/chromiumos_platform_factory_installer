@@ -5,7 +5,6 @@
 pub mod error;
 pub mod file_utils;
 pub mod futility_utils;
-pub mod gsc_utils;
 pub mod ioctl_utils;
 pub mod process_utils;
 pub mod string_utils;

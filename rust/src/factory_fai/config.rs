@@ -4,7 +4,7 @@
 
 use std::collections::HashMap;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
@@ -12,7 +12,6 @@ use serde_json;
 
 use crate::factory_fai::built_in_collectors::BuiltInCollector;
 use crate::factory_fai::parsers::DataParser;
-use crate::utils::gsc_utils;
 
 pub const DEFAULT_CONFIG: &str = r##"{
   "ro_vpd": {
@@ -227,6 +226,11 @@ pub enum DataCollector {
     BuiltInCollector(BuiltInCollector),
 }
 
+pub struct ConfigOptions {
+    pub config_path: Option<PathBuf>,
+    pub is_ti50: bool,
+}
+
 pub type FAIConfig = HashMap<String, DataCollector>;
 
 fn load_config_file<P: AsRef<Path>>(path: P) -> Result<FAIConfig> {
@@ -235,9 +239,9 @@ fn load_config_file<P: AsRef<Path>>(path: P) -> Result<FAIConfig> {
 }
 
 /// Loads the default config according to device properties.
-fn load_default_config() -> Result<FAIConfig> {
+fn load_default_config(is_ti50: bool) -> Result<FAIConfig> {
     let mut default_config: FAIConfig = serde_json::from_str(DEFAULT_CONFIG)?;
-    let gsc_config: FAIConfig = if gsc_utils::is_ti50()? {
+    let gsc_config: FAIConfig = if is_ti50 {
         eprintln!("Device is using Ti50...");
         serde_json::from_str(TI50_CONFIG)?
     } else {
@@ -249,9 +253,49 @@ fn load_default_config() -> Result<FAIConfig> {
     Ok(default_config)
 }
 
-pub fn load_config<P: AsRef<Path>>(config_path: Option<P>) -> Result<FAIConfig> {
-    match config_path {
+pub fn load_config(config_options: &ConfigOptions) -> Result<FAIConfig> {
+    match &config_options.config_path {
         Some(file_path) => load_config_file(&file_path),
-        None => load_default_config(),
+        None => load_default_config(config_options.is_ti50),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::factory_fai::config::{self, ConfigOptions};
+    use crate::system::context::{Context, ContextImpl};
+    use crate::utils::file_utils;
+
+    #[test]
+    fn test_load_config_success_default() {
+        let opt = ConfigOptions {
+            config_path: None,
+            is_ti50: true,
+        };
+        assert!(config::load_config(&opt).is_ok());
+    }
+
+    #[test]
+    fn test_load_config_success_from_config_path() {
+        let context = ContextImpl::new();
+        let config_path = context.tempdir(None).unwrap().join("config.json");
+        file_utils::create_file(&config_path, "{}").unwrap();
+        let opt = ConfigOptions {
+            config_path: Some(config_path),
+            is_ti50: true,
+        };
+        assert!(config::load_config(&opt).is_ok());
+    }
+
+    #[test]
+    fn test_load_config_invalid_config() {
+        let context = ContextImpl::new();
+        let config_path = context.tempdir(None).unwrap().join("config.json");
+        file_utils::create_file(&config_path, "(not a valid json)").unwrap();
+        let opt = ConfigOptions {
+            config_path: Some(config_path),
+            is_ti50: true,
+        };
+        assert!(config::load_config(&opt).is_err());
     }
 }
