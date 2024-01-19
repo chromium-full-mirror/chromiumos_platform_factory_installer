@@ -155,6 +155,9 @@ pub const DEFAULT_CONFIG: &str = r##"{
         "delimiter": "="
       }
     }
+  },
+  "intel-psr": {
+    "BuiltInCollector": "intel_psr"
   }
 }"##;
 
