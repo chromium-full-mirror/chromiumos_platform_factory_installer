@@ -5,6 +5,8 @@
 use anyhow::Result;
 use factory_installer::factory_fai;
 use factory_installer::factory_installer::args::{Action, Args, Parser};
+use factory_installer::factory_installer::cutoff;
+use factory_installer::factory_installer::factory_reset;
 use factory_installer::system::context::ContextImpl;
 
 fn main() -> Result<()> {
@@ -23,5 +25,7 @@ fn main() -> Result<()> {
             dump_config,
             save_to_usb,
         ),
+        Action::FactoryReset { action } => factory_reset::factory_reset(action, &mut context),
+        Action::BatteryCutoff => cutoff::do_cutoff(&mut context),
     }
 }

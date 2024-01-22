@@ -62,6 +62,8 @@ mod mock {
 
     use mockall;
 
+    use crate::utils::process_utils::Child;
+
     // The dead codes here provide signals for `mockall` to create mock objects and will only be
     // compiled when testing.
     #[allow(dead_code)]
@@ -73,6 +75,16 @@ mod mock {
             pub fn new<S: AsRef<OsStr>>(_program: S) -> Self;
             #[mockall::concretize]
             pub fn output(&mut self) -> std::io::Result<Output>;
+            #[mockall::concretize]
+            pub fn spawn(&mut self) -> std::io::Result<Child>;
+        }
+    }
+    mockall::mock! {
+        pub Child {
+            #[mockall::concretize]
+            pub fn new(&mut self) -> Self;
+            #[mockall::concretize]
+            pub fn wait_with_output(self) -> std::io::Result<Output>;
         }
     }
 
@@ -109,8 +121,12 @@ mod mock {
 }
 
 #[cfg(not(test))]
+pub use std::process::Child;
+#[cfg(not(test))]
 pub use std::process::Command;
 
+#[cfg(test)]
+pub use mock::MockChild as Child;
 #[cfg(test)]
 pub use mock::MockCommand as Command;
 
@@ -154,5 +170,33 @@ mod tests {
         cmd.arg("arg1")
             .args(["arg2", "arg3"])
             .current_dir("/mock_dir");
+    }
+
+    #[test]
+    fn test_spawn_success() {
+        let mut context = context::global_context();
+        context.set_command_stdout("cmd", "stdout".to_string());
+        let result = context
+            .command("cmd")
+            .spawn()
+            .unwrap()
+            .wait_with_output()
+            .unwrap();
+        assert!(result.status.success());
+        assert_eq!(result.stdout(), "stdout");
+    }
+
+    #[test]
+    fn test_spawn_failed() {
+        let mut context = context::global_context();
+        context.set_command_stderr("cmd", "stderr".to_string());
+        let result = context
+            .command("cmd")
+            .spawn()
+            .unwrap()
+            .wait_with_output()
+            .unwrap();
+        assert!(!result.status.success());
+        assert_eq!(result.stderr(), "stderr");
     }
 }

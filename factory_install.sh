@@ -691,7 +691,7 @@ factory_reset() {
   crossystem disable_dev_request=1
 
   log "Performing factory reset"
-  if ! /usr/sbin/factory_reset.sh "${DST_DRIVE}"; then
+  if ! /usr/sbin/factory_installer factory-reset reset; then
     die "Factory reset failed."
   fi
 
@@ -713,7 +713,7 @@ factory_reset() {
 factory_disk_action() {
   local action="$1"
   log "Performing factory disk ${action}"
-  if ! /usr/sbin/factory_reset.sh "${DST_DRIVE}" "${action}"; then
+  if ! /usr/sbin/factory_installer factory-reset "${action}"; then
     die "Factory disk ${action} failed."
   fi
   log "Done."
@@ -1513,8 +1513,7 @@ action_b() {
   crossystem disable_dev_request=1
 
   # Apply the cutoff settings in toolkit config.
-  cros_payload_patch_lsb_factory
-  /usr/share/cutoff/cutoff.sh
+  /usr/sbin/factory_installer battery-cutoff
 }
 
 # s = Shell.

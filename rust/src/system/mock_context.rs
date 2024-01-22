@@ -11,7 +11,7 @@ use std::process::{ExitStatus, Output};
 use anyhow::Result;
 
 use super::context::Context;
-use crate::utils::process_utils::Command;
+use crate::utils::process_utils::{Child, Command};
 
 pub struct MockContext {
     command_output: HashMap<String, VecDeque<Command>>,
@@ -61,10 +61,24 @@ impl MockContext {
         };
         self.set_command_output(program, output);
     }
+    pub fn set_command_stderr<S: AsRef<OsStr>>(&mut self, program: S, stderr: String) {
+        let output = Output {
+            status: ExitStatus::from_raw(1),
+            stdout: Vec::new(),
+            stderr: stderr.as_bytes().to_vec(),
+        };
+        self.set_command_output(program, output);
+    }
     pub fn set_command_output<S: AsRef<OsStr>>(&mut self, program: S, output: Output) {
+        let wait_output = output.clone();
         let program = program.as_ref().to_os_string().into_string().unwrap();
+        let mut child = Child::default();
+        child
+            .expect_wait_with_output()
+            .return_once(move || Ok(output));
         let mut cmd = Command::default();
-        cmd.expect_output().return_once(move || Ok(output));
+        cmd.expect_spawn().return_once(move || Ok(child));
+        cmd.expect_output().return_once(move || Ok(wait_output));
         self.command_output
             .entry(program.clone())
             .or_insert(VecDeque::new())
