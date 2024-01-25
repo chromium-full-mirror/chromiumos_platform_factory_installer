@@ -100,7 +100,7 @@ pub const DEFAULT_CONFIG: &str = r##"{
       "args": ["flash", "--wp-status", "--ignore-hw"],
       "parser": {
         "type": "RegexParser",
-        "pattern": "WP status: (?P<status>enabled|disabled)"
+        "pattern": "WP status: (?P<status>enabled|disabled|misconfigured)"
       }
     }
   },
