@@ -73,9 +73,7 @@ impl MockContext {
         let wait_output = output.clone();
         let program = program.as_ref().to_os_string().into_string().unwrap();
         let mut child = Child::default();
-        child
-            .expect_wait_with_output()
-            .return_once(move || Ok(output));
+        child.expect_wait().return_once(move || Ok(output.status));
         let mut cmd = Command::default();
         cmd.expect_spawn().return_once(move || Ok(child));
         cmd.expect_output().return_once(move || Ok(wait_output));

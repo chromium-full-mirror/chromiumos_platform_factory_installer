@@ -5,3 +5,4 @@
 pub mod args;
 pub mod cutoff;
 pub mod factory_reset;
+pub mod script_wrapper;

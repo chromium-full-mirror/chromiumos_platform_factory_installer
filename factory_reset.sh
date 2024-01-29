@@ -44,64 +44,6 @@ do_cutoff() {
 }
 
 main() {
-  if [ "$#" -lt 1 ]; then
-    usage
-  fi
-
-  DEV="$1"
-  if [ ! -b "${DEV}" ]; then
-    echo "Invalid root disk ${DEV}."
-    exit 1
-  fi
-  STATE_DEV=$(make_partition_dev "${DEV}" "1")
-  STATE_DEV="$(get_path_to_lvm_stateful "${STATE_DEV}")"
-  DEV_SIZE=$(blockdev --getsize64 "${DEV}")
-  shift
-
-  # Tcsd will bring up the tpm and de-own it,
-  # as we are in developer/recovery mode.
-  start tcsd || true
-
-  if [ $# -eq 1 ]; then
-    case "$1" in
-      wipe)
-        # Nuke the disk.
-        pv -etpr -s ${DEV_SIZE} -B 8M /dev/zero |
-          dd bs=8M of="${DEV}" oflag=dsync iflag=fullblock
-        ;;
-      secure)
-        # Erase using firmware feature first.
-        secure_erase ${DEV} || exit 1
-        perform_fio_op "${DEV}" "${DEV_SIZE}" "write" || exit 1
-        ;;
-      verify)
-        perform_fio_op "${DEV}" "${DEV_SIZE}" "verify" || exit 1
-        ;;
-      *)
-        usage
-    esac
-  else
-    echo "Factory reset"
-    if [ ! -b "${STATE_DEV}" ]; then
-      echo "Failed to find stateful partition."
-      exit 1
-    fi
-
-    ROOT_DEV="$(make_partition_dev "${DEV}" "5")"
-    echo "Running clobber-state: ROOT_DEV=${ROOT_DEV}, ROOT_DISK: ${DEV}"
-
-    # clobber-state preserves the crx and factory installed dlc files under
-    # `/mnt/stateful_partition`. We need to mount `${STATE_DEV}` to that
-    # directory, so that the files can be correctly preserved.
-    STATE_MOUNT_POINT=/mnt/stateful_partition
-    mount -o ro "${STATE_DEV}" "${STATE_MOUNT_POINT}"
-
-    ROOT_DEV="${ROOT_DEV}" ROOT_DISK="${DEV}" \
-      clobber-state factory fast
-
-    umount "${STATE_MOUNT_POINT}"
-  fi
-
   if [ "$(findLSBValue DISPLAY_QRCODE)" = true ]; then
     local frecon_pid
     frecon_pid="$(cat /run/frecon/pid)"

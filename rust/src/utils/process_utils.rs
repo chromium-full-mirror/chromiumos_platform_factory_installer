@@ -58,6 +58,7 @@ impl StringOutput for std::process::Output {
 mod mock {
     use std::ffi::OsStr;
     use std::path::Path;
+    use std::process::ExitStatus;
     use std::process::Output;
 
     use mockall;
@@ -84,7 +85,7 @@ mod mock {
             #[mockall::concretize]
             pub fn new(&mut self) -> Self;
             #[mockall::concretize]
-            pub fn wait_with_output(self) -> std::io::Result<Output>;
+            pub fn wait(&mut self) -> std::io::Result<ExitStatus>;
         }
     }
 
@@ -115,6 +116,9 @@ mod mock {
             self
         }
         pub fn current_dir<P: AsRef<Path>>(&mut self, _dir: P) -> &mut Self {
+            self
+        }
+        pub fn env<S: AsRef<OsStr>>(&mut self, _k: S, _v: S) -> &mut Self {
             self
         }
     }
@@ -175,28 +179,16 @@ mod tests {
     #[test]
     fn test_spawn_success() {
         let mut context = context::global_context();
-        context.set_command_stdout("cmd", "stdout".to_string());
-        let result = context
-            .command("cmd")
-            .spawn()
-            .unwrap()
-            .wait_with_output()
-            .unwrap();
-        assert!(result.status.success());
-        assert_eq!(result.stdout(), "stdout");
+        context.set_command_stdout("cmd", "".to_string());
+        let status = context.command("cmd").spawn().unwrap().wait().unwrap();
+        assert!(status.success());
     }
 
     #[test]
     fn test_spawn_failed() {
         let mut context = context::global_context();
-        context.set_command_stderr("cmd", "stderr".to_string());
-        let result = context
-            .command("cmd")
-            .spawn()
-            .unwrap()
-            .wait_with_output()
-            .unwrap();
-        assert!(!result.status.success());
-        assert_eq!(result.stderr(), "stderr");
+        context.set_command_stderr("cmd", "".to_string());
+        let status = context.command("cmd").spawn().unwrap().wait().unwrap();
+        assert!(!status.success());
     }
 }

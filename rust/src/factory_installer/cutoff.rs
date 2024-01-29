@@ -8,19 +8,16 @@
 use anyhow::{self, Result};
 
 use crate::system::context::Context;
-use crate::utils::process_utils::StringOutput;
 
 const CUTOFF_DIR: &str = "/usr/share/cutoff";
 
 pub fn do_cutoff(context: &mut dyn Context) -> Result<()> {
     // TODO(jasonchuang): Replace cutoff.sh to rust implementation.
     let path = context.root_dir().join(CUTOFF_DIR).join("cutoff.sh");
-    let child = context.command(path.to_str().unwrap()).spawn()?;
-    let output = child.wait_with_output()?;
-    if !output.status.success() {
-        let stdout = output.stdout();
-        let stderr = output.stderr();
-        anyhow::bail!("cutoff fail, stdout: {}, stderr: {}", stdout, stderr)
+    let mut child = context.command(path.to_str().unwrap()).spawn()?;
+    let status = child.wait()?;
+    if !status.success() {
+        anyhow::bail!("cutoff fail")
     }
     Ok(())
 }
@@ -45,9 +42,6 @@ mod tests {
         let result = cutoff::do_cutoff(&mut context);
         let err = result.unwrap_err();
         let message = err.root_cause();
-        assert_eq!(
-            format!("{}", message),
-            "cutoff fail, stdout: , stderr: stderr"
-        );
+        assert_eq!(format!("{}", message), "cutoff fail");
     }
 }
