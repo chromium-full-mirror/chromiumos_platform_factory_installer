@@ -1647,17 +1647,29 @@ action_f() {
   colorize white
 }
 
-try_set_default_action_rsu() {
+try_set_default_action_rsu_required() {
   if is_rsu_required; then
     log "RSU is required. " \
         "Set default action to (E) Perform RSU."
     DEFAULT_ACTION=e
     return 0
-  elif check_hwwp; then
-    log "Hardware write protection on. " \
-        "Set default action to (E) Perform RSU."
-    DEFAULT_ACTION=e
-    return 0
+  fi
+  return 1
+}
+
+try_set_default_action_wp_enabled() {
+  if check_hwwp; then
+    if [ "$(tpm_get_chassis_open)" = "true" ]; then
+      log "Chassis is opened."
+      log "Set default action to (m) Enable TPM factory mode."
+      DEFAULT_ACTION=m
+      return 0
+    else
+      log "Hardware write protection on."
+      log "Set default action to (e) Perform RSU."
+      DEFAULT_ACTION=e
+      return 0
+    fi
   fi
   return 1
 }
@@ -1670,7 +1682,9 @@ set_default_action_install() {
 }
 
 read_default_rma_autorun_tpm_support_option() {
-  try_set_default_action_rsu || set_default_action_install
+  try_set_default_action_rsu_required || \
+    try_set_default_action_wp_enabled || \
+    set_default_action_install
 }
 
 read_default_option() {
