@@ -1,5 +1,5 @@
 #!/bin/bash
-# Copyright 2021 The Chromium OS Authors. All rights reserved.
+# Copyright 2021 The ChromiumOS Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -43,4 +43,9 @@ tpm_get_board_id_flags() {
   # Board ID format from cr50: xxxxxxxx:xxxxxxxx:xxxxxxxx
   # Retrieve the last 5 characters (4 + 1 newline) using tail command
   /usr/sbin/tpm2_read_board_id | cut -d ':' -f 3 | tail -c 5
+}
+
+# Outputs chassis open status.
+tpm_get_chassis_open() {
+  echo "unsupported"
 }
