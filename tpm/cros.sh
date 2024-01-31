@@ -167,7 +167,7 @@ tpm_enable_factory_mode() {
     return 0
   fi
 
-  if check_hwwp; then
+  if check_hwwp && [ "$(tpm_get_chassis_open)" != "true" ]; then
     die "The hardware write protection should be disabled first."
   fi
 
@@ -192,6 +192,11 @@ tpm_enable_factory_mode() {
   # here to make sure factory mode enabled before reboot.
   log "Successfully to enable factory mode and should reboot in 5 seconds."
   sleep 5s
+
+  # Force the next boot to be in developer mode so that we can boot to RMA shim
+  # again.
+  futility gbb --flash --set --flags='+0x8' >/dev/null 2>&1
+
   reboot
 
   # sleep indefinitely to avoid re-spawning rather than reboot.
@@ -205,4 +210,18 @@ tpm_get_info() {
 
 tpm_get_board_id_flags() {
   _get_cr50_output_value "$(${GSCTOOL} -a -i -M)" 'BID_FLAGS'
+}
+
+# Outputs chassis open status.
+# Possible outputs are:
+#   "unsupported"
+#   "true"
+#   "false"
+tpm_get_chassis_open() {
+  # The command is only supported on Ti50 devices.
+  if [ "${TPM_NAME}" != "ti50" ]; then
+    echo "unsupported"
+    return 0
+  fi;
+  "${GSCTOOL}" -a -K chassis_open | sed 's/^Chassis Open: //g'
 }

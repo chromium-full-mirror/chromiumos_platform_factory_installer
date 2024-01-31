@@ -1,5 +1,5 @@
 #!/bin/bash
-# Copyright 2021 The Chromium OS Authors. All rights reserved.
+# Copyright 2021 The ChromiumOS Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -39,4 +39,9 @@ tpm_get_info() {
 # Outputs TPM board ID.  "7f80" is PVT.
 tpm_get_board_id_flags() {
   echo "7f80"
+}
+
+# Outputs chassis open status.
+tpm_get_chassis_open() {
+  echo "unsupported"
 }
