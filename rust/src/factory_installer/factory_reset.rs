@@ -13,13 +13,23 @@ use anyhow::{self, Result};
 
 use crate::device;
 use crate::factory_installer::args::ResetAction;
-use crate::factory_installer::script_wrapper;
+use crate::factory_installer::{cutoff, script_wrapper};
 use crate::system::context::Context;
+use crate::utils::crossystem_utils;
 use crate::utils::process_utils::StringOutput;
+use crate::utils::qrcode_utils;
 #[cfg(not(test))]
 use crate::utils::sys_utils;
 #[cfg(test)]
 use crate::utils::sys_utils::mock as sys_utils;
+#[cfg(not(test))]
+use crate::utils::terminal_utils;
+#[cfg(test)]
+use crate::utils::terminal_utils::mock as terminal_utils;
+use crate::utils::vpd_utils;
+
+// CUTOFF_DIR is provided from platform/factory/sh/cutoff, repacked by ebuild.
+const CUTOFF_DIR: &str = "/usr/share/cutoff";
 
 pub fn factory_reset(action: ResetAction, context: &mut dyn Context) -> Result<()> {
     let disk_path = device::get_fixed_device_storage(context)?;
@@ -43,12 +53,9 @@ pub fn factory_reset(action: ResetAction, context: &mut dyn Context) -> Result<(
         ResetAction::Verify => do_verify(&disk_path, &dev_size, context),
     }?;
 
-    // TODO(jasonchuang): Replace factory_reset.sh to rust implementation.
-    let mut child = context.command("/usr/sbin/factory_reset.sh").spawn()?;
-    let status = child.wait()?;
-    if !status.success() {
-        anyhow::bail!("factory_reset fail")
-    }
+    display_qrcode(context)?;
+    inform_shopfloor(context)?;
+    cutoff::do_cutoff(context)?;
     Ok(())
 }
 
@@ -114,20 +121,83 @@ fn do_verify(disk_path: &str, dev_size: &str, context: &mut dyn Context) -> Resu
     Ok(())
 }
 
+fn get_display_string(context: &mut dyn Context) -> Result<Vec<String>> {
+    let lsb_factory = device::get_lsb_factory(context)?;
+    let mut result = Vec::<String>::new();
+    if lsb_factory
+        .get("DISPLAY_QRCODE")
+        .is_some_and(|value| value == "true")
+    {
+        if let Some(display_info) = lsb_factory.get("DISPLAY_INFO") {
+            // Example: convert "hwid serial_number,hwid" to ["<HWID> <SERIAL_NUMBER>", "<HWID>"]
+            eprintln!("display info = {}", display_info);
+            for info in display_info.split(",") {
+                let mut display_string = vec![];
+                for key in info.split(" ") {
+                    let value = match key {
+                        "hwid" => crossystem_utils::get_hwid(context),
+                        "serial_number" => vpd_utils::get_ro_value("serial_number", context),
+                        "mlb_serial_number" => {
+                            vpd_utils::get_ro_value("mlb_serial_number", context)
+                        }
+                        "wifi_mac0" => vpd_utils::get_ro_value("wifi_mac0", context),
+                        &_ => anyhow::bail!("Unknown key: {}", key),
+                    };
+                    display_string.push(value?);
+                }
+                result.push(display_string.join(" "));
+            }
+            eprintln!("display string = {:?}", result);
+        }
+    }
+    Ok(result)
+}
+
+pub fn display_qrcode(context: &mut dyn Context) -> Result<()> {
+    for content in get_display_string(context)? {
+        terminal_utils::clear();
+        eprintln!("Press enter to continue...");
+        qrcode_utils::display_qrcode(&content, context)?;
+        terminal_utils::wait_enter()?;
+    }
+    Ok(())
+}
+
+fn inform_shopfloor(context: &mut dyn Context) -> Result<()> {
+    // inform_shopfloor will load shopfloor URL from lsb-factory, and ignore the
+    // request if SHOPFLOOR_URL is not set.
+    let path = context
+        .root_dir()
+        .join(CUTOFF_DIR)
+        .join("inform_shopfloor.sh");
+    let mut child = context
+        .command(path.to_str().unwrap())
+        .args(["", "factory_reset"])
+        .spawn()?;
+    let status = child.wait()?;
+    if !status.success() {
+        anyhow::bail!("inform shopfloor fail")
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
 
-    use crate::factory_installer::factory_reset;
-    use crate::factory_installer::factory_reset::ResetAction;
-    use crate::system::context::ContextImpl;
+    use std::fs::{self, File};
+
+    use crate::factory_installer::factory_reset::{self, ResetAction};
+    use crate::system::context::{Context, ContextImpl};
 
     #[test]
     fn test_factory_reset_reset_success() {
         let mut context = ContextImpl::new();
+        prepare_files(&mut context, "");
         setup_disk("/dev/sda".to_string(), "size".to_string(), &mut context);
         context.set_command_stdout("start", "".to_string());
         context.set_command_stdout("clobber-state", "".to_string());
-        context.set_command_stdout("/usr/sbin/factory_reset.sh", "".to_string());
+        context.set_command_stdout("/usr/share/cutoff/inform_shopfloor.sh", "".to_string());
+        mock_cutoff(&mut context);
         let result = factory_reset::factory_reset(ResetAction::Reset, &mut context);
         assert!(result.is_ok());
     }
@@ -147,10 +217,12 @@ mod tests {
     #[test]
     fn test_factory_reset_wipe_success() {
         let mut context = ContextImpl::new();
+        prepare_files(&mut context, "");
         setup_disk("disk_path".to_string(), "size".to_string(), &mut context);
         context.set_command_stdout("start", "".to_string());
         context.set_command_stdout("bash", "".to_string());
-        context.set_command_stdout("/usr/sbin/factory_reset.sh", "".to_string());
+        context.set_command_stdout("/usr/share/cutoff/inform_shopfloor.sh", "".to_string());
+        mock_cutoff(&mut context);
         let result = factory_reset::factory_reset(ResetAction::Wipe, &mut context);
         assert!(result.is_ok());
     }
@@ -158,10 +230,12 @@ mod tests {
     #[test]
     fn test_factory_reset_wipe_error_ignore() {
         let mut context = ContextImpl::new();
+        prepare_files(&mut context, "");
         setup_disk("disk_path".to_string(), "size".to_string(), &mut context);
         context.set_command_stdout("start", "".to_string());
         context.set_command_stderr("bash", "stderr".to_string());
-        context.set_command_stdout("/usr/sbin/factory_reset.sh", "".to_string());
+        context.set_command_stdout("/usr/share/cutoff/inform_shopfloor.sh", "".to_string());
+        mock_cutoff(&mut context);
         let result = factory_reset::factory_reset(ResetAction::Wipe, &mut context);
         assert!(result.is_ok());
     }
@@ -169,11 +243,13 @@ mod tests {
     #[test]
     fn test_factory_reset_secure_success() {
         let mut context = ContextImpl::new();
+        prepare_files(&mut context, "");
         setup_disk("disk_path".to_string(), "size".to_string(), &mut context);
         context.set_command_stdout("start", "".to_string());
         context.set_command_stdout("/usr/sbin/script_wrapper.sh", "".to_string());
         context.set_command_stdout("/usr/sbin/script_wrapper.sh", "".to_string());
-        context.set_command_stdout("/usr/sbin/factory_reset.sh", "".to_string());
+        context.set_command_stdout("/usr/share/cutoff/inform_shopfloor.sh", "".to_string());
+        mock_cutoff(&mut context);
         let result = factory_reset::factory_reset(ResetAction::Secure, &mut context);
         assert!(result.is_ok());
     }
@@ -212,10 +288,12 @@ mod tests {
     #[test]
     fn test_factory_reset_verify_success() {
         let mut context = ContextImpl::new();
+        prepare_files(&mut context, "");
         setup_disk("disk_path".to_string(), "size".to_string(), &mut context);
         context.set_command_stdout("start", "".to_string());
         context.set_command_stdout("/usr/sbin/script_wrapper.sh", "".to_string());
-        context.set_command_stdout("/usr/sbin/factory_reset.sh", "".to_string());
+        context.set_command_stdout("/usr/share/cutoff/inform_shopfloor.sh", "".to_string());
+        mock_cutoff(&mut context);
         let result = factory_reset::factory_reset(ResetAction::Verify, &mut context);
         assert!(result.is_ok());
     }
@@ -235,11 +313,114 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_display_qrcode() {
+        let mut context = ContextImpl::new();
+        prepare_files(&mut context, "frecon_id");
+        let dir = context
+            .root_dir()
+            .join("mnt/stateful_partition/dev_image/etc");
+        fs::write(
+            dir.join("lsb-factory"),
+            "DISPLAY_QRCODE=true\nDISPLAY_INFO=hwid serial_number wifi_mac0 mlb_serial_number",
+        )
+        .unwrap();
+
+        context.set_command_stdout("crossystem", "HWID".to_string());
+        context.set_command_stdout("vpd", "SN".to_string());
+        context.set_command_stdout("vpd", "WIFI".to_string());
+        context.set_command_stdout("vpd", "MLBSN".to_string());
+        context.set_command_stdout("bash", "".to_string());
+
+        let result = factory_reset::display_qrcode(&mut context);
+        assert!(result.is_ok());
+        assert_eq!(
+            fs::read(
+                context
+                    .root_dir()
+                    .join("proc/frecon_id/root/qrcode.png")
+                    .to_str()
+                    .unwrap()
+            )
+            .unwrap(),
+            fs::read("tests/qrcode/ALL.png").unwrap()
+        );
+    }
+
+    #[test]
+    fn test_display_qrcode_multi() {
+        let mut context = ContextImpl::new();
+        prepare_files(&mut context, "frecon_id");
+        let dir = context
+            .root_dir()
+            .join("mnt/stateful_partition/dev_image/etc");
+        fs::write(
+            dir.join("lsb-factory"),
+            "DISPLAY_QRCODE=true\nDISPLAY_INFO=serial_number,hwid",
+        )
+        .unwrap();
+        context.set_command_stdout("vpd", "".to_string());
+        context.set_command_stdout("crossystem", "HWID".to_string());
+        context.set_command_stdout("bash", "".to_string());
+        context.set_command_stdout("bash", "".to_string());
+
+        let result = factory_reset::display_qrcode(&mut context);
+        assert!(result.is_ok());
+        // The former will be overwritten.
+        assert_eq!(
+            fs::read(
+                context
+                    .root_dir()
+                    .join("proc/frecon_id/root/qrcode.png")
+                    .to_str()
+                    .unwrap()
+            )
+            .unwrap(),
+            fs::read("tests/qrcode/HWID.png").unwrap()
+        );
+    }
+
+    #[test]
+    fn test_display_qrcode_unsupported_key() {
+        let mut context = ContextImpl::new();
+        prepare_files(&mut context, "frecon_id");
+        let dir = context
+            .root_dir()
+            .join("mnt/stateful_partition/dev_image/etc");
+        fs::write(
+            dir.join("lsb-factory"),
+            "DISPLAY_QRCODE=true\nDISPLAY_INFO=abc",
+        )
+        .unwrap();
+
+        let result = factory_reset::display_qrcode(&mut context);
+        let err = result.unwrap_err();
+        let message = err.root_cause();
+        assert_eq!(format!("{}", message), "Unknown key: abc");
+    }
+
     fn setup_disk(disk_path: String, size: String, context: &mut ContextImpl) {
         context.set_command_stdout("sh", disk_path.clone());
         context.set_command_stdout("sh", disk_path.clone());
         context.set_command_stdout("sh", disk_path.clone());
         context.set_command_stdout("pvdisplay", "".to_string());
         context.set_command_stdout("blockdev", size);
+    }
+
+    fn mock_cutoff(context: &mut ContextImpl) {
+        context.set_command_stdout("/usr/share/cutoff/cutoff.sh", "".to_string());
+    }
+
+    fn prepare_files(context: &mut ContextImpl, frecon_id: &str) {
+        let dir = context
+            .root_dir()
+            .join("mnt/stateful_partition/dev_image/etc");
+        fs::create_dir_all(&dir).unwrap();
+        File::create(dir.join("lsb-factory")).unwrap();
+        fs::create_dir_all(context.root_dir().join("proc").join(frecon_id).join("root")).unwrap();
+        let dir = context.root_dir().join("run/frecon");
+        fs::create_dir_all(dir.clone()).unwrap();
+        File::create(dir.join("vt0")).unwrap();
+        fs::write(dir.join("pid"), frecon_id).unwrap();
     }
 }

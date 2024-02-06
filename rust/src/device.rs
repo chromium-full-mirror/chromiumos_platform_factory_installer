@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::collections::HashMap;
 use std::fs;
 
 use anyhow::{Context as _, Result};
@@ -99,11 +100,11 @@ pub fn get_release_stateful_partition(context: &mut dyn Context) -> Result<Strin
     Ok(fixed_device_storage)
 }
 
-/// Gets the stateful partition of dev image.
-pub fn get_dev_stateful_partition(context: &dyn Context) -> Result<String> {
+/// Gets the config in lsb-factory in stateful partition.
+pub fn get_lsb_factory(context: &dyn Context) -> Result<HashMap<String, String>> {
     // The format of `lsb-factory` is "shell-executable" which may contain "#" comments and empty
     // lines.
-    let lsb_factory = string_utils::parse_dict_ignore_error(
+    Ok(string_utils::parse_dict_ignore_error(
         fs::read_to_string(
             context
                 .root_dir()
@@ -111,26 +112,33 @@ pub fn get_dev_stateful_partition(context: &dyn Context) -> Result<String> {
         )?
         .trim()
         .split("\n")
-        .map(|line| line.split("#").nth(0).unwrap())
+        .map(|line| {
+            line.split("#")
+                .nth(0)
+                .unwrap()
+                // Shell-executable allows value quoted by "".
+                .trim_matches('"')
+        })
         .collect::<Vec<&str>>(),
         "=",
-    );
+    ))
+}
+
+/// Gets the stateful partition of dev image.
+pub fn get_dev_stateful_partition(context: &dyn Context) -> Result<String> {
+    let lsb_factory = get_lsb_factory(context)?;
 
     // `REAL_USB_DEV` presents the rootfs partition (usually the 3rd partition).
     // Replace with the 1st partition which is the stateful partition.
     // E.g. /dev/sda3 -> /dev/sda1
-    let dev_stateful_partition = String::from(
+    Ok(String::from(
         Regex::new("[0-9]")?.replace(
             lsb_factory
                 .get("REAL_USB_DEV")
                 .context("Unable to get the path of dev image.")?,
             "1",
         ),
-    )
-    // Shell-executable allows value quoted by "".
-    .trim_matches('"')
-    .to_string();
-    Ok(dev_stateful_partition)
+    ))
 }
 
 /// Gets the model name of device.
