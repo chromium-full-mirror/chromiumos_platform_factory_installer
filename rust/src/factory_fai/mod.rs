@@ -15,12 +15,12 @@ use crate::device;
 use crate::factory_fai::config::{ConfigOptions, DataCollector, FAIConfig};
 use crate::factory_fai::parsers::Parser;
 use crate::system::context::Context;
-use crate::utils::file_utils;
 use crate::utils::process_utils::{Command, StringOutput};
 #[cfg(not(test))]
 use crate::utils::sys_utils;
 #[cfg(test)]
 use crate::utils::sys_utils::mock as sys_utils;
+use crate::utils::{file_utils, vpd_utils};
 
 pub mod args;
 pub mod built_in_collectors;
@@ -73,7 +73,7 @@ fn save_to_usb(context: &mut dyn Context, data: &str) -> Result<(String, String)
     let filename = format!(
         "factory_fai_{}_{}.json",
         device::get_model_name(context)?,
-        device::get_serial_number(context)?
+        vpd_utils::get_ro_value("serial_number", context)?
     );
 
     sys_utils::mount(&usb, mount_point.as_os_str(), false).context(
@@ -199,11 +199,7 @@ mod tests {
         )
         .unwrap();
         // The output JSON filename should be "factory_fai_<model>_<serial_number>.json".
-        file_utils::create_file(
-            context.root_dir().join("sys/firmware/vpd/ro/serial_number"),
-            "sn12345",
-        )
-        .unwrap();
+        context.set_command_stdout("vpd", "sn12345".to_string());
         context.set_command_stdout("cros_config", "model".to_string());
         let config_path = context.tempdir(None).unwrap().join("config.json");
         file_utils::create_file(&config_path, "{}").unwrap();

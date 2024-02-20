@@ -161,13 +161,6 @@ pub fn get_firmware_manifest_key(context: &mut dyn Context) -> Result<String> {
         .to_string())
 }
 
-/// Get the serial number of the device.
-pub fn get_serial_number(context: &dyn Context) -> Result<String> {
-    Ok(fs::read_to_string(
-        context.root_dir().join("sys/firmware/vpd/ro/serial_number"),
-    )?)
-}
-
 /// Returns True if the device is using Ti50.
 pub fn is_ti50(context: &mut dyn Context) -> Result<bool> {
     let gsc_name = context
@@ -185,7 +178,6 @@ mod tests {
 
     use crate::device;
     use crate::system::context::{Context, ContextImpl};
-    use crate::utils::file_utils;
     use crate::utils::process_utils::StringOutput;
 
     #[test]
@@ -283,17 +275,6 @@ mod tests {
         assert_eq!(
             device::get_firmware_manifest_key(&mut context).unwrap(),
             "key".to_string()
-        );
-    }
-
-    #[test]
-    fn test_get_serial_number_success() {
-        let context = ContextImpl::new();
-        let filepath = context.root_dir().join("sys/firmware/vpd/ro/serial_number");
-        file_utils::create_file(filepath, "a_serial_number").unwrap();
-        assert_eq!(
-            device::get_serial_number(&context).unwrap(),
-            "a_serial_number".to_string()
         );
     }
 
