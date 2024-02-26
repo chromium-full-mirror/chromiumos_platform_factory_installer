@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 pub mod crossystem_utils;
+pub mod ectool_utils;
 pub mod error;
 pub mod file_utils;
 pub mod futility_utils;
