@@ -11,9 +11,8 @@
 
 use anyhow::{self, Result};
 
-use crate::device;
 use crate::factory_installer::args::ResetAction;
-use crate::factory_installer::{cutoff, script_wrapper};
+use crate::factory_installer::script_wrapper;
 use crate::system::context::Context;
 use crate::utils::crossystem_utils;
 use crate::utils::process_utils::StringOutput;
@@ -27,6 +26,7 @@ use crate::utils::terminal_utils;
 #[cfg(test)]
 use crate::utils::terminal_utils::mock as terminal_utils;
 use crate::utils::vpd_utils;
+use crate::{cutoff, device};
 
 // CUTOFF_DIR is provided from platform/factory/sh/cutoff, repacked by ebuild.
 const CUTOFF_DIR: &str = "/usr/share/cutoff";
@@ -408,7 +408,10 @@ mod tests {
     }
 
     fn mock_cutoff(context: &mut ContextImpl) {
-        context.set_command_stdout("/usr/share/cutoff/cutoff.sh", "".to_string());
+        context.set_command_stdout(
+            context.root_dir().join("usr/share/cutoff/cutoff.sh"),
+            "".to_string(),
+        );
     }
 
     fn prepare_files(context: &mut ContextImpl, frecon_id: &str) {

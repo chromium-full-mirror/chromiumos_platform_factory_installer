@@ -9,6 +9,8 @@ pub mod factory_ufs;
 pub mod factory_fai;
 
 #[cfg(feature = "factory-installer")]
+pub mod cutoff;
+#[cfg(feature = "factory-installer")]
 pub mod factory_installer;
 
 pub mod device;

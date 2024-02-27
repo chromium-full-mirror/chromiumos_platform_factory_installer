@@ -3,9 +3,9 @@
 // found in the LICENSE file.
 
 use anyhow::Result;
+use factory_installer::cutoff;
 use factory_installer::factory_fai;
 use factory_installer::factory_installer::args::{Action, Args, Parser};
-use factory_installer::factory_installer::cutoff;
 use factory_installer::factory_installer::factory_reset;
 use factory_installer::factory_installer::script_wrapper;
 use factory_installer::system::context::ContextImpl;

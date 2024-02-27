@@ -17,6 +17,18 @@ pub fn get_hwid(context: &mut dyn Context) -> Result<String> {
     }
 }
 
+/// Cutoff the battery after reboot
+pub fn set_battery_cutoff_request(value: i32, context: &mut dyn Context) -> Result<()> {
+    let output = context
+        .command("crossystem")
+        .arg(format!("battery_cutoff_request={}", value))
+        .output()?;
+    if !output.status.success() {
+        anyhow::bail!("Call crossystem fail.")
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use crate::system::context::ContextImpl;
@@ -41,5 +53,25 @@ mod tests {
         let err = result.unwrap_err();
         let message = err.root_cause();
         assert_eq!(format!("{}", message), "Get HWID fail.");
+    }
+
+    #[test]
+    fn test_cutoff_battery_success() {
+        let mut context = ContextImpl::new();
+        context.set_command_stdout("crossystem", "".to_string());
+
+        let result = crossystem_utils::set_battery_cutoff_request(1, &mut context);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_cutoff_battery_failed() {
+        let mut context = ContextImpl::new();
+        context.set_command_stderr("crossystem", "error".to_string());
+
+        let result = crossystem_utils::set_battery_cutoff_request(1, &mut context);
+        let err = result.unwrap_err();
+        let message = err.root_cause();
+        assert_eq!(format!("{}", message), "Call crossystem fail.");
     }
 }
