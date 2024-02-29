@@ -6,14 +6,14 @@
 // cutoff protection by sending commands to EC with ectool.
 
 use std::fs;
+use std::process::Stdio;
 
 use anyhow::{self, Result};
-use serde::Deserialize;
 
-use crate::cutoff::config::{CutoffAcState, CutoffMethod};
+use crate::cutoff::config::{CutoffConfig, CutoffMethod};
 use crate::system::context::Context;
 use crate::utils::crossystem_utils;
-use crate::utils::ectool_utils::{self, ChargeControl};
+use crate::utils::ectool_utils::{self, BatteryInfo, ChargeControl};
 #[cfg(not(test))]
 use crate::utils::sys_utils;
 #[cfg(test)]
@@ -22,37 +22,6 @@ use crate::utils::sys_utils::mock as sys_utils;
 pub mod config;
 
 const CUTOFF_DIR: &str = "usr/share/cutoff";
-
-#[derive(Deserialize, Debug)]
-#[serde(rename_all(deserialize = "SCREAMING_SNAKE_CASE"))]
-pub struct CutoffConfig {
-    pub cutoff_method: CutoffMethod,
-    pub cutoff_ac_state: CutoffAcState,
-    #[serde(default = "i32_min")]
-    pub cutoff_battery_min_percentage: i32,
-    #[serde(default = "i32_max")]
-    pub cutoff_battery_max_percentage: i32,
-    #[serde(default = "i32_min")]
-    pub cutoff_battery_min_voltage: i32,
-    #[serde(default = "i32_max")]
-    pub cutoff_battery_max_voltage: i32,
-    #[serde(default)]
-    pub shopfloor_url: String,
-    #[serde(default)]
-    pub tty: String,
-    #[serde(default)]
-    pub continue_key: String,
-    #[serde(default)]
-    pub qrcode_info: String,
-}
-
-fn i32_min() -> i32 {
-    i32::MIN
-}
-
-fn i32_max() -> i32 {
-    i32::MAX
-}
 
 pub fn do_cutoff(context: &mut dyn Context) -> Result<()> {
     // TODO(jasonchuang): Replace cutoff.sh to rust implementation.
@@ -111,6 +80,131 @@ pub fn cutoff_battery(context: &mut dyn Context) -> Result<()> {
         }
     }
     anyhow::bail!("Cutoff fail")
+}
+
+pub fn check_battery(context: &mut dyn Context) -> Result<()> {
+    // Needed by 'ectool battery'.
+    fs::create_dir_all(context.root_dir().join("var/lib/power_manager"))?;
+    context.command("modprobe").arg("i2c_dev").output()?;
+
+    let config = get_cutoff_config(context)?;
+    eprintln!("{:?}", config);
+    anyhow::ensure!(
+        config.cutoff_battery_max_percentage >= 0,
+        "The max percentage should not be negative.",
+    );
+    anyhow::ensure!(
+        config.cutoff_battery_min_percentage <= 100,
+        "The min percentage should not be larger than 100.",
+    );
+    let info = ectool_utils::get_battery_info(context)?;
+    if is_needed_charge(&config, &info) {
+        charge_battery(&config, context)?;
+    }
+    if is_needed_discharge(&config, &info) {
+        discharge_battery(&config, context)?;
+    }
+
+    Ok(())
+}
+
+fn charge_battery(config: &CutoffConfig, context: &mut dyn Context) -> Result<()> {
+    wait_ac_connected(context)?;
+    ectool_utils::charge_control(ChargeControl::Normal, context)?;
+    display_message("charging", context)?;
+
+    let mut last_battery = i32::MIN;
+    let mut last_voltage = i32::MIN;
+    loop {
+        sys_utils::sleep(1.0)?;
+        let info = ectool_utils::get_battery_info(context)?;
+        if !is_needed_charge(config, &info) {
+            break;
+        }
+        if info.battery_percentage < config.cutoff_battery_min_percentage {
+            if info.battery_percentage > last_battery {
+                last_battery = info.battery_percentage;
+                println!(
+                    "Check battery percentage, current:{}, target:{}",
+                    info.battery_percentage, config.cutoff_battery_min_percentage
+                );
+            }
+        }
+        if info.present_voltage < config.cutoff_battery_min_voltage {
+            if info.present_voltage > last_voltage {
+                last_voltage = info.present_voltage;
+                println!(
+                    "Check voltage, current:{}, target:{}",
+                    info.present_voltage, config.cutoff_battery_min_voltage
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
+fn discharge_battery(config: &CutoffConfig, context: &mut dyn Context) -> Result<()> {
+    ectool_utils::charge_control(ChargeControl::Discharge, context)?;
+
+    // Use stressapptest to discharge battery faster.
+    // It may crash the system if it use too much memory on Factory Shim.
+    // Run stressapptest in background without print anything.
+    let mut child = context
+        .command("stressapptest")
+        .stdout(Stdio::null())
+        .args(["-M", "128", "-s", "1000000"])
+        .spawn()?;
+    display_message("discharging", context)?;
+
+    let mut last_battery = i32::MAX;
+    let mut last_voltage = i32::MAX;
+    loop {
+        sys_utils::sleep(1.0)?;
+        let info = ectool_utils::get_battery_info(context)?;
+        if !is_needed_discharge(config, &info) {
+            break;
+        }
+        if info.battery_percentage > config.cutoff_battery_max_percentage {
+            if info.battery_percentage < last_battery {
+                last_battery = info.battery_percentage;
+                println!(
+                    "Check battery percentage, current:{}, target:{}",
+                    info.battery_percentage, config.cutoff_battery_max_percentage
+                );
+            }
+        }
+        if info.present_voltage > config.cutoff_battery_max_voltage {
+            if info.present_voltage < last_voltage {
+                last_voltage = info.present_voltage;
+                println!(
+                    "Check voltage, current:{}, target:{}",
+                    info.present_voltage, config.cutoff_battery_max_voltage
+                );
+            }
+        }
+    }
+    child.kill()?;
+    Ok(())
+}
+
+fn is_needed_charge(config: &CutoffConfig, info: &BatteryInfo) -> bool {
+    return info.battery_percentage < config.cutoff_battery_min_percentage
+        || info.present_voltage < config.cutoff_battery_min_voltage;
+}
+
+fn is_needed_discharge(config: &CutoffConfig, info: &BatteryInfo) -> bool {
+    return info.battery_percentage > config.cutoff_battery_max_percentage
+        || info.present_voltage > config.cutoff_battery_max_voltage;
+}
+
+fn wait_ac_connected(context: &mut dyn Context) -> Result<()> {
+    if !ectool_utils::get_battery_info(context)?.is_ac_connected {
+        display_message("connect_ac", context)?;
+    }
+    while !ectool_utils::get_battery_info(context)?.is_ac_connected {
+        sys_utils::sleep(0.5)?;
+    }
+    Ok(())
 }
 
 fn display_message(message: &str, context: &mut dyn Context) -> Result<()> {
@@ -347,5 +441,151 @@ mod tests {
         assert!(message
             .to_string()
             .contains("missing field `CUTOFF_METHOD`"));
+    }
+
+    #[test]
+    fn test_check_battery_ok() {
+        let mut context = ContextImpl::new();
+        context.set_command_stdout("modprobe", "".to_string());
+        let dir = context.root_dir().join("usr/share/cutoff");
+        fs::create_dir_all(dir.clone()).unwrap();
+        let config = json!({
+            "CUTOFF_AC_STATE": "connect_ac",
+            "CUTOFF_METHOD": "shutdown",
+        });
+        fs::write(dir.join("cutoff.json"), config.to_string()).unwrap();
+        mock_battery_info(1, true, &mut context);
+
+        let result = cutoff::check_battery(&mut context);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_check_battery_max_percentage_negative() {
+        let mut context = ContextImpl::new();
+        context.set_command_stdout("modprobe", "".to_string());
+        let dir = context.root_dir().join("usr/share/cutoff");
+        fs::create_dir_all(dir.clone()).unwrap();
+        let config = json!({
+            "CUTOFF_AC_STATE": "connect_ac",
+            "CUTOFF_METHOD": "shutdown",
+            "CUTOFF_BATTERY_MAX_PERCENTAGE": -1,
+        });
+        fs::write(dir.join("cutoff.json"), config.to_string()).unwrap();
+        mock_battery_info(1, true, &mut context);
+
+        let result = cutoff::check_battery(&mut context);
+        let err = result.unwrap_err();
+        let message = err.root_cause();
+        assert_eq!(
+            format!("{}", message),
+            "The max percentage should not be negative."
+        );
+    }
+
+    #[test]
+    fn test_check_battery_min_percentage_larger_than_100() {
+        let mut context = ContextImpl::new();
+        context.set_command_stdout("modprobe", "".to_string());
+        let dir = context.root_dir().join("usr/share/cutoff");
+        fs::create_dir_all(dir.clone()).unwrap();
+        let config = json!({
+            "CUTOFF_AC_STATE": "connect_ac",
+            "CUTOFF_METHOD": "shutdown",
+            "CUTOFF_BATTERY_MIN_PERCENTAGE": 101,
+        });
+        fs::write(dir.join("cutoff.json"), config.to_string()).unwrap();
+        mock_battery_info(1, true, &mut context);
+
+        let result = cutoff::check_battery(&mut context);
+        let err = result.unwrap_err();
+        let message = err.root_cause();
+        assert_eq!(
+            format!("{}", message),
+            "The min percentage should not be larger than 100."
+        );
+    }
+
+    #[test]
+    fn test_check_battery_charge() {
+        let mut context = ContextImpl::new();
+        context.set_command_stdout("modprobe", "".to_string());
+        let dir = context.root_dir().join("usr/share/cutoff");
+        fs::create_dir_all(dir.clone()).unwrap();
+        let config = json!({
+            "CUTOFF_AC_STATE": "connect_ac",
+            "CUTOFF_METHOD": "shutdown",
+            "CUTOFF_BATTERY_MIN_PERCENTAGE": 70,
+        });
+        fs::write(dir.join("cutoff.json"), config.to_string()).unwrap();
+        mock_battery_info(60, false, &mut context); // Need to charge
+        mock_battery_info(60, false, &mut context); // Need to connect ac
+        context.set_command_stdout(
+            context
+                .root_dir()
+                .join("usr/share/cutoff/display_wipe_message.sh"),
+            "connect_ac".to_string(),
+        );
+        mock_battery_info(60, true, &mut context); // Ac connected
+        context.set_command_stdout("ectool", "normal".to_string());
+        context.set_command_stdout(
+            context
+                .root_dir()
+                .join("usr/share/cutoff/display_wipe_message.sh"),
+            "charging".to_string(),
+        );
+        mock_battery_info(60, true, &mut context); // Wait charge
+        mock_battery_info(70, true, &mut context); // Charge completed
+
+        let result = cutoff::check_battery(&mut context);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_check_battery_discharge() {
+        let mut context = ContextImpl::new();
+        context.set_command_stdout("modprobe", "".to_string());
+        let dir = context.root_dir().join("usr/share/cutoff");
+        fs::create_dir_all(dir.clone()).unwrap();
+        let config = json!({
+            "CUTOFF_AC_STATE": "connect_ac",
+            "CUTOFF_METHOD": "shutdown",
+            "CUTOFF_BATTERY_MAX_PERCENTAGE": 70,
+        });
+        fs::write(dir.join("cutoff.json"), config.to_string()).unwrap();
+        mock_battery_info(80, true, &mut context); // Need to discharge
+        context.set_command_stdout(
+            context
+                .root_dir()
+                .join("usr/share/cutoff/display_wipe_message.sh"),
+            "remove_ac".to_string(),
+        );
+        context.set_command_stdout("ectool", "discharge".to_string());
+        context.set_command_stdout("stressapptest", "".to_string());
+        context.set_command_stdout(
+            context
+                .root_dir()
+                .join("usr/share/cutoff/display_wipe_message.sh"),
+            "discharging".to_string(),
+        );
+        mock_battery_info(80, true, &mut context); // Wait discharge
+        mock_battery_info(70, true, &mut context); // Discharge completed
+
+        let result = cutoff::check_battery(&mut context);
+        assert!(result.is_ok());
+    }
+
+    fn mock_battery_info(percentage: i32, is_ac_connected: bool, context: &mut ContextImpl) {
+        let ac = match is_ac_connected {
+            true => "AC_PRESENT",
+            false => "",
+        };
+        context.set_command_stdout(
+            "ectool",
+            format!(
+                "Design capacity: 100 mAh Remaining capacity {} mAh Present voltage 10 mV {}",
+                percentage, ac
+            ),
+        );
     }
 }

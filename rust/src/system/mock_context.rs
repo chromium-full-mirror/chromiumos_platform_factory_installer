@@ -74,6 +74,7 @@ impl MockContext {
         let program = program.as_ref().to_os_string().into_string().unwrap();
         let mut child = Child::default();
         child.expect_wait().return_once(move || Ok(output.status));
+        child.expect_kill().return_once(move || Ok(()));
         let mut cmd = Command::default();
         cmd.expect_spawn().return_once(move || Ok(child));
         cmd.expect_output().return_once(move || Ok(wait_output));

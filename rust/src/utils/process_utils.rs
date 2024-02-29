@@ -58,9 +58,9 @@ impl StringOutput for std::process::Output {
 mod mock {
     use std::ffi::OsStr;
     use std::path::Path;
-    use std::process::ExitStatus;
-    use std::process::Output;
+    use std::process::{ExitStatus, Output, Stdio};
 
+    use anyhow::{self, Result};
     use mockall;
 
     use crate::utils::process_utils::Child;
@@ -86,6 +86,8 @@ mod mock {
             pub fn new(&mut self) -> Self;
             #[mockall::concretize]
             pub fn wait(&mut self) -> std::io::Result<ExitStatus>;
+            #[mockall::concretize]
+            pub fn kill(&mut self) -> Result<()>;
         }
     }
 
@@ -119,6 +121,9 @@ mod mock {
             self
         }
         pub fn env<S: AsRef<OsStr>>(&mut self, _k: S, _v: S) -> &mut Self {
+            self
+        }
+        pub fn stdout(&mut self, _stdout: Stdio) -> &mut Self {
             self
         }
     }

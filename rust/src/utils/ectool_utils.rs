@@ -30,6 +30,7 @@ impl fmt::Display for ChargeControl {
 pub struct BatteryInfo {
     pub battery_percentage: i32,
     pub present_voltage: i32,
+    pub is_ac_connected: bool,
 }
 
 pub fn get_battery_info(context: &mut dyn Context) -> Result<BatteryInfo> {
@@ -63,11 +64,11 @@ pub fn get_battery_info(context: &mut dyn Context) -> Result<BatteryInfo> {
     let Some(present_voltage) = re.captures(&stdout) else {
         anyhow::bail!("Present voltage not found.");
     };
-
     Ok(BatteryInfo {
         battery_percentage: remaining_capacity[1].parse::<i32>()? * 100
             / design_capacity[1].parse::<i32>()?,
         present_voltage: present_voltage[1].parse::<i32>()?,
+        is_ac_connected: stdout.contains("AC_PRESENT"),
     })
 }
 
@@ -115,11 +116,13 @@ mod tests {
         let mut context = ContextImpl::new();
         context.set_command_stdout(
             "ectool",
-            "Design capacity: 100 mAh Remaining capacity 70 mAh Present voltage 10 mV".to_string(),
+            "Design capacity: 100 mAh Remaining capacity 70 mAh Present voltage 10 mV AC_PRESENT"
+                .to_string(),
         );
         let result = ectool_utils::get_battery_info(&mut context).unwrap();
         assert_eq!(result.battery_percentage, 70);
         assert_eq!(result.present_voltage, 10);
+        assert!(result.is_ac_connected);
     }
 
     #[test]
