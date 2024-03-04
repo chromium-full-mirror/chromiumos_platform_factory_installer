@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::io::{self, Read};
+use std::io;
 
 use anyhow::Result;
 
@@ -12,10 +12,14 @@ pub fn clear() {
 }
 
 /// Blocks the terminal until user presses enter.
-pub fn wait_enter() -> Result<()> {
-    let mut stdin = io::stdin();
-    stdin.read(&mut [0u8])?;
-    Ok(())
+pub fn wait_enter(wait_keys: &str) -> Result<()> {
+    let mut stdin = String::new();
+    io::stdin().read_line(&mut stdin)?;
+    if wait_keys.is_empty() || stdin.contains(wait_keys) {
+        Ok(())
+    } else {
+        wait_enter(wait_keys)
+    }
 }
 
 #[cfg(test)]
@@ -25,7 +29,7 @@ pub mod mock {
     pub fn clear() {
         return;
     }
-    pub fn wait_enter() -> Result<()> {
+    pub fn wait_enter(_wait_keys: &str) -> Result<()> {
         Ok(())
     }
 }

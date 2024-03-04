@@ -10,27 +10,38 @@ use std::process::Stdio;
 
 use anyhow::{self, Result};
 
-use crate::cutoff::config::{CutoffConfig, CutoffMethod};
+use crate::cutoff::config::{CutoffAcState, CutoffConfig, CutoffMethod};
 use crate::system::context::Context;
-use crate::utils::crossystem_utils;
 use crate::utils::ectool_utils::{self, BatteryInfo, ChargeControl};
-#[cfg(not(test))]
-use crate::utils::sys_utils;
+use crate::utils::process_utils::StringOutput;
 #[cfg(test)]
 use crate::utils::sys_utils::mock as sys_utils;
+#[cfg(test)]
+use crate::utils::terminal_utils::mock as terminal_utils;
+use crate::utils::{crossystem_utils, qrcode_utils, vpd_utils};
+#[cfg(not(test))]
+use crate::utils::{sys_utils, terminal_utils};
 
 pub mod config;
 
 const CUTOFF_DIR: &str = "usr/share/cutoff";
 
 pub fn do_cutoff(context: &mut dyn Context) -> Result<()> {
-    // TODO(jasonchuang): Replace cutoff.sh to rust implementation.
-    let path = context.root_dir().join(CUTOFF_DIR).join("cutoff.sh");
-    let mut child = context.command(path.to_str().unwrap()).spawn()?;
-    let status = child.wait()?;
-    if !status.success() {
-        anyhow::bail!("cutoff fail")
+    let output = context.command("activate_date").arg("--clean").output()?;
+    if !output.status.success() {
+        anyhow::bail!("Clean activate date fail. error: {}", output.stderr())
     }
+    vpd_utils::delete_rw_value("recovery_count", context)?;
+    let config = get_cutoff_config(context)?;
+    eprintln!("{:?}", config);
+    check_battery(context)?;
+
+    ectool_utils::charge_control(ChargeControl::Idle, context)?;
+    check_ac_state(context)?;
+    display_qrcode(&config.qrcode_info, context)?;
+    println!("Press {} to continue", config.continue_key);
+    terminal_utils::wait_enter(&config.continue_key)?;
+    cutoff_battery(context)?;
     Ok(())
 }
 
@@ -79,7 +90,7 @@ pub fn cutoff_battery(context: &mut dyn Context) -> Result<()> {
             return Ok(());
         }
     }
-    anyhow::bail!("Cutoff fail")
+    Ok(())
 }
 
 pub fn check_battery(context: &mut dyn Context) -> Result<()> {
@@ -207,6 +218,25 @@ fn wait_ac_connected(context: &mut dyn Context) -> Result<()> {
     Ok(())
 }
 
+fn wait_ac_disconnected(context: &mut dyn Context) -> Result<()> {
+    if ectool_utils::get_battery_info(context)?.is_ac_connected {
+        display_message("remove_ac", context)?;
+    }
+    while ectool_utils::get_battery_info(context)?.is_ac_connected {
+        sys_utils::sleep(0.5)?;
+    }
+    Ok(())
+}
+
+fn check_ac_state(context: &mut dyn Context) -> Result<()> {
+    let config = get_cutoff_config(context)?;
+    match config.cutoff_ac_state {
+        CutoffAcState::ConnectAc => wait_ac_connected(context)?,
+        CutoffAcState::RemoveAc => wait_ac_disconnected(context)?,
+    };
+    Ok(())
+}
+
 fn display_message(message: &str, context: &mut dyn Context) -> Result<()> {
     let mut child = context
         .command(
@@ -223,9 +253,45 @@ fn display_message(message: &str, context: &mut dyn Context) -> Result<()> {
     Ok(())
 }
 
+pub fn display_qrcode(qrcode_info: &str, context: &mut dyn Context) -> Result<()> {
+    let mut contents = Vec::<String>::new();
+    if !qrcode_info.is_empty() {
+        // Example: convert "hwid serial_number,hwid" to ["<HWID> <SERIAL_NUMBER>", "<HWID>"]
+        eprintln!("display info = {}", qrcode_info);
+        for info in qrcode_info.split(",") {
+            let mut display_string = vec![];
+            for key in info.split(" ") {
+                let value = match key {
+                    "hwid" => crossystem_utils::get_hwid(context),
+                    "serial_number" => vpd_utils::get_ro_value("serial_number", context),
+                    "mlb_serial_number" => vpd_utils::get_ro_value("mlb_serial_number", context),
+                    "wifi_mac0" => vpd_utils::get_ro_value("wifi_mac0", context),
+                    &_ => anyhow::bail!("Unknown key: {}", key),
+                };
+                display_string.push(value?);
+            }
+            contents.push(display_string.join(" "));
+        }
+        eprintln!("display string = {:?}", contents);
+    }
+    for content in contents {
+        terminal_utils::clear();
+        eprintln!("Press enter to continue...");
+        qrcode_utils::display_qrcode(&content, context)?;
+        terminal_utils::wait_enter("")?;
+    }
+    Ok(())
+}
+
+pub fn failed(context: &mut dyn Context) -> Result<()> {
+    display_message("cutoff_failed", context)?;
+    sys_utils::sleep(86400.0)?;
+    anyhow::bail!("Cutoff failed.")
+}
+
 #[cfg(test)]
 mod tests {
-    use std::fs;
+    use std::fs::{self, File};
 
     use serde_json::json;
 
@@ -235,9 +301,32 @@ mod tests {
     #[test]
     fn test_cutoff_success() {
         let mut context = ContextImpl::new();
+        context.set_command_stdout("activate_date", "".to_string());
+        context.set_command_stderr("vpd", "".to_string());
+        context.set_command_stdout("modprobe", "".to_string());
+        create_cutoff_config(
+            json!({
+                "CUTOFF_METHOD": "reboot",
+                "CUTOFF_AC_STATE": "remove_ac"
+            }),
+            &mut context,
+        );
+        mock_battery_info(60, true, &mut context); // No need to charge or discharge
+        context.set_command_stdout("ectool", "".to_string());
+        mock_battery_info(60, true, &mut context); // Wait ac disconnected
         context.set_command_stdout(
-            context.root_dir().join("usr/share/cutoff/cutoff.sh"),
-            "".to_string(),
+            context
+                .root_dir()
+                .join("usr/share/cutoff/display_wipe_message.sh"),
+            "remove ac".to_string(),
+        );
+        mock_battery_info(60, false, &mut context); // ac disconnected
+        context.set_command_stdout("ectool", "".to_string());
+        context.set_command_stdout(
+            context
+                .root_dir()
+                .join("usr/share/cutoff/display_wipe_message.sh"),
+            "cutting off".to_string(),
         );
         let result = cutoff::do_cutoff(&mut context);
         assert!(result.is_ok());
@@ -246,14 +335,9 @@ mod tests {
     #[test]
     fn test_cutoff_error() {
         let mut context = ContextImpl::new();
-        context.set_command_stderr(
-            context.root_dir().join("usr/share/cutoff/cutoff.sh"),
-            "error".to_string(),
-        );
+        context.set_command_stderr("activate_date", "error".to_string());
         let result = cutoff::do_cutoff(&mut context);
-        let err = result.unwrap_err();
-        let message = err.root_cause();
-        assert_eq!(format!("{}", message), "cutoff fail");
+        assert!(result.is_err());
     }
 
     #[test]
@@ -266,13 +350,13 @@ mod tests {
                 .join("usr/share/cutoff/display_wipe_message.sh"),
             "".to_string(),
         );
-        let dir = context.root_dir().join("usr/share/cutoff");
-        fs::create_dir_all(dir.clone()).unwrap();
-        let config = json!({
-            "CUTOFF_METHOD": "reboot",
-            "CUTOFF_AC_STATE": "connect_ac"
-        });
-        fs::write(dir.join("cutoff.json"), config.to_string()).unwrap();
+        create_cutoff_config(
+            json!({
+                "CUTOFF_METHOD": "reboot",
+                "CUTOFF_AC_STATE": "connect_ac"
+            }),
+            &mut context,
+        );
 
         let result = cutoff::cutoff_battery(&mut context);
         assert!(result.is_ok());
@@ -289,13 +373,13 @@ mod tests {
                 .join("usr/share/cutoff/display_wipe_message.sh"),
             "".to_string(),
         );
-        let dir = context.root_dir().join("usr/share/cutoff");
-        fs::create_dir_all(dir.clone()).unwrap();
-        let config = json!({
-            "CUTOFF_METHOD": "ectool_cutoff",
-            "CUTOFF_AC_STATE": "connect_ac"
-        });
-        fs::write(dir.join("cutoff.json"), config.to_string()).unwrap();
+        create_cutoff_config(
+            json!({
+                "CUTOFF_METHOD": "ectool_cutoff",
+                "CUTOFF_AC_STATE": "connect_ac"
+            }),
+            &mut context,
+        );
 
         let result = cutoff::cutoff_battery(&mut context);
         assert!(result.is_ok());
@@ -312,13 +396,13 @@ mod tests {
                 .join("usr/share/cutoff/display_wipe_message.sh"),
             "".to_string(),
         );
-        let dir = context.root_dir().join("usr/share/cutoff");
-        fs::create_dir_all(dir.clone()).unwrap();
-        let config = json!({
-            "CUTOFF_METHOD": "battery_cutoff",
-            "CUTOFF_AC_STATE": "connect_ac"
-        });
-        fs::write(dir.join("cutoff.json"), config.to_string()).unwrap();
+        create_cutoff_config(
+            json!({
+                "CUTOFF_METHOD": "battery_cutoff",
+                "CUTOFF_AC_STATE": "connect_ac"
+            }),
+            &mut context,
+        );
 
         let result = cutoff::cutoff_battery(&mut context);
         assert!(result.is_ok());
@@ -335,13 +419,13 @@ mod tests {
                 .join("usr/share/cutoff/display_wipe_message.sh"),
             "".to_string(),
         );
-        let dir = context.root_dir().join("usr/share/cutoff");
-        fs::create_dir_all(dir.clone()).unwrap();
-        let config = json!({
-            "CUTOFF_METHOD": "ec_hibernate",
-            "CUTOFF_AC_STATE": "connect_ac"
-        });
-        fs::write(dir.join("cutoff.json"), config.to_string()).unwrap();
+        create_cutoff_config(
+            json!({
+                "CUTOFF_METHOD": "ec_hibernate",
+                "CUTOFF_AC_STATE": "connect_ac"
+            }),
+            &mut context,
+        );
 
         let result = cutoff::cutoff_battery(&mut context);
         assert!(result.is_ok());
@@ -357,13 +441,13 @@ mod tests {
                 .join("usr/share/cutoff/display_wipe_message.sh"),
             "".to_string(),
         );
-        let dir = context.root_dir().join("usr/share/cutoff");
-        fs::create_dir_all(dir.clone()).unwrap();
-        let config = json!({
-            "CUTOFF_METHOD": "shutdown",
-            "CUTOFF_AC_STATE": "connect_ac"
-        });
-        fs::write(dir.join("cutoff.json"), config.to_string()).unwrap();
+        create_cutoff_config(
+            json!({
+                "CUTOFF_METHOD": "shutdown",
+                "CUTOFF_AC_STATE": "connect_ac"
+            }),
+            &mut context,
+        );
 
         let result = cutoff::cutoff_battery(&mut context);
         assert!(result.is_ok());
@@ -379,13 +463,13 @@ mod tests {
                 .join("usr/share/cutoff/display_wipe_message.sh"),
             "".to_string(),
         );
-        let dir = context.root_dir().join("usr/share/cutoff");
-        fs::create_dir_all(dir.clone()).unwrap();
-        let config = json!({
-            "CUTOFF_METHOD": "unknown",
-            "CUTOFF_AC_STATE": "connect_ac"
-        });
-        fs::write(dir.join("cutoff.json"), config.to_string()).unwrap();
+        create_cutoff_config(
+            json!({
+                "CUTOFF_METHOD": "unknown",
+                "CUTOFF_AC_STATE": "connect_ac"
+            }),
+            &mut context,
+        );
 
         let result = cutoff::cutoff_battery(&mut context);
         let err = result.unwrap_err();
@@ -403,12 +487,12 @@ mod tests {
                 .join("usr/share/cutoff/display_wipe_message.sh"),
             "".to_string(),
         );
-        let dir = context.root_dir().join("usr/share/cutoff");
-        fs::create_dir_all(dir.clone()).unwrap();
-        let config = json!({
-            "CUTOFF_METHOD": "shutdown",
-        });
-        fs::write(dir.join("cutoff.json"), config.to_string()).unwrap();
+        create_cutoff_config(
+            json!({
+                "CUTOFF_METHOD": "shutdown",
+            }),
+            &mut context,
+        );
 
         let result = cutoff::cutoff_battery(&mut context);
         let err = result.unwrap_err();
@@ -428,12 +512,12 @@ mod tests {
                 .join("usr/share/cutoff/display_wipe_message.sh"),
             "".to_string(),
         );
-        let dir = context.root_dir().join("usr/share/cutoff");
-        fs::create_dir_all(dir.clone()).unwrap();
-        let config = json!({
-            "CUTOFF_AC_STATE": "connect_ac"
-        });
-        fs::write(dir.join("cutoff.json"), config.to_string()).unwrap();
+        create_cutoff_config(
+            json!({
+                "CUTOFF_AC_STATE": "connect_ac",
+            }),
+            &mut context,
+        );
 
         let result = cutoff::cutoff_battery(&mut context);
         let err = result.unwrap_err();
@@ -447,13 +531,13 @@ mod tests {
     fn test_check_battery_ok() {
         let mut context = ContextImpl::new();
         context.set_command_stdout("modprobe", "".to_string());
-        let dir = context.root_dir().join("usr/share/cutoff");
-        fs::create_dir_all(dir.clone()).unwrap();
-        let config = json!({
-            "CUTOFF_AC_STATE": "connect_ac",
-            "CUTOFF_METHOD": "shutdown",
-        });
-        fs::write(dir.join("cutoff.json"), config.to_string()).unwrap();
+        create_cutoff_config(
+            json!({
+                "CUTOFF_AC_STATE": "connect_ac",
+                "CUTOFF_METHOD": "shutdown",
+            }),
+            &mut context,
+        );
         mock_battery_info(1, true, &mut context);
 
         let result = cutoff::check_battery(&mut context);
@@ -464,14 +548,14 @@ mod tests {
     fn test_check_battery_max_percentage_negative() {
         let mut context = ContextImpl::new();
         context.set_command_stdout("modprobe", "".to_string());
-        let dir = context.root_dir().join("usr/share/cutoff");
-        fs::create_dir_all(dir.clone()).unwrap();
-        let config = json!({
-            "CUTOFF_AC_STATE": "connect_ac",
-            "CUTOFF_METHOD": "shutdown",
-            "CUTOFF_BATTERY_MAX_PERCENTAGE": -1,
-        });
-        fs::write(dir.join("cutoff.json"), config.to_string()).unwrap();
+        create_cutoff_config(
+            json!({
+                "CUTOFF_AC_STATE": "connect_ac",
+                "CUTOFF_METHOD": "shutdown",
+                "CUTOFF_BATTERY_MAX_PERCENTAGE": -1,
+            }),
+            &mut context,
+        );
         mock_battery_info(1, true, &mut context);
 
         let result = cutoff::check_battery(&mut context);
@@ -487,14 +571,14 @@ mod tests {
     fn test_check_battery_min_percentage_larger_than_100() {
         let mut context = ContextImpl::new();
         context.set_command_stdout("modprobe", "".to_string());
-        let dir = context.root_dir().join("usr/share/cutoff");
-        fs::create_dir_all(dir.clone()).unwrap();
-        let config = json!({
-            "CUTOFF_AC_STATE": "connect_ac",
-            "CUTOFF_METHOD": "shutdown",
-            "CUTOFF_BATTERY_MIN_PERCENTAGE": 101,
-        });
-        fs::write(dir.join("cutoff.json"), config.to_string()).unwrap();
+        create_cutoff_config(
+            json!({
+                "CUTOFF_AC_STATE": "connect_ac",
+                "CUTOFF_METHOD": "shutdown",
+                "CUTOFF_BATTERY_MIN_PERCENTAGE": 101,
+            }),
+            &mut context,
+        );
         mock_battery_info(1, true, &mut context);
 
         let result = cutoff::check_battery(&mut context);
@@ -510,14 +594,14 @@ mod tests {
     fn test_check_battery_charge() {
         let mut context = ContextImpl::new();
         context.set_command_stdout("modprobe", "".to_string());
-        let dir = context.root_dir().join("usr/share/cutoff");
-        fs::create_dir_all(dir.clone()).unwrap();
-        let config = json!({
-            "CUTOFF_AC_STATE": "connect_ac",
-            "CUTOFF_METHOD": "shutdown",
-            "CUTOFF_BATTERY_MIN_PERCENTAGE": 70,
-        });
-        fs::write(dir.join("cutoff.json"), config.to_string()).unwrap();
+        create_cutoff_config(
+            json!({
+                "CUTOFF_AC_STATE": "connect_ac",
+                "CUTOFF_METHOD": "shutdown",
+                "CUTOFF_BATTERY_MIN_PERCENTAGE": 70,
+            }),
+            &mut context,
+        );
         mock_battery_info(60, false, &mut context); // Need to charge
         mock_battery_info(60, false, &mut context); // Need to connect ac
         context.set_command_stdout(
@@ -545,14 +629,14 @@ mod tests {
     fn test_check_battery_discharge() {
         let mut context = ContextImpl::new();
         context.set_command_stdout("modprobe", "".to_string());
-        let dir = context.root_dir().join("usr/share/cutoff");
-        fs::create_dir_all(dir.clone()).unwrap();
-        let config = json!({
-            "CUTOFF_AC_STATE": "connect_ac",
-            "CUTOFF_METHOD": "shutdown",
-            "CUTOFF_BATTERY_MAX_PERCENTAGE": 70,
-        });
-        fs::write(dir.join("cutoff.json"), config.to_string()).unwrap();
+        create_cutoff_config(
+            json!({
+                "CUTOFF_AC_STATE": "connect_ac",
+                "CUTOFF_METHOD": "shutdown",
+                "CUTOFF_BATTERY_MAX_PERCENTAGE": 70,
+            }),
+            &mut context,
+        );
         mock_battery_info(80, true, &mut context); // Need to discharge
         context.set_command_stdout(
             context
@@ -575,6 +659,89 @@ mod tests {
         assert!(result.is_ok());
     }
 
+    #[test]
+    fn test_display_qrcode() {
+        let mut context = ContextImpl::new();
+        context.set_command_stdout("modprobe", "".to_string());
+        prepare_qrcode_files(&mut context, "frecon_id");
+        context.set_command_stdout("crossystem", "HWID".to_string());
+        context.set_command_stdout("vpd", "SN".to_string());
+        context.set_command_stdout("vpd", "WIFI".to_string());
+        context.set_command_stdout("vpd", "MLBSN".to_string());
+        context.set_command_stdout("bash", "".to_string());
+
+        let result = cutoff::display_qrcode(
+            "hwid serial_number wifi_mac0 mlb_serial_number",
+            &mut context,
+        );
+        assert!(result.is_ok());
+        assert_eq!(
+            fs::read(
+                context
+                    .root_dir()
+                    .join("proc/frecon_id/root/qrcode.png")
+                    .to_str()
+                    .unwrap()
+            )
+            .unwrap(),
+            fs::read("tests/qrcode/ALL.png").unwrap()
+        );
+    }
+
+    #[test]
+    fn test_display_qrcode_multi() {
+        let mut context = ContextImpl::new();
+        context.set_command_stdout("modprobe", "".to_string());
+        prepare_qrcode_files(&mut context, "frecon_id");
+        context.set_command_stdout("vpd", "".to_string());
+        context.set_command_stdout("crossystem", "HWID".to_string());
+        context.set_command_stdout("bash", "".to_string());
+        context.set_command_stdout("bash", "".to_string());
+
+        let result = cutoff::display_qrcode("serial_number,hwid", &mut context);
+        assert!(result.is_ok());
+        // The former will be overwritten.
+        assert_eq!(
+            fs::read(
+                context
+                    .root_dir()
+                    .join("proc/frecon_id/root/qrcode.png")
+                    .to_str()
+                    .unwrap()
+            )
+            .unwrap(),
+            fs::read("tests/qrcode/HWID.png").unwrap()
+        );
+    }
+
+    #[test]
+    fn test_display_qrcode_unsupported_key() {
+        let mut context = ContextImpl::new();
+        context.set_command_stdout("modprobe", "".to_string());
+        prepare_qrcode_files(&mut context, "frecon_id");
+
+        let result = cutoff::display_qrcode("abc", &mut context);
+        let err = result.unwrap_err();
+        let message = err.root_cause();
+        assert_eq!(format!("{}", message), "Unknown key: abc");
+    }
+
+    #[test]
+    fn test_failed() {
+        let mut context = ContextImpl::new();
+        context.set_command_stdout(
+            context
+                .root_dir()
+                .join("usr/share/cutoff/display_wipe_message.sh"),
+            "failed".to_string(),
+        );
+
+        let result = cutoff::failed(&mut context);
+        let err = result.unwrap_err();
+        let message = err.root_cause();
+        assert_eq!(format!("{}", message), "Cutoff failed.");
+    }
+
     fn mock_battery_info(percentage: i32, is_ac_connected: bool, context: &mut ContextImpl) {
         let ac = match is_ac_connected {
             true => "AC_PRESENT",
@@ -587,5 +754,19 @@ mod tests {
                 percentage, ac
             ),
         );
+    }
+
+    fn prepare_qrcode_files(context: &mut ContextImpl, frecon_id: &str) {
+        fs::create_dir_all(context.root_dir().join("proc").join(frecon_id).join("root")).unwrap();
+        let dir = context.root_dir().join("run/frecon");
+        fs::create_dir_all(dir.clone()).unwrap();
+        File::create(dir.join("vt0")).unwrap();
+        fs::write(dir.join("pid"), frecon_id).unwrap();
+    }
+
+    fn create_cutoff_config(config: serde_json::Value, context: &mut ContextImpl) {
+        let dir = context.root_dir().join("usr/share/cutoff");
+        fs::create_dir_all(dir.clone()).unwrap();
+        fs::write(dir.join("cutoff.json"), config.to_string()).unwrap();
     }
 }

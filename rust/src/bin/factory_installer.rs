@@ -29,7 +29,14 @@ fn main() -> Result<()> {
             dump_config,
             save_to_usb,
         ),
-        Action::FactoryReset { action } => factory_reset::factory_reset(action, &mut context),
-        Action::BatteryCutoff => cutoff::do_cutoff(&mut context),
+        Action::FactoryReset { action } => {
+            factory_reset::factory_reset(action, &mut context)?;
+            cutoff::do_cutoff(&mut context)?;
+            cutoff::failed(&mut context)
+        }
+        Action::BatteryCutoff => {
+            cutoff::do_cutoff(&mut context)?;
+            cutoff::failed(&mut context)
+        }
     }
 }

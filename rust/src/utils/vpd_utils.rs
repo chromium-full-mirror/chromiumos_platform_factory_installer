@@ -33,19 +33,22 @@ pub fn get_rw_value(key: &str, context: &mut dyn Context) -> Result<String> {
 /// Deletes the value in RW_VPD section with given key.
 pub fn delete_rw_value(key: &str, context: &mut dyn Context) -> Result<()> {
     eprintln!("Checking {} in RW VPD...", key);
-    if get_rw_value(key, context)?.trim().is_empty() {
-        eprintln!("OK: no {} found.", key);
-        Ok(())
-    } else {
-        eprintln!("Deleting {} from VPD.", key);
-        let output = context
-            .command("vpd")
-            .args(["-i", "RW_VPD", "-d", key])
-            .output()?;
-        if output.status.success() {
+    match get_rw_value(key, context) {
+        Ok(_) => {
+            eprintln!("Deleting {} from VPD.", key);
+            let output = context
+                .command("vpd")
+                .args(["-i", "RW_VPD", "-d", key])
+                .output()?;
+            if output.status.success() {
+                Ok(())
+            } else {
+                anyhow::bail!("Delete RW VPD fail. key: {}", key)
+            }
+        }
+        Err(_) => {
+            eprintln!("OK: no {} found.", key);
             Ok(())
-        } else {
-            anyhow::bail!("Delete RW VPD fail. key: {}", key)
         }
     }
 }
@@ -108,14 +111,12 @@ mod tests {
     }
 
     #[test]
-    fn test_delete_rw_value_get_failed() {
+    fn test_delete_rw_value_already_removed() {
         let mut context = ContextImpl::new();
         context.set_command_stderr("vpd", "error".to_string());
 
-        let result = vpd_utils::delete_rw_value("k", &mut context);
-        let err = result.unwrap_err();
-        let message = err.root_cause();
-        assert_eq!(format!("{}", message), "Get RW VPD fail. key: k");
+        let result = vpd_utils::delete_rw_value("key", &mut context);
+        assert!(result.is_ok());
     }
 
     #[test]

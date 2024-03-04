@@ -87,6 +87,7 @@ impl MockContext {
 
 impl Context for MockContext {
     fn command(&mut self, program: &str) -> Command {
+        eprintln!("calling {}", program);
         self.command_output
             .get_mut(program)
             .unwrap()

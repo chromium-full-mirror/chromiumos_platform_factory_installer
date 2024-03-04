@@ -14,18 +14,11 @@ use anyhow::{self, Result};
 use crate::factory_installer::args::ResetAction;
 use crate::factory_installer::script_wrapper;
 use crate::system::context::Context;
-use crate::utils::crossystem_utils;
 use crate::utils::process_utils::StringOutput;
-use crate::utils::qrcode_utils;
 #[cfg(not(test))]
 use crate::utils::sys_utils;
 #[cfg(test)]
 use crate::utils::sys_utils::mock as sys_utils;
-#[cfg(not(test))]
-use crate::utils::terminal_utils;
-#[cfg(test)]
-use crate::utils::terminal_utils::mock as terminal_utils;
-use crate::utils::vpd_utils;
 use crate::{cutoff, device};
 
 // CUTOFF_DIR is provided from platform/factory/sh/cutoff, repacked by ebuild.
@@ -55,7 +48,6 @@ pub fn factory_reset(action: ResetAction, context: &mut dyn Context) -> Result<(
 
     display_qrcode(context)?;
     inform_shopfloor(context)?;
-    cutoff::do_cutoff(context)?;
     Ok(())
 }
 
@@ -121,44 +113,15 @@ fn do_verify(disk_path: &str, dev_size: &str, context: &mut dyn Context) -> Resu
     Ok(())
 }
 
-fn get_display_string(context: &mut dyn Context) -> Result<Vec<String>> {
+pub fn display_qrcode(context: &mut dyn Context) -> Result<()> {
     let lsb_factory = device::get_lsb_factory(context)?;
-    let mut result = Vec::<String>::new();
     if lsb_factory
         .get("DISPLAY_QRCODE")
         .is_some_and(|value| value == "true")
     {
         if let Some(display_info) = lsb_factory.get("DISPLAY_INFO") {
-            // Example: convert "hwid serial_number,hwid" to ["<HWID> <SERIAL_NUMBER>", "<HWID>"]
-            eprintln!("display info = {}", display_info);
-            for info in display_info.split(",") {
-                let mut display_string = vec![];
-                for key in info.split(" ") {
-                    let value = match key {
-                        "hwid" => crossystem_utils::get_hwid(context),
-                        "serial_number" => vpd_utils::get_ro_value("serial_number", context),
-                        "mlb_serial_number" => {
-                            vpd_utils::get_ro_value("mlb_serial_number", context)
-                        }
-                        "wifi_mac0" => vpd_utils::get_ro_value("wifi_mac0", context),
-                        &_ => anyhow::bail!("Unknown key: {}", key),
-                    };
-                    display_string.push(value?);
-                }
-                result.push(display_string.join(" "));
-            }
-            eprintln!("display string = {:?}", result);
+            cutoff::display_qrcode(display_info, context)?;
         }
-    }
-    Ok(result)
-}
-
-pub fn display_qrcode(context: &mut dyn Context) -> Result<()> {
-    for content in get_display_string(context)? {
-        terminal_utils::clear();
-        eprintln!("Press enter to continue...");
-        qrcode_utils::display_qrcode(&content, context)?;
-        terminal_utils::wait_enter()?;
     }
     Ok(())
 }
@@ -197,7 +160,6 @@ mod tests {
         context.set_command_stdout("start", "".to_string());
         context.set_command_stdout("clobber-state", "".to_string());
         context.set_command_stdout("/usr/share/cutoff/inform_shopfloor.sh", "".to_string());
-        mock_cutoff(&mut context);
         let result = factory_reset::factory_reset(ResetAction::Reset, &mut context);
         assert!(result.is_ok());
     }
@@ -222,7 +184,6 @@ mod tests {
         context.set_command_stdout("start", "".to_string());
         context.set_command_stdout("bash", "".to_string());
         context.set_command_stdout("/usr/share/cutoff/inform_shopfloor.sh", "".to_string());
-        mock_cutoff(&mut context);
         let result = factory_reset::factory_reset(ResetAction::Wipe, &mut context);
         assert!(result.is_ok());
     }
@@ -235,7 +196,6 @@ mod tests {
         context.set_command_stdout("start", "".to_string());
         context.set_command_stderr("bash", "stderr".to_string());
         context.set_command_stdout("/usr/share/cutoff/inform_shopfloor.sh", "".to_string());
-        mock_cutoff(&mut context);
         let result = factory_reset::factory_reset(ResetAction::Wipe, &mut context);
         assert!(result.is_ok());
     }
@@ -249,7 +209,6 @@ mod tests {
         context.set_command_stdout("/usr/sbin/script_wrapper.sh", "".to_string());
         context.set_command_stdout("/usr/sbin/script_wrapper.sh", "".to_string());
         context.set_command_stdout("/usr/share/cutoff/inform_shopfloor.sh", "".to_string());
-        mock_cutoff(&mut context);
         let result = factory_reset::factory_reset(ResetAction::Secure, &mut context);
         assert!(result.is_ok());
     }
@@ -293,7 +252,6 @@ mod tests {
         context.set_command_stdout("start", "".to_string());
         context.set_command_stdout("/usr/sbin/script_wrapper.sh", "".to_string());
         context.set_command_stdout("/usr/share/cutoff/inform_shopfloor.sh", "".to_string());
-        mock_cutoff(&mut context);
         let result = factory_reset::factory_reset(ResetAction::Verify, &mut context);
         assert!(result.is_ok());
     }
@@ -405,13 +363,6 @@ mod tests {
         context.set_command_stdout("sh", disk_path.clone());
         context.set_command_stdout("pvdisplay", "".to_string());
         context.set_command_stdout("blockdev", size);
-    }
-
-    fn mock_cutoff(context: &mut ContextImpl) {
-        context.set_command_stdout(
-            context.root_dir().join("usr/share/cutoff/cutoff.sh"),
-            "".to_string(),
-        );
     }
 
     fn prepare_files(context: &mut ContextImpl, frecon_id: &str) {
