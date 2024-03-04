@@ -70,7 +70,7 @@ DST_STATE_PART=1
 # Each action x is implemented in an action_$x handler (e.g.,
 # action_i); see the handlers for more information about what
 # each option is.
-SUPPORTED_ACTIONS=bcdefimrstuvyz
+SUPPORTED_ACTIONS=bcdefimorstuvyz
 SUPPORTED_ACTIONS_BOARD=
 
 # Supported actions when hardware writeprotect is enabled.
@@ -244,6 +244,39 @@ is_rsu_required() {
     return 1
   fi
   return 0
+}
+
+block_devmode() {
+  local fwmp_block_dev_mode_flag="0x41"
+  local dm_binary="device_management_client"
+
+  # cryptohome as fallback for factory branch cherry-pick compatibility.
+  if [ -z "${dm_binary}" ]; then
+    dm_binary="cryptohome"
+  fi
+
+  "${dm_binary}" --action=set_firmware_management_parameters \
+                 --flags="${fwmp_block_dev_mode_flag}"
+}
+
+reset_gbb_and_gsc() {
+  local gbb_flags
+  gbb_flags="$("/usr/bin/futility" gbb --flash --get --flags |
+             grep -o "flags: 0x[0-9a-f]\+" |
+             cut -d ":" -f 2)"
+
+  echo "Resetting GBB flags if needed ..."
+  if [ "$( printf "%d" "${gbb_flags}" )" -gt 0 ]; then
+    /usr/bin/futility gbb --flash --set --flags="0x0" >/dev/null 2>&1
+    sleep 5s
+    echo "Clear GBB done."
+  fi
+
+  echo "Leaving GSC factory mode if needed ..."
+  if gsctool -a -I -M | grep -q "CCD_FLAG_FACTORY_MODE=Y"; then
+    gsctool -a -F disable >/dev/null 2>&1
+    echo "Reset GSC done."
+  fi
 }
 
 # Checks if hardware write protection is enabled.
@@ -1082,6 +1115,32 @@ print_header() {
     print_device_info
 }
 
+print_devmode_block_status() {
+  local flags
+  local dm_binary="device_management_client"
+
+  # cryptohome as fallback for factory branch cherry-pick compatibility.
+  if [ -z "${dm_binary}" ]; then
+    dm_binary="cryptohome"
+  fi
+
+  flags="$("${dm_binary}" --action=get_firmware_management_parameters |
+           grep -o "flags=0x[0-9a-f]\+" |
+           cut -d = -f 2)"
+
+  echo -n "Dev mode block status: "
+  if [ -z "${flags}" ]; then
+    echo "Unknown"
+  else
+    [ $(( flags & 0x41 )) -eq 65 ] && echo "Blocked" || echo "Not Blocked"
+  fi
+}
+
+print_cellular_sku_status() {
+  echo -n "Is cellular SKU: "
+  cros_config /modem firmware-variant > /dev/null && echo "YES" || echo "NO"
+}
+
 # Prints various information about the device.
 print_device_info() {
     echo "Factory shim version: $(findLSBValue CHROMEOS_RELEASE_DESCRIPTION)"
@@ -1103,8 +1162,9 @@ print_device_info() {
     if [ "${EC_PRESENT}" -eq 1 ]; then
       echo -n "EC SW write protect: $(command_to_yes_or_no check_fw_swwp ec); "
     fi
-    echo -n "$(tpm_get_info)"
-    echo
+    echo "$(tpm_get_info)"
+    print_devmode_block_status
+    print_cellular_sku_status
     local description=""
     if [ -s "${DESCRIPTION_FILE}" ]; then
       description="$(cat "${DESCRIPTION_FILE}" 2>/dev/null)"
@@ -1230,6 +1290,8 @@ menu() {
   menu_line M "Enable factory mode" "Enable TPM factory mode"
   menu_line F "Perform factory FAI" \
               "Perform Factory FAI (First Article Inspection)"
+  menu_line o "BlOck dev mode" \
+              "Block dev mode via setting FWMP flags."
 
   menu_board
 
@@ -1544,6 +1606,54 @@ action_z() {
 # C = SeCure
 action_c() {
   erase_drive secure
+}
+
+# o = blOck dev mode
+action_o() {
+  if ! is_dev_firmware; then
+    colorize yellow
+    echo "Requires booting into the shim with dev mode and TPM owner cleared."
+    echo "Reboot will be issueed soon."
+    echo
+
+    colorize white
+    echo "Press any key to continue."
+    read -r -N 1
+
+    echo "Resetting TPM Owner ..."
+    crossystem clear_tpm_owner_request=1
+    sleep 3s
+
+    echo "Enabling external boot ..."
+    crossystem dev_boot_usb=1
+
+    echo "Setting device to boot for USB by default ..."
+    crossystem dev_default_boot=usb
+    sleep 3s
+
+    reboot
+    sleep 1d
+    return 0
+  fi
+
+  # GSC and GBB flags have to be cleared prior to dev mode block,
+  # just like how Finalize work in the common factory flow. GSC will
+  # now honor CCD FWMP bit for HWWP so if we block dev mode first
+  # we can never reset GBB and GSC factory mode. If block dev mode
+  # is not successful, we have to run RSU again.
+  reset_gbb_and_gsc
+
+  if block_devmode; then
+    echo "Successfully blocked dev mode."
+    echo "Doing factory reset ..."
+    # Reset has to be done within this function block because after dev mode is
+    # blocked we can no longer access action_r with restricted actions allowed.
+    action_r
+  else
+    echo "Dev mode cannot be blocked. Please try action_o again with recovery"
+    echo "mode first and follow the guidance, or run action_i and block dev"
+    echo "mode by factory toolkit finalize, if you're using RMA shim."
+  fi
 }
 
 # Y = VerifY

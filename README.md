@@ -77,6 +77,7 @@ by a prompt to select an action.
       E Perform RSU          Perform RSU (RMA Server Unlock)
       M Enable factory mode  Enable TPM factory mode
       F Perform factory FAI  Perform Factory FAI (First Article Inspection)
+      o BlocK dev mode       Block dev mode via setting FWMP flags
 
     action>
 
