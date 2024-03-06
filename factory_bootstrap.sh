@@ -101,7 +101,7 @@ patch_new_root() {
                 reboot startup system-services tpm_managerd udev-boot
                 udev-trigger-early udev-trigger trunksd network-services
                 wpasupplicant cr50-update factory_shim udev cros_configfs
-                syslog patchpanel"
+                syslog patchpanel failsafe"
 
   for job in ${allowed_jobs}; do
     file="${temp_path}/${job}.conf"
