@@ -32,6 +32,7 @@ pub enum Action {
         action: ResetAction,
     },
     BatteryCutoff,
+    CustomResetProcess,
 }
 
 /// ChromeOS Factory installer process.

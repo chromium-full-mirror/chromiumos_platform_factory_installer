@@ -51,7 +51,7 @@ pub fn factory_reset(action: ResetAction, context: &mut dyn Context) -> Result<(
     Ok(())
 }
 
-fn do_reset(disk_path: &str, context: &mut dyn Context) -> Result<()> {
+pub fn do_reset(disk_path: &str, context: &mut dyn Context) -> Result<()> {
     let state_dev = device::get_release_stateful_partition(context)?;
     let root_dev = device::get_release_rootfs_partition(context)?;
     eprintln!(

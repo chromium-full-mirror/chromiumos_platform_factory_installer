@@ -3,12 +3,12 @@
 // found in the LICENSE file.
 
 use anyhow::Result;
-use factory_installer::cutoff;
-use factory_installer::factory_fai;
 use factory_installer::factory_installer::args::{Action, Args, Parser};
-use factory_installer::factory_installer::factory_reset;
-use factory_installer::factory_installer::script_wrapper;
+use factory_installer::factory_installer::{
+    do_custom_reset_process, factory_reset, script_wrapper,
+};
 use factory_installer::system::context::ContextImpl;
+use factory_installer::{cutoff, factory_fai};
 
 fn main() -> Result<()> {
     let args = Args::parse();
@@ -36,6 +36,10 @@ fn main() -> Result<()> {
         }
         Action::BatteryCutoff => {
             cutoff::do_cutoff(&mut context)?;
+            cutoff::failed(&mut context)
+        }
+        Action::CustomResetProcess => {
+            do_custom_reset_process(&mut context)?;
             cutoff::failed(&mut context)
         }
     }
