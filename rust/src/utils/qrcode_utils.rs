@@ -11,8 +11,16 @@ use anyhow::Result;
 use image::Luma;
 use png::Encoder;
 use qrcode::QrCode;
+use serde::Deserialize;
 
 use crate::system::context::Context;
+
+#[derive(PartialEq, Deserialize, Debug)]
+pub struct QRcode {
+    pub size: u32,
+    pub position: Option<(i32, i32)>,
+    pub content: String,
+}
 
 fn get_frecon_path(context: &mut dyn Context) -> Result<PathBuf> {
     let frecon_pid = fs::read_to_string(context.root_dir().join("run/frecon/pid"))?;
@@ -23,21 +31,25 @@ fn get_frecon_path(context: &mut dyn Context) -> Result<PathBuf> {
         .join("root"))
 }
 
-/// Displays the qrcode by frecon console with the given content.
-pub fn display_qrcode(content: &str, context: &mut dyn Context) -> Result<()> {
+/// Displays the qrcode by frecon console with the given content, size, location.
+pub fn display_qrcode(qrcode: &QRcode, context: &mut dyn Context) -> Result<()> {
     let frecon_path = get_frecon_path(context)?;
     let file = File::create(frecon_path.join("qrcode.png").to_str().unwrap()).unwrap();
 
-    let image = QrCode::new(content)?.render::<Luma<u8>>().build();
+    let image = QrCode::new(&qrcode.content)?
+        .render::<Luma<u8>>()
+        .min_dimensions(qrcode.size, qrcode.size)
+        .build();
     let encoder = Encoder::new(BufWriter::new(file), image.width(), image.height());
     let mut writer = encoder.write_header().unwrap();
     writer.write_image_data(&image).unwrap();
 
     let terminal_path = context.root_dir().join("run/frecon/vt0");
-    Ok(fs::write(
-        terminal_path,
-        "\x1b]image:file=/qrcode.png\x1b\\",
-    )?)
+    let frecon_string = match qrcode.position {
+        None => "\x1b]image:file=/qrcode.png\x1b\\".to_string(),
+        Some(p) => format!("\x1b]image:file=/qrcode.png;location={},{}\x1b\\", p.0, p.1),
+    };
+    Ok(fs::write(terminal_path, frecon_string)?)
 }
 
 #[cfg(test)]
@@ -45,7 +57,7 @@ mod tests {
     use std::fs::{self, File};
 
     use crate::system::context::{Context, ContextImpl};
-    use crate::utils::qrcode_utils;
+    use crate::utils::qrcode_utils::{self, QRcode};
 
     #[test]
     fn test_display_qrcode() {
@@ -57,7 +69,14 @@ mod tests {
         File::create(dir.join("vt0")).unwrap();
         fs::write(dir.join("pid"), frecon_id).unwrap();
 
-        let result = qrcode_utils::display_qrcode("HWID", &mut context);
+        let result = qrcode_utils::display_qrcode(
+            &QRcode {
+                size: 232,
+                content: "HWID".to_string(),
+                position: None,
+            },
+            &mut context,
+        );
         assert!(result.is_ok());
         assert_eq!(
             fs::read(
@@ -79,7 +98,14 @@ mod tests {
         let mut context = ContextImpl::new();
         context.set_command_stdout("cat", "non-existing-path".to_string());
 
-        let result = qrcode_utils::display_qrcode("HWID", &mut context);
+        let result = qrcode_utils::display_qrcode(
+            &QRcode {
+                size: 232,
+                content: "HWID".to_string(),
+                position: None,
+            },
+            &mut context,
+        );
         let err = result.unwrap_err();
         let message = err.root_cause();
         assert_eq!(

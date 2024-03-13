@@ -7,23 +7,19 @@ use std::fs;
 use anyhow::{self, Result};
 use serde::Deserialize;
 
+use crate::factory_installer::Action::{ChargeBattery, ResetDevice};
 use crate::system::context::Context;
+use crate::utils::qrcode_utils::QRcode;
 
 #[derive(PartialEq, Deserialize, Debug)]
 pub struct HttpRequest {
     pub url: String,
+    pub post_arg: serde_json::Value,
 }
 
 #[derive(PartialEq, Deserialize, Debug)]
 pub struct DisplayQRcode {
     pub qrcodes: Vec<QRcode>,
-}
-
-#[derive(PartialEq, Deserialize, Debug)]
-pub struct QRcode {
-    pub size: i32,
-    pub position: Vec<i32>,
-    pub content: String,
 }
 
 #[derive(PartialEq, Deserialize, Debug)]
@@ -42,9 +38,8 @@ pub fn load_config(context: &mut dyn Context) -> Result<Vec<Action>> {
     let actions = match path.as_path().exists() {
         true => serde_json::from_str(&fs::read_to_string(path)?)?,
         false => {
-            // TODO(jasonchuang): Load default config to perform factory reset.
-            eprintln!("Config file doesn't exist, use default config instead.");
-            vec![]
+            eprintln!("Config file doesn't exist, perform simplified reset process.");
+            vec![ResetDevice, ChargeBattery]
         }
     };
     Ok(actions)
@@ -56,10 +51,9 @@ mod tests {
 
     use serde_json::json;
 
-    use crate::factory_installer::config::{
-        load_config, Action, DisplayQRcode, HttpRequest, QRcode,
-    };
+    use crate::factory_installer::config::{load_config, Action, DisplayQRcode, HttpRequest};
     use crate::system::context::{Context, ContextImpl};
+    use crate::utils::qrcode_utils::QRcode;
 
     #[test]
     fn test_load_config() {
@@ -68,7 +62,7 @@ mod tests {
             "ResetDevice",
             "ChargeBattery",
         {
-            "HttpRequest": {"url": "fake_url"}
+            "HttpRequest": {"url": "fake_url", "post_arg": {"key": "value"}}
         },
         {
             "DisplayQRcode": {
@@ -91,12 +85,15 @@ mod tests {
                 Action::ResetDevice,
                 Action::ChargeBattery,
                 Action::HttpRequest(HttpRequest {
-                    url: "fake_url".to_string()
+                    url: "fake_url".to_string(),
+                    post_arg: json!({
+                        "key": "value"
+                    })
                 }),
                 Action::DisplayQRcode(DisplayQRcode {
                     qrcodes: vec![QRcode {
                         size: 100,
-                        position: vec![10, 20],
+                        position: Some((10, 20)),
                         content: "code".to_string()
                     }]
                 }),
@@ -108,8 +105,9 @@ mod tests {
     #[test]
     fn test_load_config_use_default() {
         let mut context = ContextImpl::new();
+
         let result = load_config(&mut context).unwrap();
 
-        assert_eq!(result, vec![]);
+        assert_eq!(result, vec![Action::ResetDevice, Action::ChargeBattery,]);
     }
 }

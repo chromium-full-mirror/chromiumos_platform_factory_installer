@@ -14,6 +14,7 @@ use crate::cutoff::config::{CutoffAcState, CutoffConfig, CutoffMethod};
 use crate::system::context::Context;
 use crate::utils::ectool_utils::{self, BatteryInfo, ChargeControl};
 use crate::utils::process_utils::StringOutput;
+use crate::utils::qrcode_utils::QRcode;
 #[cfg(test)]
 use crate::utils::sys_utils::mock as sys_utils;
 #[cfg(test)]
@@ -45,7 +46,7 @@ pub fn do_cutoff(context: &mut dyn Context) -> Result<()> {
     Ok(())
 }
 
-fn get_cutoff_config(context: &mut dyn Context) -> Result<CutoffConfig> {
+pub fn get_cutoff_config(context: &mut dyn Context) -> Result<CutoffConfig> {
     let path = context.root_dir().join(CUTOFF_DIR).join("cutoff.json");
     // TODO(jasonchuang): Also need to access the path of cutoff.json for toolkit.
 
@@ -277,7 +278,14 @@ pub fn display_qrcode(qrcode_info: &str, context: &mut dyn Context) -> Result<()
     for content in contents {
         terminal_utils::clear();
         eprintln!("Press enter to continue...");
-        qrcode_utils::display_qrcode(&content, context)?;
+        qrcode_utils::display_qrcode(
+            &QRcode {
+                size: 232,
+                content: content,
+                position: None,
+            },
+            context,
+        )?;
         terminal_utils::wait_enter("")?;
     }
     Ok(())

@@ -8,14 +8,15 @@ pub mod factory_reset;
 pub mod script_wrapper;
 
 use anyhow::{self, Result};
+use regex::{Captures, Regex};
 
 use crate::factory_installer::config::{Action, DisplayQRcode, HttpRequest};
 use crate::system::context::Context;
-use crate::utils::qrcode_utils;
 #[cfg(not(test))]
 use crate::utils::terminal_utils;
 #[cfg(test)]
 use crate::utils::terminal_utils::mock as terminal_utils;
+use crate::utils::{crossystem_utils, qrcode_utils, vpd_utils};
 use crate::{cutoff, device};
 
 fn reset_device(context: &mut dyn Context) -> Result<()> {
@@ -36,13 +37,36 @@ fn http_request(_: HttpRequest) -> Result<()> {
 }
 
 fn display_qrcode(arg: DisplayQRcode, context: &mut dyn Context) -> Result<()> {
-    for qrcode in arg.qrcodes {
-        terminal_utils::clear();
-        eprintln!("Press enter to continue...");
-        // TODO(jasonchuang): Display in specific position and support displaying vpd.
-        qrcode_utils::display_qrcode(&qrcode.content, context)?;
-        terminal_utils::wait_enter("")?;
+    let hwid = crossystem_utils::get_hwid(context)?;
+    let sn = vpd_utils::get_ro_value("serial_number", context)?;
+    let mlb_sn = vpd_utils::get_ro_value("mlb_serial_number", context)?;
+    let wifi_mac = vpd_utils::get_ro_value("wifi_mac0", context)?;
+    let re = Regex::new("(<.*?>)").unwrap();
+
+    terminal_utils::clear();
+    let mut invalid_content = false;
+    for mut qrcode in arg.qrcodes {
+        let content = re
+            .replace_all(&qrcode.content, |cap: &Captures| match &cap[0] {
+                "<hwid>" => &hwid,
+                "<serial_number>" => &sn,
+                "<mlb_serial_number>" => &mlb_sn,
+                "<wifi_mac0>" => &wifi_mac,
+                _ => {
+                    eprintln!("Unknown key: {}", &cap[0]);
+                    invalid_content = true;
+                    ""
+                }
+            })
+            .to_string();
+        if invalid_content {
+            anyhow::bail!("Invalid content: {}", &qrcode.content);
+        }
+        qrcode.content = content;
+        qrcode_utils::display_qrcode(&qrcode, context)?;
     }
+    eprintln!("Press enter to continue...");
+    terminal_utils::wait_enter("")?;
     Ok(())
 }
 
@@ -94,11 +118,16 @@ mod tests {
         let mut context = ContextImpl::new();
         create_config(
             json!([{"DisplayQRcode": {
-                "qrcodes": [{"size": 100, "position": [10, 20], "content": "HWID"}]
+                "qrcodes": [{"size": 232, "position": [10, 20],
+                "content":
+                    "<hwid> <serial_number> <wifi_mac0> <mlb_serial_number>"}]
             }}]),
             &mut context,
         );
         context.set_command_stdout("crossystem", "HWID".to_string());
+        context.set_command_stdout("vpd", "SN".to_string());
+        context.set_command_stdout("vpd", "MLBSN".to_string());
+        context.set_command_stdout("vpd", "WIFI".to_string());
         prepare_files(&mut context, "frecon_id");
         mock_cutoff_battery(&mut context);
 
@@ -113,8 +142,30 @@ mod tests {
                     .unwrap()
             )
             .unwrap(),
-            fs::read("tests/qrcode/HWID.png").unwrap()
+            fs::read("tests/qrcode/ALL.png").unwrap()
         );
+    }
+
+    #[test]
+    fn test_do_custom_reset_process_display_qrcode_unknown_key() {
+        let mut context = ContextImpl::new();
+        create_config(
+            json!([{"DisplayQRcode": {
+                "qrcodes": [{"size": 232, "position": [10, 20],
+                "content":
+                    "<abc> <hwid> abc"}]
+            }}]),
+            &mut context,
+        );
+        context.set_command_stdout("crossystem", "HWID".to_string());
+        context.set_command_stdout("vpd", "SN".to_string());
+        context.set_command_stdout("vpd", "MLBSN".to_string());
+        context.set_command_stdout("vpd", "WIFI".to_string());
+
+        let result = factory_installer::do_custom_reset_process(&mut context);
+        let err = result.unwrap_err();
+        let message = err.root_cause();
+        assert_eq!(format!("{}", message), "Invalid content: <abc> <hwid> abc");
     }
 
     fn mock_cutoff_battery(context: &mut ContextImpl) {
