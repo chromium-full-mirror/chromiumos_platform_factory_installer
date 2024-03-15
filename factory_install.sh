@@ -735,7 +735,11 @@ enlarge_partition() {
   rmdir "${test_rootfs_mount_point}"
 
   if [ "${minimal}" -gt 0 ] && [ "${block_size}" -gt 0 ]; then
-    e2fsck -f -y "${dev}"
+    local e2fsck_ret=0
+    e2fsck -f -y "${dev}" || e2fsck_ret=$?
+    if [ "$((e2fsck_ret & ~1))" -ne 0 ]; then
+      die "e2fsck return: ${e2fsck_ret}"
+    fi
     # DLC images will be installed to stateful partition in run time.
     # We need to preserve space for them.
     log "Allocate ${TOTAL_DLC_PREALLOCATE_SIZE} bytes for DLCs."
