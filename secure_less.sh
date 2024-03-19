@@ -15,6 +15,21 @@ if [ $# -ne 0 ]; then
   exit 1
 fi
 
+
+# On dedede, it was tested that `busybox less` will suffer from segmentation
+# fault so we take `busybox more` as a WA here. Even though it cannot scroll
+# back, at least it could display logs. As we're seeing less board-specific
+# issues lately, in the common scene, we oftentimes can reproduce bugs on other
+# boards with `busybox less` working so it's a acceptable WA on dedede.
+. "$(dirname "$0")/factory_common.sh"
+
+PAGER="busybox less"
+BOARD="$(findLSBValue CHROMEOS_RELEASE_BOARD)"
+
+if [ "${BOARD}" == "dedede" ]; then
+  PAGER="busybox more"
+fi
+
 # Disable EDITOR and SHELL, just in case.  Always use busybox less,
 # since it has no fancy features that could enable exploits.
 
@@ -24,9 +39,9 @@ fi
 if sudo -h >/dev/null 2>&1; then
   set -x
   exec sudo -u nobody -s /bin/sh \
-    -c "EDITOR=/bin/false SHELL=/bin/false busybox less"
+    -c "EDITOR=/bin/false SHELL=/bin/false ${PAGER}"
 else
   set -x
   exec su -s /bin/sh \
-    -c "EDITOR=/bin/false SHELL=/bin/false busybox less" - nobody
+    -c "EDITOR=/bin/false SHELL=/bin/false ${PAGER}" - nobody
 fi

@@ -60,6 +60,10 @@ main() {
 
   cros_payload_install_description
 
+  # Substituting `busybox awk` with `mawk` as `busybox awk` not working on
+  # boards like dedede. See b/329532904 for details.
+  ln -sf /usr/bin/mawk /bin/awk
+
   # Use the System-V way to specify controlling TTY (CTTY): create a new session
   # (setsid) and the first opened TTY will be CTTY. 'script' is used (instead of
   # redirection) to keep input and output stream in terminal type.
