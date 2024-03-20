@@ -7,6 +7,7 @@ pub mod ectool_utils;
 pub mod error;
 pub mod file_utils;
 pub mod futility_utils;
+pub mod http_utils;
 pub mod ioctl_utils;
 pub mod process_utils;
 pub mod qrcode_utils;

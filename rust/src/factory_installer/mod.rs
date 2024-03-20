@@ -12,11 +12,13 @@ use regex::{Captures, Regex};
 
 use crate::factory_installer::config::{Action, DisplayQRcode, HttpRequest};
 use crate::system::context::Context;
-#[cfg(not(test))]
-use crate::utils::terminal_utils;
+#[cfg(test)]
+use crate::utils::http_utils::mock as http_utils;
 #[cfg(test)]
 use crate::utils::terminal_utils::mock as terminal_utils;
 use crate::utils::{crossystem_utils, qrcode_utils, vpd_utils};
+#[cfg(not(test))]
+use crate::utils::{http_utils, terminal_utils};
 use crate::{cutoff, device};
 
 fn reset_device(context: &mut dyn Context) -> Result<()> {
@@ -31,9 +33,9 @@ fn charge_battery(context: &mut dyn Context) -> Result<()> {
     cutoff::check_battery(context)
 }
 
-fn http_request(_: HttpRequest) -> Result<()> {
-    // TODO(jasonchuang): Need to find third_party library to send http request.
-    anyhow::bail!("Not implement");
+fn http_request(request: HttpRequest) -> Result<()> {
+    http_utils::post(request.url, request.post_arg)?;
+    Ok(())
 }
 
 fn display_qrcode(arg: DisplayQRcode, context: &mut dyn Context) -> Result<()> {
@@ -97,6 +99,7 @@ mod tests {
 
     use crate::factory_installer;
     use crate::system::context::{Context, ContextImpl};
+
     #[test]
     fn test_do_custom_reset_process_reset_device() {
         let mut context = ContextImpl::new();

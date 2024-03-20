@@ -23,6 +23,9 @@ thiserror = "1.0.50"
 qrcode = "0.13.0"
 image = { version = "0.24.8", default-features = false }
 png = "0.16.8"
+hyper = { version = "0.14.27", features = ["full"]}
+tokio = { version = "1", features = ["full"]}
+futures = "0.3.28"
 
 [dev-dependencies]
 mockall = "0.12.1"
