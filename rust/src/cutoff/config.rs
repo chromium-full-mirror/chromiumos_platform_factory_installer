@@ -19,7 +19,7 @@ pub struct CutoffConfig {
     #[serde(default = "i32_max")]
     pub cutoff_battery_max_voltage: i32,
     #[serde(default)]
-    pub shopfloor_url: String,
+    pub factory_server_url: String,
     #[serde(default)]
     pub tty: String,
     #[serde(default)]

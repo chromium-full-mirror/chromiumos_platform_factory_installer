@@ -127,8 +127,10 @@ pub fn display_qrcode(context: &mut dyn Context) -> Result<()> {
 }
 
 fn inform_shopfloor(context: &mut dyn Context) -> Result<()> {
-    // inform_shopfloor will load shopfloor URL from lsb-factory, and ignore the
-    // request if SHOPFLOOR_URL is not set.
+    // inform_shopfloor will load factory server URL from lsb-factory, and
+    // ignore the request if FACTORY_SEVER_URL is not set. Note that
+    // notification to shopfloor is proxied by the factory server, so we need a
+    // factory server URL here.
     let path = context
         .root_dir()
         .join(CUTOFF_DIR)
