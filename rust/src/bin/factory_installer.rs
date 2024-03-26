@@ -16,6 +16,7 @@ fn main() -> Result<()> {
     // TODO(b/320872246): No need to patch after the issue is solved.
     script_wrapper::call_script_wrapper(vec!["cros_payload_patch_cutoff_config"], &mut context)?;
     script_wrapper::call_script_wrapper(vec!["cros_payload_patch_lsb_factory"], &mut context)?;
+    script_wrapper::call_script_wrapper(vec!["cros_payload_patch_custom_process"], &mut context)?;
     match args.action {
         Action::FAI {
             output_path,

@@ -85,6 +85,44 @@ cros_payload_patch_cutoff_config() {
   rm "${temp_config_path}"
 }
 
+# Patch custom process in reset shim using toolkit_config payload.
+cros_payload_patch_custom_process() {
+  local real_usb_dev
+  real_usb_dev="$(findLSBValue REAL_USB_DEV)"
+  [ -n "${real_usb_dev}" ] || return 0
+  local stateful_dev="${real_usb_dev%%[0-9]*}1"
+  local temp_config_path
+  temp_config_path="$(mktemp)"
+  local mount_point
+  mount_point="$(mktemp -d)"
+  mount -o ro "${stateful_dev}" "${mount_point}"
+
+  echo 'Patching custom process config...'
+
+  local json_path
+  json_path="$(cros_payload_metadata "${mount_point}")"
+  local json_url="${mount_point}/${json_path}"
+  if [ -n "${json_url}" ]; then
+    # Get toolkit config in cros_payload.
+    cros_payload install "${json_url}" "${temp_config_path}" toolkit_config ||
+      true
+    # Get custom process config from toolkit config.
+    local config=""
+    if [ -s "${temp_config_path}" ]; then
+      config="$(
+        jq -s '.[].custom_reset_process | select(. != null)' "${temp_config_path}")"
+    fi
+    if [ -n "${config}" ]; then
+      local config_path="/mnt/stateful_partition/dev_image/etc/custom-process.json"
+      echo "${config}" >"${config_path}"
+    fi
+  fi
+
+  umount "${stateful_dev}"
+  rmdir "${mount_point}"
+  rm "${temp_config_path}"
+}
+
 # Install dev_image/etc/description from description payload.
 cros_payload_install_description() {
   local real_usb_dev="$(findLSBValue REAL_USB_DEV)"

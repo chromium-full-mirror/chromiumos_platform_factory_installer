@@ -57,6 +57,7 @@ main() {
   # Patch lsb-factory and cutoff config.
   cros_payload_patch_lsb_factory
   cros_payload_patch_cutoff_config
+  cros_payload_patch_custom_process
 
   cros_payload_install_description
 
