@@ -229,7 +229,7 @@ fn wait_ac_disconnected(context: &mut dyn Context) -> Result<()> {
     Ok(())
 }
 
-fn check_ac_state(context: &mut dyn Context) -> Result<()> {
+pub fn check_ac_state(context: &mut dyn Context) -> Result<()> {
     let config = get_cutoff_config(context)?;
     match config.cutoff_ac_state {
         CutoffAcState::ConnectAc => wait_ac_connected(context)?,

@@ -7,7 +7,7 @@ use std::fs;
 use anyhow::{self, Result};
 use serde::Deserialize;
 
-use crate::factory_installer::Action::{ChargeBattery, ResetDevice};
+use crate::factory_installer::Action::{ChargeBattery, CheckAcState, ResetDevice};
 use crate::system::context::Context;
 use crate::utils::qrcode_utils::QRcode;
 
@@ -26,6 +26,7 @@ pub struct DisplayQRcode {
 pub enum Action {
     ResetDevice,
     ChargeBattery,
+    CheckAcState,
     HttpRequest(HttpRequest),
     DisplayQRcode(DisplayQRcode),
     StopAndConfirm(String),
@@ -39,7 +40,7 @@ pub fn load_config(context: &mut dyn Context) -> Result<Vec<Action>> {
         true => serde_json::from_str(&fs::read_to_string(path)?)?,
         false => {
             eprintln!("Config file doesn't exist, perform simplified reset process.");
-            vec![ResetDevice, ChargeBattery]
+            vec![ResetDevice, ChargeBattery, CheckAcState]
         }
     };
     Ok(actions)
@@ -61,6 +62,7 @@ mod tests {
         let config = json!([
             "ResetDevice",
             "ChargeBattery",
+            "CheckAcState",
         {
             "HttpRequest": {"url": "fake_url", "post_arg": {"key": "value"}}
         },
@@ -84,6 +86,7 @@ mod tests {
             vec![
                 Action::ResetDevice,
                 Action::ChargeBattery,
+                Action::CheckAcState,
                 Action::HttpRequest(HttpRequest {
                     url: "fake_url".to_string(),
                     post_arg: json!({
@@ -108,6 +111,13 @@ mod tests {
 
         let result = load_config(&mut context).unwrap();
 
-        assert_eq!(result, vec![Action::ResetDevice, Action::ChargeBattery,]);
+        assert_eq!(
+            result,
+            vec![
+                Action::ResetDevice,
+                Action::ChargeBattery,
+                Action::CheckAcState
+            ]
+        );
     }
 }

@@ -14,6 +14,7 @@ use crate::factory_installer::config::{Action, DisplayQRcode, HttpRequest};
 use crate::system::context::Context;
 #[cfg(test)]
 use crate::utils::http_utils::mock as http_utils;
+use crate::utils::process_utils::StringOutput;
 #[cfg(test)]
 use crate::utils::terminal_utils::mock as terminal_utils;
 use crate::utils::{crossystem_utils, qrcode_utils, vpd_utils};
@@ -31,6 +32,10 @@ fn reset_device(context: &mut dyn Context) -> Result<()> {
 
 fn charge_battery(context: &mut dyn Context) -> Result<()> {
     cutoff::check_battery(context)
+}
+
+fn check_ac_state(context: &mut dyn Context) -> Result<()> {
+    cutoff::check_ac_state(context)
 }
 
 fn http_request(request: HttpRequest) -> Result<()> {
@@ -73,20 +78,30 @@ fn display_qrcode(arg: DisplayQRcode, context: &mut dyn Context) -> Result<()> {
 }
 
 fn stop_and_confirm(arg: String) -> Result<()> {
+    println!("Input {} and press enter to continue...", arg);
     terminal_utils::wait_enter(&arg)
 }
 
 pub fn do_custom_reset_process(context: &mut dyn Context) -> Result<()> {
+    // These are required in the reset process.
+    let output = context.command("activate_date").arg("--clean").output()?;
+    if !output.status.success() {
+        anyhow::bail!("Clean activate date fail. error: {}", output.stderr())
+    }
+    vpd_utils::delete_rw_value("recovery_count", context)?;
+
     let actions = config::load_config(context)?;
     for action in actions {
         match action {
             Action::ResetDevice => reset_device(context),
             Action::ChargeBattery => charge_battery(context),
+            Action::CheckAcState => check_ac_state(context),
             Action::HttpRequest(v) => http_request(v),
             Action::DisplayQRcode(v) => display_qrcode(v, context),
             Action::StopAndConfirm(v) => stop_and_confirm(v),
         }?;
     }
+    // This is required in the reset process.
     cutoff::cutoff_battery(context)?;
     Ok(())
 }
@@ -103,6 +118,8 @@ mod tests {
     #[test]
     fn test_do_custom_reset_process_reset_device() {
         let mut context = ContextImpl::new();
+        context.set_command_stdout("activate_date", "".to_string());
+        context.set_command_stderr("vpd", "already deleted".to_string());
         create_config(json!(["ResetDevice"]), &mut context);
         context.set_command_stdout("sh", "".to_string());
         context.set_command_stdout("start", "".to_string());
@@ -119,6 +136,8 @@ mod tests {
     #[test]
     fn test_do_custom_reset_process_display_qrcode() {
         let mut context = ContextImpl::new();
+        context.set_command_stdout("activate_date", "".to_string());
+        context.set_command_stderr("vpd", "already deleted".to_string());
         create_config(
             json!([{"DisplayQRcode": {
                 "qrcodes": [{"size": 232, "position": [10, 20],
@@ -152,6 +171,8 @@ mod tests {
     #[test]
     fn test_do_custom_reset_process_display_qrcode_unknown_key() {
         let mut context = ContextImpl::new();
+        context.set_command_stdout("activate_date", "".to_string());
+        context.set_command_stderr("vpd", "already deleted".to_string());
         create_config(
             json!([{"DisplayQRcode": {
                 "qrcodes": [{"size": 232, "position": [10, 20],
