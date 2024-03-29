@@ -87,3 +87,11 @@ pub fn get_power_control_node() -> Result<PathBuf> {
 
     return Ok(path);
 }
+
+pub fn is_pci_path(sys_dev_path: &Path) -> bool {
+    sys_dev_path.starts_with("/sys/devices/pci")
+}
+
+pub fn is_platform_path(sys_dev_path: &Path) -> bool {
+    sys_dev_path.starts_with("/sys/devices/platform/soc")
+}

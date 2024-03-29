@@ -25,6 +25,7 @@ use crate::factory_ufs::ufs::spec::ufs_3_1::{self, UFS3ConfigDescriptor};
 use crate::factory_ufs::utils::file_utils;
 use crate::factory_ufs::utils::path_utils::{self, PathMatchError, UFSPath};
 use crate::factory_ufs::utils::sys_utils::{self, PowerControl};
+use crate::utils::file_utils::PathError;
 use crate::utils::process_utils::{Command, StringOutput};
 
 #[derive(FromPrimitive)]
@@ -43,16 +44,43 @@ enum SupportedWBBufferTypes {
 
 const UFS_CONFIG_NAME: &str = "config_desc_data_ind_0";
 const PCI_RESCAN_PATH: &str = "/sys/bus/pci/rescan";
+const MTK_UFSHCD_PATH: &str = "/sys/bus/platform/drivers/ufshcd-mtk";
 const SUPPORT_WB_MASK: u32 = 1 << 8;
 
 /// Rescans to bring the device up.
 fn rescan_dev_and_sync(sys_dev_path: &Path, rescan_timeout: u32) -> Result<()> {
-    let pci_remove_path = Path::new(&sys_dev_path).join("remove");
+    if path_utils::is_pci_path(sys_dev_path) {
+        let pci_remove_path = Path::new(&sys_dev_path).join("remove");
 
-    println!("Perform pci remove: {}", pci_remove_path.display());
-    fs::write(&pci_remove_path, "1")?;
-    println!("Perform pci rescan: {}", PCI_RESCAN_PATH);
-    fs::write(PCI_RESCAN_PATH, "1")?;
+        println!("Perform pci remove: {}", pci_remove_path.display());
+        fs::write(&pci_remove_path, "1")?;
+        println!("Perform pci rescan: {}", PCI_RESCAN_PATH);
+        fs::write(PCI_RESCAN_PATH, "1")?;
+    } else if path_utils::is_platform_path(sys_dev_path) {
+        let mtk_ufsci_path = Path::new(MTK_UFSHCD_PATH)
+            .join("*.ufshci")
+            .display()
+            .to_string();
+        let device_path = path_utils::match_path(&mtk_ufsci_path)?;
+        let device_name = device_path
+            .file_name()
+            .ok_or(PathError::GetFilenameError)?
+            .to_str()
+            .ok_or(anyhow::anyhow!("Fail to convert basename into string."))?;
+        let unbind_path = Path::new(MTK_UFSHCD_PATH).join("unbind");
+        let bind_path = Path::new(MTK_UFSHCD_PATH).join("bind");
+
+        println!(
+            "Unbind device {} via {}",
+            device_name,
+            unbind_path.display()
+        );
+        fs::write(&unbind_path, device_name)?;
+        println!("Bind device {} via {}", device_name, bind_path.display());
+        fs::write(&bind_path, device_name)?;
+    } else {
+        anyhow::bail!("Failed to rebind UFS storage");
+    }
 
     println!("Wait for root device to be available...");
     let rootdev_pattern = Path::new(&sys_dev_path)
@@ -67,7 +95,7 @@ fn rescan_dev_and_sync(sys_dev_path: &Path, rescan_timeout: u32) -> Result<()> {
         thread::sleep(Duration::from_secs(1));
         match path_utils::match_path(&rootdev_pattern) {
             Ok(path) => {
-                println!("Root device found after pci rescan: {}", path.display());
+                println!("Root device found: {}", path.display());
                 return Ok(());
             }
             Err(err) => {
@@ -76,10 +104,10 @@ fn rescan_dev_and_sync(sys_dev_path: &Path, rescan_timeout: u32) -> Result<()> {
                         println!("Root device not found. Keep waiting...");
                         continue;
                     } else {
-                        anyhow::bail!("Multiple root device found after pci rescan!");
+                        anyhow::bail!("Multiple root device found!");
                     }
                 } else {
-                    anyhow::bail!("Error occurs after pci rescan: {}", err);
+                    anyhow::bail!("Error occurs: {}", err);
                 }
             }
         };
