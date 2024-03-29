@@ -15,7 +15,8 @@ use crate::system::context;
 use crate::utils::file_utils::{self, PathError};
 
 const UFS_NODE_PATTERN: &str = "/dev/bsg/ufs-bsg*";
-const SYS_DEV_PATTERN: &str = "/sys/devices/*/*/host*/ufs-bsg*";
+const SYSFS_DEV_PCI: &str = "/sys/devices/pci*/*/host*/ufs-bsg*";
+const SYSFS_DEV_PLAT: &str = "/sys/devices/platform/soc/*/host*/ufs-bsg*";
 
 pub struct UFSPath {
     pub bsg_node: PathBuf,
@@ -59,9 +60,22 @@ pub fn get_ufs_bsg_node() -> Result<PathBuf> {
     match_path(UFS_NODE_PATTERN)
 }
 
-/// Returns the path to pattern [SYS_DEV_PATTERN].
+/// Returns the path to pattern [SYSFS_DEV_{PCI, PLAT}].
 pub fn get_ufs_bsg_sys() -> Result<PathBuf> {
-    match_path(SYS_DEV_PATTERN)
+    let sysfs_path = match_path(SYSFS_DEV_PCI);
+    let sysfs_path = match sysfs_path {
+        Ok(path) => path,
+        Err(err) => {
+            if let Some(err) = err.downcast_ref::<PathMatchError>() {
+                if matches!(err, PathMatchError::PathNotFound) {
+                    return match_path(SYSFS_DEV_PLAT);
+                }
+            }
+            anyhow::bail!(PathMatchError::MultiplePathFound);
+        }
+    };
+
+    Ok(sysfs_path)
 }
 
 /// Returns the path to power control node.
