@@ -48,6 +48,7 @@ fn display_qrcode(arg: DisplayQRcode, context: &mut dyn Context) -> Result<()> {
     let sn = vpd_utils::get_ro_value("serial_number", context)?;
     let mlb_sn = vpd_utils::get_ro_value("mlb_serial_number", context)?;
     let wifi_mac = vpd_utils::get_ro_value("wifi_mac0", context)?;
+    let service_tag = vpd_utils::get_ro_value("service_tag", context)?;
     let re = Regex::new("(<.*?>)").unwrap();
 
     terminal_utils::clear();
@@ -59,6 +60,7 @@ fn display_qrcode(arg: DisplayQRcode, context: &mut dyn Context) -> Result<()> {
                 "<serial_number>" => &sn,
                 "<mlb_serial_number>" => &mlb_sn,
                 "<wifi_mac0>" => &wifi_mac,
+                "<service_tag>" => &service_tag,
                 _ => {
                     eprintln!("Unknown key: {}", &cap[0]);
                     invalid_content = true;
@@ -142,7 +144,7 @@ mod tests {
             json!([{"DisplayQRcode": {
                 "qrcodes": [{"size": 232, "position": [10, 20],
                 "content":
-                    "<hwid> <serial_number> <wifi_mac0> <mlb_serial_number>"}]
+                    "<hwid> <serial_number> <wifi_mac0> <mlb_serial_number> <service_tag>"}]
             }}]),
             &mut context,
         );
@@ -150,6 +152,7 @@ mod tests {
         context.set_command_stdout("vpd", "SN".to_string());
         context.set_command_stdout("vpd", "MLBSN".to_string());
         context.set_command_stdout("vpd", "WIFI".to_string());
+        context.set_command_stdout("vpd", "TAG".to_string());
         prepare_files(&mut context, "frecon_id");
         mock_cutoff_battery(&mut context);
 
@@ -185,6 +188,7 @@ mod tests {
         context.set_command_stdout("vpd", "SN".to_string());
         context.set_command_stdout("vpd", "MLBSN".to_string());
         context.set_command_stdout("vpd", "WIFI".to_string());
+        context.set_command_stdout("vpd", "TAG".to_string());
 
         let result = factory_installer::do_custom_reset_process(&mut context);
         let err = result.unwrap_err();

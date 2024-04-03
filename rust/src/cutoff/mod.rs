@@ -267,6 +267,7 @@ pub fn display_qrcode(qrcode_info: &str, context: &mut dyn Context) -> Result<()
                     "serial_number" => vpd_utils::get_ro_value("serial_number", context),
                     "mlb_serial_number" => vpd_utils::get_ro_value("mlb_serial_number", context),
                     "wifi_mac0" => vpd_utils::get_ro_value("wifi_mac0", context),
+                    "service_tag" => vpd_utils::get_ro_value("service_tag", context),
                     &_ => anyhow::bail!("Unknown key: {}", key),
                 };
                 display_string.push(value?);
@@ -676,10 +677,11 @@ mod tests {
         context.set_command_stdout("vpd", "SN".to_string());
         context.set_command_stdout("vpd", "WIFI".to_string());
         context.set_command_stdout("vpd", "MLBSN".to_string());
+        context.set_command_stdout("vpd", "TAG".to_string());
         context.set_command_stdout("bash", "".to_string());
 
         let result = cutoff::display_qrcode(
-            "hwid serial_number wifi_mac0 mlb_serial_number",
+            "hwid serial_number wifi_mac0 mlb_serial_number service_tag",
             &mut context,
         );
         assert!(result.is_ok());

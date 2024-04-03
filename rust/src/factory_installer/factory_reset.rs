@@ -280,7 +280,8 @@ mod tests {
             .join("mnt/stateful_partition/dev_image/etc");
         fs::write(
             dir.join("lsb-factory"),
-            "DISPLAY_QRCODE=true\nDISPLAY_INFO=hwid serial_number wifi_mac0 mlb_serial_number",
+            "DISPLAY_QRCODE=true\nDISPLAY_INFO=hwid serial_number wifi_mac0 \
+             mlb_serial_number service_tag",
         )
         .unwrap();
 
@@ -288,6 +289,7 @@ mod tests {
         context.set_command_stdout("vpd", "SN".to_string());
         context.set_command_stdout("vpd", "WIFI".to_string());
         context.set_command_stdout("vpd", "MLBSN".to_string());
+        context.set_command_stdout("vpd", "TAG".to_string());
         context.set_command_stdout("bash", "".to_string());
 
         let result = factory_reset::display_qrcode(&mut context);
