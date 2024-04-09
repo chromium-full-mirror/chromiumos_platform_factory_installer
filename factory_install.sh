@@ -70,12 +70,12 @@ DST_STATE_PART=1
 # Each action x is implemented in an action_$x handler (e.g.,
 # action_i); see the handlers for more information about what
 # each option is.
-SUPPORTED_ACTIONS=bcdefimrstuvyz
+SUPPORTED_ACTIONS=bcdefimprstuvyz
 SUPPORTED_ACTIONS_BOARD=
 
 # Supported actions when hardware writeprotect is enabled.
 # Add limitation of actions for security issue.
-SUPPORTED_ACTIONS_WP_ENABLED=bdefmrtuv
+SUPPORTED_ACTIONS_WP_ENABLED=bdefmprtuv
 
 # Supported actions when RSU is required.
 # We only support [e] RMA unlock to do RSU, and [u] Update Cr50 in case a device
@@ -687,19 +687,6 @@ factory_on_complete() {
   log "Completion script executed successfully."
 }
 
-factory_reset() {
-  crossystem disable_dev_request=1
-
-  log "Performing factory reset"
-  if ! /usr/sbin/factory_installer factory-reset reset; then
-    die "Factory reset failed."
-  fi
-
-  log "Done."
-  # TODO(hungte) shutdown or reboot once we decide the default behavior.
-  exit_success
-}
-
 # Call reset code on the fixed driver.
 #
 # Assume the global variable DST_DRIVE contains the drive to operate on.
@@ -1275,6 +1262,9 @@ menu() {
               "Install" "Performs a network or USB install"
   menu_line r "${supported_actions}" \
               "Reset" "Performs a factory reset; finalized devices only"
+  menu_line p "${supported_actions}" \
+              "Custom reset process" "Performs a customized factory reset;" \
+              "finalized devices only"
   menu_line b "${supported_actions}" \
               "Battery cutoff" "Performs a battery cutoff"
   menu_line s "${supported_actions}" \
@@ -1422,8 +1412,7 @@ action_i() {
   sleep 1d
 }
 
-# r = Factory reset.
-action_r() {
+prepare_reset() {
   if [ -n "${NETBOOT_RAMFS}" ]; then
     # factory_reset.sh script is not available in netboot mode.
     colorize red
@@ -1509,7 +1498,35 @@ action_r() {
   umount "${state_mount_point}"
 
   reset_chromeos_device
-  factory_reset
+}
+# r = Factory reset.
+action_r() {
+  prepare_reset
+  crossystem disable_dev_request=1
+
+  log "Performing factory reset"
+  if ! /usr/sbin/factory_installer factory-reset reset; then
+    die "Factory reset failed."
+  fi
+
+  log "Done."
+  # TODO(hungte) shutdown or reboot once we decide the default behavior.
+  exit_success
+}
+
+# p = Custom reset process
+action_p() {
+  prepare_reset
+  crossystem disable_dev_request=1
+
+  log "Performing custom factory reset"
+  if ! /usr/sbin/factory_installer custom-reset-process; then
+    die "Custom factory reset failed."
+  fi
+
+  log "Done."
+  # TODO(hungte) shutdown or reboot once we decide the default behavior.
+  exit_success
 }
 
 # b = Battery cutoff.
