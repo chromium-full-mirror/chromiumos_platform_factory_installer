@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::fs::File;
 use std::path::{Path, PathBuf};
 
 use anyhow::Result;
@@ -37,6 +38,10 @@ impl Context for RealContext {
         .tempdir()?
         .into_path())
     }
+    fn tempfile_in(&mut self, dir: &Path) -> Result<(File, PathBuf)> {
+        let file = tempfile::NamedTempFile::new_in(dir)?;
+        Ok(file.keep()?)
+    }
 }
 
 #[cfg(test)]
@@ -54,5 +59,14 @@ mod tests {
     fn test_real_context_tempdir_success_with_prefix() {
         let context = RealContext::new();
         assert!(context.tempdir(Some("prefix")).unwrap().as_path().exists());
+    }
+
+    #[test]
+    fn test_real_context_tempdir_in_success() {
+        let mut context = RealContext::new();
+        let (_, path) = context
+            .tempfile_in(&context.tempdir(None).unwrap())
+            .unwrap();
+        assert!(path.exists());
     }
 }

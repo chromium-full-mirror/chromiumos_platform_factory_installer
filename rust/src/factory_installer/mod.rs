@@ -7,6 +7,8 @@ pub mod config;
 pub mod factory_reset;
 pub mod script_wrapper;
 
+use std::collections::HashMap;
+
 use anyhow::{self, Result};
 use regex::{Captures, Regex};
 
@@ -44,27 +46,50 @@ fn http_request(request: HttpRequest) -> Result<()> {
 }
 
 fn display_qrcode(arg: DisplayQRcode, context: &mut dyn Context) -> Result<()> {
-    let hwid = crossystem_utils::get_hwid(context)?;
-    let sn = vpd_utils::get_ro_value("serial_number", context)?;
-    let mlb_sn = vpd_utils::get_ro_value("mlb_serial_number", context)?;
-    let wifi_mac = vpd_utils::get_ro_value("wifi_mac0", context)?;
-    let service_tag = vpd_utils::get_ro_value("service_tag", context)?;
+    let all_contents = arg
+        .qrcodes
+        .iter()
+        .map(|qrcode| qrcode.content.clone())
+        .collect::<Vec<String>>()
+        .join(" ");
+    let mut value_lookup = HashMap::new();
+    value_lookup.insert("<hwid>", crossystem_utils::get_hwid(context)?);
+    value_lookup.insert(
+        "<serial_number>",
+        vpd_utils::get_ro_value("serial_number", context)?,
+    );
+    if all_contents.contains("<mlb_serial_number>") {
+        value_lookup.insert(
+            "<mlb_serial_number>",
+            vpd_utils::get_ro_value("mlb_serial_number", context)?,
+        );
+    }
+    if all_contents.contains("<wifi_mac0>") {
+        value_lookup.insert(
+            "<wifi_mac0>",
+            vpd_utils::get_ro_value("wifi_mac0", context)?,
+        );
+    }
+    if all_contents.contains("<service_tag>") {
+        value_lookup.insert(
+            "<service_tag>",
+            vpd_utils::get_ro_value("service_tag", context)?,
+        );
+    }
     let re = Regex::new("(<.*?>)").unwrap();
 
     terminal_utils::clear();
     let mut invalid_content = false;
     for mut qrcode in arg.qrcodes {
         let content = re
-            .replace_all(&qrcode.content, |cap: &Captures| match &cap[0] {
-                "<hwid>" => &hwid,
-                "<serial_number>" => &sn,
-                "<mlb_serial_number>" => &mlb_sn,
-                "<wifi_mac0>" => &wifi_mac,
-                "<service_tag>" => &service_tag,
-                _ => {
-                    eprintln!("Unknown key: {}", &cap[0]);
-                    invalid_content = true;
-                    ""
+            .replace_all(&qrcode.content, |cap: &Captures| {
+                match value_lookup.contains_key(&cap[0]) {
+                    true => value_lookup[&cap[0]].as_str(),
+                    false => {
+                        eprintln!("Unknown key: {}", &cap[0]);
+                        invalid_content = true;
+                        ""
+                    }
                 }
             })
             .to_string();
@@ -142,10 +167,13 @@ mod tests {
         context.set_command_stderr("vpd", "already deleted".to_string());
         create_config(
             json!([{"DisplayQRcode": {
-                "qrcodes": [{"size": 232, "position": [10, 20],
+                "qrcodes": [{"size": 100, "position": [10, 20],
                 "content":
-                    "<hwid> <serial_number> <wifi_mac0> <mlb_serial_number> <service_tag>"}]
-            }}]),
+                    "<hwid> <serial_number> <wifi_mac0> <mlb_serial_number> <service_tag>"},
+                    {"size": 100, "position": [10, 20],
+                "content":
+                    "<hwid>"}]
+            }}, ]),
             &mut context,
         );
         context.set_command_stdout("crossystem", "HWID".to_string());
@@ -153,6 +181,8 @@ mod tests {
         context.set_command_stdout("vpd", "MLBSN".to_string());
         context.set_command_stdout("vpd", "WIFI".to_string());
         context.set_command_stdout("vpd", "TAG".to_string());
+        context.set_tempfile("qrcode.png".to_string());
+        context.set_tempfile("qrcode1.png".to_string());
         prepare_files(&mut context, "frecon_id");
         mock_cutoff_battery(&mut context);
 
@@ -168,6 +198,17 @@ mod tests {
             )
             .unwrap(),
             fs::read("tests/qrcode/ALL.png").unwrap()
+        );
+        assert_eq!(
+            fs::read(
+                context
+                    .root_dir()
+                    .join("proc/frecon_id/root/qrcode1.png")
+                    .to_str()
+                    .unwrap()
+            )
+            .unwrap(),
+            fs::read("tests/qrcode/HWID.png").unwrap()
         );
     }
 

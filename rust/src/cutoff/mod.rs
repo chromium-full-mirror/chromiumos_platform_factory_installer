@@ -281,7 +281,7 @@ pub fn display_qrcode(qrcode_info: &str, context: &mut dyn Context) -> Result<()
         eprintln!("Press enter to continue...");
         qrcode_utils::display_qrcode(
             &QRcode {
-                size: 232,
+                size: 100,
                 content: content,
                 position: None,
             },
@@ -679,6 +679,7 @@ mod tests {
         context.set_command_stdout("vpd", "MLBSN".to_string());
         context.set_command_stdout("vpd", "TAG".to_string());
         context.set_command_stdout("bash", "".to_string());
+        context.set_tempfile("qrcode.png".to_string());
 
         let result = cutoff::display_qrcode(
             "hwid serial_number wifi_mac0 mlb_serial_number service_tag",
@@ -703,19 +704,31 @@ mod tests {
         let mut context = ContextImpl::new();
         context.set_command_stdout("modprobe", "".to_string());
         prepare_qrcode_files(&mut context, "frecon_id");
-        context.set_command_stdout("vpd", "".to_string());
+        context.set_command_stdout("vpd", "SN".to_string());
         context.set_command_stdout("crossystem", "HWID".to_string());
         context.set_command_stdout("bash", "".to_string());
         context.set_command_stdout("bash", "".to_string());
+        context.set_tempfile("qrcode.png".to_string());
+        context.set_tempfile("qrcode1.png".to_string());
 
         let result = cutoff::display_qrcode("serial_number,hwid", &mut context);
         assert!(result.is_ok());
-        // The former will be overwritten.
         assert_eq!(
             fs::read(
                 context
                     .root_dir()
                     .join("proc/frecon_id/root/qrcode.png")
+                    .to_str()
+                    .unwrap()
+            )
+            .unwrap(),
+            fs::read("tests/qrcode/SN.png").unwrap()
+        );
+        assert_eq!(
+            fs::read(
+                context
+                    .root_dir()
+                    .join("proc/frecon_id/root/qrcode1.png")
                     .to_str()
                     .unwrap()
             )

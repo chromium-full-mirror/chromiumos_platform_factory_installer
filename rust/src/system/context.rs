@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard};
 
@@ -32,6 +33,7 @@ pub trait Context {
     fn command(&mut self, program: &str) -> Command;
     fn root_dir(&self) -> &Path;
     fn tempdir(&self, prefix: Option<&str>) -> Result<PathBuf>;
+    fn tempfile_in(&mut self, dir: &Path) -> Result<(File, PathBuf)>;
 }
 
 lazy_static::lazy_static! {

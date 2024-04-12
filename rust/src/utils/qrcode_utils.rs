@@ -3,7 +3,6 @@
 // found in the LICENSE file.
 
 use std::fs;
-use std::fs::File;
 use std::io::BufWriter;
 use std::path::PathBuf;
 
@@ -34,20 +33,19 @@ fn get_frecon_path(context: &mut dyn Context) -> Result<PathBuf> {
 /// Displays the qrcode by frecon console with the given content, size, location.
 pub fn display_qrcode(qrcode: &QRcode, context: &mut dyn Context) -> Result<()> {
     let frecon_path = get_frecon_path(context)?;
-    let file = File::create(frecon_path.join("qrcode.png").to_str().unwrap()).unwrap();
-
+    let (file, path) = context.tempfile_in(&frecon_path)?;
+    let name = path.file_name().unwrap().to_str().unwrap();
     let image = QrCode::new(&qrcode.content)?
         .render::<Luma<u8>>()
-        .min_dimensions(qrcode.size, qrcode.size)
+        .max_dimensions(qrcode.size, qrcode.size)
         .build();
     let encoder = Encoder::new(BufWriter::new(file), image.width(), image.height());
     let mut writer = encoder.write_header().unwrap();
     writer.write_image_data(&image).unwrap();
-
     let terminal_path = context.root_dir().join("run/frecon/vt0");
     let frecon_string = match qrcode.position {
-        None => "\x1b]image:file=/qrcode.png\x1b\\".to_string(),
-        Some(p) => format!("\x1b]image:file=/qrcode.png;location={},{}\x1b\\", p.0, p.1),
+        None => format!("\x1b]image:file=/{}\x1b\\", name),
+        Some(p) => format!("\x1b]image:file=/{};location={},{}\x1b\\", name, p.0, p.1),
     };
     Ok(fs::write(terminal_path, frecon_string)?)
 }
@@ -68,10 +66,11 @@ mod tests {
         fs::create_dir_all(dir.clone()).unwrap();
         File::create(dir.join("vt0")).unwrap();
         fs::write(dir.join("pid"), frecon_id).unwrap();
+        context.set_tempfile("qrcode.png".to_string());
 
         let result = qrcode_utils::display_qrcode(
             &QRcode {
-                size: 232,
+                size: 100,
                 content: "HWID".to_string(),
                 position: None,
             },

@@ -4,6 +4,7 @@
 
 use std::collections::{HashMap, VecDeque};
 use std::ffi::OsStr;
+use std::fs::File;
 use std::os::unix::process::ExitStatusExt;
 use std::path::{Path, PathBuf};
 use std::process::{ExitStatus, Output};
@@ -17,6 +18,7 @@ pub struct MockContext {
     command_output: HashMap<String, VecDeque<Command>>,
     root_dir: PathBuf,
     tempdir: PathBuf,
+    tempfiles: VecDeque<String>,
 }
 
 /// Mocked implementation for system context.
@@ -51,6 +53,7 @@ impl MockContext {
                 .tempdir()
                 .expect("Failed to create mock tempdir.")
                 .into_path(),
+            tempfiles: VecDeque::<String>::new(),
         }
     }
     pub fn set_command_stdout<S: AsRef<OsStr>>(&mut self, program: S, stdout: String) {
@@ -83,6 +86,9 @@ impl MockContext {
             .or_insert(VecDeque::new())
             .push_front(cmd);
     }
+    pub fn set_tempfile(&mut self, file_name: String) {
+        self.tempfiles.push_back(file_name);
+    }
 }
 
 impl Context for MockContext {
@@ -103,5 +109,9 @@ impl Context for MockContext {
         // Currently we don't have this requirement in any test case so we use the simplest approach
         // at this moment.
         Ok(self.tempdir.clone())
+    }
+    fn tempfile_in(&mut self, dir: &Path) -> Result<(File, PathBuf)> {
+        let path = dir.join(self.tempfiles.pop_front().unwrap());
+        Ok((File::create(path.clone())?, path))
     }
 }

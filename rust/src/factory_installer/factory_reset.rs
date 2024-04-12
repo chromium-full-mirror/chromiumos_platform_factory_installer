@@ -291,6 +291,7 @@ mod tests {
         context.set_command_stdout("vpd", "MLBSN".to_string());
         context.set_command_stdout("vpd", "TAG".to_string());
         context.set_command_stdout("bash", "".to_string());
+        context.set_tempfile("qrcode.png".to_string());
 
         let result = factory_reset::display_qrcode(&mut context);
         assert!(result.is_ok());
@@ -319,19 +320,31 @@ mod tests {
             "DISPLAY_QRCODE=true\nDISPLAY_INFO=serial_number,hwid",
         )
         .unwrap();
-        context.set_command_stdout("vpd", "".to_string());
+        context.set_command_stdout("vpd", "SN".to_string());
         context.set_command_stdout("crossystem", "HWID".to_string());
         context.set_command_stdout("bash", "".to_string());
         context.set_command_stdout("bash", "".to_string());
+        context.set_tempfile("qrcode.png".to_string());
+        context.set_tempfile("qrcode1.png".to_string());
 
         let result = factory_reset::display_qrcode(&mut context);
         assert!(result.is_ok());
-        // The former will be overwritten.
         assert_eq!(
             fs::read(
                 context
                     .root_dir()
                     .join("proc/frecon_id/root/qrcode.png")
+                    .to_str()
+                    .unwrap()
+            )
+            .unwrap(),
+            fs::read("tests/qrcode/SN.png").unwrap()
+        );
+        assert_eq!(
+            fs::read(
+                context
+                    .root_dir()
+                    .join("proc/frecon_id/root/qrcode1.png")
                     .to_str()
                     .unwrap()
             )
