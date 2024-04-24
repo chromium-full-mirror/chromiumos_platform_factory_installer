@@ -1414,7 +1414,7 @@ action_i() {
 
 prepare_reset() {
   if [ -n "${NETBOOT_RAMFS}" ]; then
-    # factory_reset.sh script is not available in netboot mode.
+    # factory reset is not available in netboot mode.
     colorize red
     log "Not available in netboot."
     return
@@ -1599,7 +1599,7 @@ action_d() {
 erase_drive() {
   local action="$1"
   if [ -n "${NETBOOT_RAMFS}" ]; then
-    # factory_reset.sh script is not available in netboot mode.
+    # factory reset is not available in netboot mode.
     colorize red
     log "Not available in netboot."
     return
@@ -1637,7 +1637,7 @@ action_c() {
 # y = VerifY
 action_y() {
   if [ -n "${NETBOOT_RAMFS}" ]; then
-    # factory_reset.sh script is not available in netboot mode.
+    # factory reset is not available in netboot mode.
     colorize red
     log "Not available in netboot."
     return
