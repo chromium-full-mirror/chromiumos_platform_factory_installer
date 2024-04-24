@@ -1364,7 +1364,7 @@ action_i() {
     # Enable factory mode if it's supported.
     # Enabling factory mode would trigger a reboot automatically and be halt
     # inside this function until reboots.
-    tpm_enable_factory_mode
+    action_m
   fi
 
   # Try to do EC reboot. If it fails, do normal reboot.
@@ -1637,6 +1637,21 @@ action_e() {
 # M = Enable TPM factory mode
 action_m() {
   tpm_enable_factory_mode
+
+  # Force the next boot to be in developer mode so that we can boot to RMA shim
+  # again.
+  gbb_force_dev_mode
+
+  # This will make DUT boot to RMA shim in dev mode directly.
+  if [ "${RMA_AUTORUN}" = "true" ]; then
+    crossystem dev_boot_usb=1
+    crossystem dev_default_boot=usb
+  fi
+
+  reboot
+
+  # sleep indefinitely to avoid re-spawning rather than reboot.
+  sleep 1d
 }
 
 # F = Perform Factory FAI process
