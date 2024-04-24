@@ -192,15 +192,6 @@ tpm_enable_factory_mode() {
   # here to make sure factory mode enabled before reboot.
   log "Successfully to enable factory mode and should reboot in 5 seconds."
   sleep 5s
-
-  # Force the next boot to be in developer mode so that we can boot to RMA shim
-  # again.
-  futility gbb --flash --set --flags='+0x8' >/dev/null 2>&1
-
-  reboot
-
-  # sleep indefinitely to avoid re-spawning rather than reboot.
-  sleep 1d
 }
 
 tpm_get_info() {
