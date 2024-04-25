@@ -20,6 +20,7 @@ pub struct HttpRequest {
 #[derive(PartialEq, Deserialize, Debug)]
 pub struct DisplayQRcode {
     pub qrcodes: Vec<QRcode>,
+    pub continue_key: Option<String>,
 }
 
 #[derive(PartialEq, Deserialize, Debug)]
@@ -27,6 +28,7 @@ pub enum Action {
     ResetDevice,
     ChargeBattery,
     CheckAcState,
+    Clear,
     HttpRequest(HttpRequest),
     DisplayQRcode(DisplayQRcode),
     StopAndConfirm(String),
@@ -63,12 +65,14 @@ mod tests {
             "ResetDevice",
             "ChargeBattery",
             "CheckAcState",
+            "Clear",
         {
             "HttpRequest": {"url": "fake_url", "post_arg": {"key": "value"}}
         },
         {
             "DisplayQRcode": {
-                "qrcodes": [{"size": 100, "position": [10, 20], "content": "code"}]
+                "qrcodes": [{"size": 100, "position": [10, 20], "content": "code"}],
+                "continue_key": "abc"
             }
         },
         {
@@ -87,6 +91,7 @@ mod tests {
                 Action::ResetDevice,
                 Action::ChargeBattery,
                 Action::CheckAcState,
+                Action::Clear,
                 Action::HttpRequest(HttpRequest {
                     url: "fake_url".to_string(),
                     post_arg: json!({
@@ -98,10 +103,40 @@ mod tests {
                         size: 100,
                         position: Some((10, 20)),
                         content: "code".to_string()
-                    }]
+                    }],
+                    continue_key: Some("abc".to_string())
                 }),
                 Action::StopAndConfirm("asd".to_string())
             ]
+        );
+    }
+
+    #[test]
+    fn test_load_config_no_option_fields() {
+        let mut context = ContextImpl::new();
+        let config = json!([
+        {
+            "DisplayQRcode": {
+                "qrcodes": [{"size": 100, "content": "code"}],
+            }
+        }]);
+        let dir = context
+            .root_dir()
+            .join("mnt/stateful_partition/dev_image/etc");
+        fs::create_dir_all(dir.clone()).unwrap();
+        fs::write(dir.join("custom-process.json"), config.to_string()).unwrap();
+
+        let result = load_config(&mut context).unwrap();
+        assert_eq!(
+            result,
+            vec![Action::DisplayQRcode(DisplayQRcode {
+                qrcodes: vec![QRcode {
+                    size: 100,
+                    position: None,
+                    content: "code".to_string()
+                }],
+                continue_key: None
+            })]
         );
     }
 

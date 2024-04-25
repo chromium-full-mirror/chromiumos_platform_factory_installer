@@ -79,6 +79,9 @@ fn display_qrcode(arg: DisplayQRcode, context: &mut dyn Context) -> Result<()> {
     let re = Regex::new("(<.*?>)").unwrap();
 
     terminal_utils::clear();
+    if let Some(ref key) = arg.continue_key {
+        println!("Input {} and press enter to continue...", key);
+    }
     let mut invalid_content = false;
     for mut qrcode in arg.qrcodes {
         let content = re
@@ -97,10 +100,13 @@ fn display_qrcode(arg: DisplayQRcode, context: &mut dyn Context) -> Result<()> {
             anyhow::bail!("Invalid content: {}", &qrcode.content);
         }
         qrcode.content = content;
+        // TODO(jasonchuang): We're not sure when will the qrcode be cleared,
+        // need to consult with frecon team.
         qrcode_utils::display_qrcode(&qrcode, context)?;
     }
-    eprintln!("Press enter to continue...");
-    terminal_utils::wait_enter("")?;
+    if let Some(key) = arg.continue_key {
+        terminal_utils::wait_enter(&key)?;
+    }
     Ok(())
 }
 
@@ -123,6 +129,7 @@ pub fn do_custom_reset_process(context: &mut dyn Context) -> Result<()> {
             Action::ResetDevice => reset_device(context),
             Action::ChargeBattery => charge_battery(context),
             Action::CheckAcState => check_ac_state(context),
+            Action::Clear => Ok(terminal_utils::clear()),
             Action::HttpRequest(v) => http_request(v),
             Action::DisplayQRcode(v) => display_qrcode(v, context),
             Action::StopAndConfirm(v) => stop_and_confirm(v),
