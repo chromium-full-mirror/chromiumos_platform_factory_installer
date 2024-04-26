@@ -297,7 +297,9 @@ pub fn action_provision(ufs_path: &UFSPath, rescan_timeout: u32) -> Result<()> {
     let header_value = read_header(&cur_config_binary)?;
 
     // Disable auto-suspend so that the descriptors can be queried. (b/263069232)
-    sys_utils::set_power_control(PowerControl::On)?;
+    if sys_utils::set_power_control(PowerControl::On).is_err() {
+        println!("Failed to set power control. Skip setting power control.");
+    }
     match header_value {
         ufs_2_1::HEADER_LENGTH => {
             println!("Provision UFS 2.1...");
