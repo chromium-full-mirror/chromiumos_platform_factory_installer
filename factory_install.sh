@@ -1396,7 +1396,7 @@ action_i() {
     # Enable factory mode if it's supported.
     # Enabling factory mode would trigger a reboot automatically and be halt
     # inside this function until reboots.
-    action_m
+    enable_factory_mode_and_reboot
   fi
 
   # Try to do EC reboot. If it fails, do normal reboot.
@@ -1688,16 +1688,20 @@ action_e() {
   tpm_perform_rsu
 }
 
-# m = Enable TPM factory mode
-action_m() {
+# Enable TPM factory mode, force dev mode, and reboot at the end.
+# Args:
+#   default_boot_usb: set to "true" to enable boot from USB by default.
+enable_factory_mode_and_reboot() {
+  local default_boot_usb="$1"
+
   tpm_enable_factory_mode
 
   # Force the next boot to be in developer mode so that we can boot to RMA shim
   # again.
   gbb_force_dev_mode
 
-  # This will make DUT boot to RMA shim in dev mode directly.
-  if [ "${RMA_AUTORUN}" = "true" ]; then
+  if [ "${default_boot_usb}" = "true" ]; then
+    # This will make DUT boot to the shim directly.
     crossystem dev_boot_usb=1
     crossystem dev_default_boot=usb
   fi
@@ -1706,6 +1710,15 @@ action_m() {
 
   # sleep indefinitely to avoid re-spawning rather than reboot.
   sleep 1d
+}
+
+# m = Enable TPM factory mode
+action_m() {
+  # If RMA_AUTORUN is true, assume the user is using an RMA shim and would like
+  # to automatically boot into the shim again after reboot. Hence we also
+  # configure the device to boot from USB by default.
+  local default_boot_usb="${RMA_AUTORUN}"
+  enable_factory_mode_and_reboot "${default_boot_usb}"
 }
 
 # f = Perform Factory FAI process
