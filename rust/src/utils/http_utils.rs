@@ -3,8 +3,10 @@
 // found in the LICENSE file.
 use anyhow::Result;
 use hyper::{Body, Client, Method, Request, Response};
+use tokio::runtime::Runtime;
 
 pub fn post(url: String, arg: serde_json::Value) -> Result<Response<Body>> {
+    let rt = Runtime::new()?;
     let req = Request::builder()
         .method(Method::POST)
         .uri(url)
@@ -12,7 +14,10 @@ pub fn post(url: String, arg: serde_json::Value) -> Result<Response<Body>> {
         .body(Body::from(arg.to_string()))?;
 
     let client = Client::new();
-    Ok(futures::executor::block_on(client.request(req))?)
+    let res = futures::executor::block_on(async move {
+        rt.spawn(async move { client.request(req).await }).await
+    })?;
+    Ok(res?)
 }
 
 #[cfg(test)]
@@ -30,15 +35,12 @@ mod tests {
 
     use crate::utils::http_utils;
 
-    #[tokio::test]
-    async fn test_post() {
-        let result = http_utils::post("http://www.some_url.com".to_string(), json!({}));
+    #[test]
+    fn test_post_fail() {
+        let result = http_utils::post("http://localhost".to_string(), json!({"key":"value"}));
 
         let err = result.unwrap_err();
         let message = err.root_cause();
-        assert_eq!(
-            format!("{}", message),
-            "failed to lookup address information: Name or service not known"
-        );
+        assert_eq!(format!("{}", message), "Connection refused (os error 111)");
     }
 }
