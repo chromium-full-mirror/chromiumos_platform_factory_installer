@@ -3,29 +3,35 @@
 // found in the LICENSE file.
 use anyhow::Result;
 use hyper::{Body, Client, Method, Request, Response};
+#[cfg(test)]
+use mockall::automock;
 use tokio::runtime::Runtime;
 
-pub fn post(url: String, arg: serde_json::Value) -> Result<Response<Body>> {
-    let rt = Runtime::new()?;
-    let req = Request::builder()
-        .method(Method::POST)
-        .uri(url)
-        .header("content-type", "application/json")
-        .body(Body::from(arg.to_string()))?;
-
-    let client = Client::new();
-    let res = futures::executor::block_on(async move {
-        rt.spawn(async move { client.request(req).await }).await
-    })?;
-    Ok(res?)
+#[cfg_attr(test, automock)]
+pub trait HttpClientTrait {
+    fn post(&self, url: String, arg: serde_json::Value) -> Result<Response<Body>>;
 }
 
-#[cfg(test)]
-pub mod mock {
-    use anyhow::Result;
+pub struct HttpClient {}
+impl HttpClient {
+    pub fn new() -> Self {
+        Self {}
+    }
+}
+impl HttpClientTrait for HttpClient {
+    fn post(&self, url: String, arg: serde_json::Value) -> Result<Response<Body>> {
+        let rt = Runtime::new()?;
+        let req = Request::builder()
+            .method(Method::POST)
+            .uri(url)
+            .header("content-type", "application/json")
+            .body(Body::from(arg.to_string()))?;
 
-    pub fn post(_: String, _: serde_json::Value) -> Result<()> {
-        Ok(())
+        let client = Client::new();
+        let res = futures::executor::block_on(async move {
+            rt.spawn(async move { client.request(req).await }).await
+        })?;
+        Ok(res?)
     }
 }
 
@@ -33,11 +39,12 @@ pub mod mock {
 mod tests {
     use serde_json::json;
 
-    use crate::utils::http_utils;
+    use crate::utils::http_utils::{self, HttpClientTrait};
 
     #[test]
     fn test_post_fail() {
-        let result = http_utils::post("http://localhost".to_string(), json!({"key":"value"}));
+        let client = http_utils::HttpClient::new();
+        let result = client.post("http://localhost".to_string(), json!({"key":"value"}));
 
         let err = result.unwrap_err();
         let message = err.root_cause();

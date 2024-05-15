@@ -11,17 +11,16 @@ use std::collections::HashMap;
 
 use anyhow::{self, Result};
 use regex::{Captures, Regex};
+use serde_json::json;
 
 use crate::factory_installer::config::{Action, DisplayQRcode, HttpRequest};
 use crate::system::context::Context;
-#[cfg(test)]
-use crate::utils::http_utils::mock as http_utils;
 use crate::utils::process_utils::StringOutput;
+#[cfg(not(test))]
+use crate::utils::terminal_utils;
 #[cfg(test)]
 use crate::utils::terminal_utils::mock as terminal_utils;
 use crate::utils::{crossystem_utils, qrcode_utils, vpd_utils};
-#[cfg(not(test))]
-use crate::utils::{http_utils, terminal_utils};
 use crate::{cutoff, device};
 
 fn reset_device(context: &mut dyn Context) -> Result<()> {
@@ -40,9 +39,87 @@ fn check_ac_state(context: &mut dyn Context) -> Result<()> {
     cutoff::check_ac_state(context)
 }
 
-fn http_request(request: HttpRequest) -> Result<()> {
-    http_utils::post(request.url, request.post_arg)?;
+fn http_request(request: HttpRequest, context: &mut dyn Context) -> Result<()> {
+    let args = replace_json_value(request.post_arg, context)?;
+    context.http_post(request.url, args)?;
     Ok(())
+}
+
+fn replace_json_value(
+    args: serde_json::Value,
+    context: &mut dyn Context,
+) -> Result<serde_json::Value> {
+    let all_contents = args
+        .as_object()
+        .unwrap()
+        .values()
+        .map(|v| v.to_string())
+        .collect::<Vec<String>>();
+    let value_lookup = get_value_lookup(all_contents, context)?;
+    let mut result = json!({});
+    for (key, value) in args.as_object().unwrap() {
+        result[key] = serde_json::from_str(
+            replace_by_lookup(value.to_string(), value_lookup.clone())?.as_str(),
+        )?;
+    }
+    Ok(result)
+}
+
+fn get_value_lookup(
+    all_contents: Vec<String>,
+    context: &mut dyn Context,
+) -> Result<HashMap<String, String>> {
+    let mut value_lookup = HashMap::new();
+    let contents = all_contents.join(" ");
+    if contents.contains("<hwid>") {
+        value_lookup.insert("<hwid>".to_string(), crossystem_utils::get_hwid(context)?);
+    }
+    if contents.contains("<serial_number>") {
+        value_lookup.insert(
+            "<serial_number>".to_string(),
+            vpd_utils::get_ro_value("serial_number", context)?,
+        );
+    }
+    if contents.contains("<mlb_serial_number>") {
+        value_lookup.insert(
+            "<mlb_serial_number>".to_string(),
+            vpd_utils::get_ro_value("mlb_serial_number", context)?,
+        );
+    }
+    if contents.contains("<wifi_mac0>") {
+        value_lookup.insert(
+            "<wifi_mac0>".to_string(),
+            vpd_utils::get_ro_value("wifi_mac0", context)?,
+        );
+    }
+    if contents.contains("<service_tag>") {
+        value_lookup.insert(
+            "<service_tag>".to_string(),
+            vpd_utils::get_ro_value("service_tag", context)?,
+        );
+    }
+    Ok(value_lookup)
+}
+
+fn replace_by_lookup(content: String, value_lookup: HashMap<String, String>) -> Result<String> {
+    let re = Regex::new("(<.*?>)").unwrap();
+    let mut invalid_content = false;
+    let res = re
+        .replace_all(&content, |cap: &Captures| {
+            match value_lookup.contains_key(&cap[0]) {
+                true => value_lookup[&cap[0]].as_str(),
+                false => {
+                    eprintln!("Unknown key: {}", &cap[0]);
+                    invalid_content = true;
+                    ""
+                }
+            }
+        })
+        .to_string();
+    if invalid_content {
+        anyhow::bail!("Invalid content: {}", content);
+    }
+    Ok(res)
 }
 
 fn display_qrcode(arg: DisplayQRcode, context: &mut dyn Context) -> Result<()> {
@@ -50,56 +127,15 @@ fn display_qrcode(arg: DisplayQRcode, context: &mut dyn Context) -> Result<()> {
         .qrcodes
         .iter()
         .map(|qrcode| qrcode.content.clone())
-        .collect::<Vec<String>>()
-        .join(" ");
-    let mut value_lookup = HashMap::new();
-    value_lookup.insert("<hwid>", crossystem_utils::get_hwid(context)?);
-    value_lookup.insert(
-        "<serial_number>",
-        vpd_utils::get_ro_value("serial_number", context)?,
-    );
-    if all_contents.contains("<mlb_serial_number>") {
-        value_lookup.insert(
-            "<mlb_serial_number>",
-            vpd_utils::get_ro_value("mlb_serial_number", context)?,
-        );
-    }
-    if all_contents.contains("<wifi_mac0>") {
-        value_lookup.insert(
-            "<wifi_mac0>",
-            vpd_utils::get_ro_value("wifi_mac0", context)?,
-        );
-    }
-    if all_contents.contains("<service_tag>") {
-        value_lookup.insert(
-            "<service_tag>",
-            vpd_utils::get_ro_value("service_tag", context)?,
-        );
-    }
-    let re = Regex::new("(<.*?>)").unwrap();
+        .collect::<Vec<String>>();
+    let value_lookup = get_value_lookup(all_contents, context)?;
 
     terminal_utils::clear();
     if let Some(ref key) = arg.continue_key {
         println!("Input {} and press enter to continue...", key);
     }
-    let mut invalid_content = false;
     for mut qrcode in arg.qrcodes {
-        let content = re
-            .replace_all(&qrcode.content, |cap: &Captures| {
-                match value_lookup.contains_key(&cap[0]) {
-                    true => value_lookup[&cap[0]].as_str(),
-                    false => {
-                        eprintln!("Unknown key: {}", &cap[0]);
-                        invalid_content = true;
-                        ""
-                    }
-                }
-            })
-            .to_string();
-        if invalid_content {
-            anyhow::bail!("Invalid content: {}", &qrcode.content);
-        }
-        qrcode.content = content;
+        qrcode.content = replace_by_lookup(qrcode.content, value_lookup.clone())?;
         // TODO(jasonchuang): We're not sure when will the qrcode be cleared,
         // need to consult with frecon team.
         qrcode_utils::display_qrcode(&qrcode, context)?;
@@ -130,7 +166,7 @@ pub fn do_custom_reset_process(context: &mut dyn Context) -> Result<()> {
             Action::ChargeBattery => charge_battery(context),
             Action::CheckAcState => check_ac_state(context),
             Action::Clear => Ok(terminal_utils::clear()),
-            Action::HttpRequest(v) => http_request(v),
+            Action::HttpRequest(v) => http_request(v, context),
             Action::DisplayQRcode(v) => display_qrcode(v, context),
             Action::StopAndConfirm(v) => stop_and_confirm(v),
         }?;
@@ -144,6 +180,8 @@ pub fn do_custom_reset_process(context: &mut dyn Context) -> Result<()> {
 mod tests {
     use std::fs::{self, File};
 
+    use hyper::{Body, Response};
+    use mockall::predicate;
     use serde_json::json;
 
     use crate::factory_installer;
@@ -242,6 +280,36 @@ mod tests {
         let err = result.unwrap_err();
         let message = err.root_cause();
         assert_eq!(format!("{}", message), "Invalid content: <abc> <hwid> abc");
+    }
+
+    #[test]
+    fn test_do_custom_reset_process_http_request() {
+        let mut context = ContextImpl::new();
+        context.set_command_stdout("activate_date", "".to_string());
+        context.set_command_stderr("vpd", "already deleted".to_string());
+        context.set_command_stdout("crossystem", "HWID".to_string());
+        mock_cutoff_battery(&mut context);
+        create_config(
+            json!([{"HttpRequest": {
+                "url": "fake_url",
+                "post_arg": {
+                "key": "<hwid>"
+            }}}]),
+            &mut context,
+        );
+        context
+            .http_client
+            .expect_post()
+            .times(1)
+            .with(
+                predicate::eq("fake_url".to_string()),
+                predicate::eq(json!({
+                "key": "HWID"})),
+            )
+            .returning(|_, _| Ok(Response::<Body>::new("body".into())));
+
+        let result = factory_installer::do_custom_reset_process(&mut context);
+        assert!(result.is_ok());
     }
 
     fn mock_cutoff_battery(context: &mut ContextImpl) {

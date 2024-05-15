@@ -6,8 +6,10 @@ use std::fs::File;
 use std::path::{Path, PathBuf};
 
 use anyhow::Result;
+use hyper::{Body, Response};
 
 use super::context::Context;
+use crate::utils::http_utils::{HttpClient, HttpClientTrait};
 use crate::utils::process_utils::Command;
 
 pub struct RealContext {
@@ -42,10 +44,15 @@ impl Context for RealContext {
         let file = tempfile::NamedTempFile::new_in(dir)?;
         Ok(file.keep()?)
     }
+    fn http_post(&self, url: String, arg: serde_json::Value) -> Result<Response<Body>> {
+        HttpClient::new().post(url, arg)
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use serde_json::json;
+
     use crate::system::context::Context;
     use crate::system::real_context::RealContext;
 
@@ -68,5 +75,15 @@ mod tests {
             .tempfile_in(&context.tempdir(None).unwrap())
             .unwrap();
         assert!(path.exists());
+    }
+
+    #[test]
+    fn test_http_post_fail() {
+        let context = RealContext::new();
+        let result = context.http_post("http://localhost".to_string(), json!({"key":"value"}));
+
+        let err = result.unwrap_err();
+        let message = err.root_cause();
+        assert_eq!(format!("{}", message), "Connection refused (os error 111)");
     }
 }

@@ -10,8 +10,10 @@ use std::path::{Path, PathBuf};
 use std::process::{ExitStatus, Output};
 
 use anyhow::Result;
+use hyper::{Body, Response};
 
 use super::context::Context;
+use crate::utils::http_utils::{HttpClientTrait, MockHttpClientTrait};
 use crate::utils::process_utils::{Child, Command};
 
 pub struct MockContext {
@@ -19,6 +21,7 @@ pub struct MockContext {
     root_dir: PathBuf,
     tempdir: PathBuf,
     tempfiles: VecDeque<String>,
+    pub http_client: MockHttpClientTrait,
 }
 
 /// Mocked implementation for system context.
@@ -54,6 +57,7 @@ impl MockContext {
                 .expect("Failed to create mock tempdir.")
                 .into_path(),
             tempfiles: VecDeque::<String>::new(),
+            http_client: MockHttpClientTrait::new(),
         }
     }
     pub fn set_command_stdout<S: AsRef<OsStr>>(&mut self, program: S, stdout: String) {
@@ -113,5 +117,8 @@ impl Context for MockContext {
     fn tempfile_in(&mut self, dir: &Path) -> Result<(File, PathBuf)> {
         let path = dir.join(self.tempfiles.pop_front().unwrap());
         Ok((File::create(path.clone())?, path))
+    }
+    fn http_post(&self, url: String, arg: serde_json::Value) -> Result<Response<Body>> {
+        self.http_client.post(url, arg)
     }
 }

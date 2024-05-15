@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard};
 
 use anyhow::Result;
+use hyper::{Body, Response};
 use lazy_static;
 
 #[cfg(test)]
@@ -34,6 +35,7 @@ pub trait Context {
     fn root_dir(&self) -> &Path;
     fn tempdir(&self, prefix: Option<&str>) -> Result<PathBuf>;
     fn tempfile_in(&mut self, dir: &Path) -> Result<(File, PathBuf)>;
+    fn http_post(&self, url: String, arg: serde_json::Value) -> Result<Response<Body>>;
 }
 
 lazy_static::lazy_static! {
