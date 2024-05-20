@@ -12,7 +12,7 @@ use anyhow::{self, Result};
 
 use crate::cutoff::config::{CutoffAcState, CutoffConfig, CutoffMethod};
 use crate::system::context::Context;
-use crate::utils::ectool_utils::{self, BatteryInfo, ChargeControl};
+use crate::utils::ectool_utils::{self, BatteryInfo, ChargeControl, RebootCommand};
 use crate::utils::process_utils::StringOutput;
 use crate::utils::qrcode_utils::QRcode;
 #[cfg(test)]
@@ -81,11 +81,16 @@ pub fn cutoff_battery(context: &mut dyn Context) -> Result<()> {
                 sys_utils::reboot()
             }
             CutoffMethod::EcHibernate => {
-                ectool_utils::hibernate(context)?;
+                ectool_utils::reboot_ec(RebootCommand::Hibernate, context)?;
                 sys_utils::shutdown()
             }
             // By default we shutdown the device without doing anything.
-            CutoffMethod::Shutdown => sys_utils::shutdown(),
+            CutoffMethod::Shutdown => {
+                if crossystem_utils::get_value("mainfw_type", context)? == "recovery" {
+                    ectool_utils::reboot_ec(RebootCommand::ColdApOff, context)?;
+                }
+                sys_utils::shutdown()
+            }
         };
         if result.is_ok() {
             return Ok(());
@@ -263,7 +268,7 @@ pub fn display_qrcode(qrcode_info: &str, context: &mut dyn Context) -> Result<()
             let mut display_string = vec![];
             for key in info.split(" ") {
                 let value = match key {
-                    "hwid" => crossystem_utils::get_hwid(context),
+                    "hwid" => crossystem_utils::get_value("hwid", context),
                     "serial_number" => vpd_utils::get_ro_value("serial_number", context),
                     "mlb_serial_number" => vpd_utils::get_ro_value("mlb_serial_number", context),
                     "wifi_mac0" => vpd_utils::get_ro_value("wifi_mac0", context),
@@ -443,6 +448,8 @@ mod tests {
     #[test]
     fn test_cutoff_battery_shutdown() {
         let mut context = ContextImpl::new();
+        context.set_command_stdout("ectool", "".to_string());
+        context.set_command_stdout("crossystem", "recovery".to_string());
         context.set_command_stdout("ectool", "".to_string());
         context.set_command_stdout(
             context

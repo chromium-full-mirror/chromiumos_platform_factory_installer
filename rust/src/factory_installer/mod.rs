@@ -72,7 +72,10 @@ fn get_value_lookup(
     let mut value_lookup = HashMap::new();
     let contents = all_contents.join(" ");
     if contents.contains("<hwid>") {
-        value_lookup.insert("<hwid>".to_string(), crossystem_utils::get_hwid(context)?);
+        value_lookup.insert(
+            "<hwid>".to_string(),
+            crossystem_utils::get_value("hwid", context)?,
+        );
     }
     if contents.contains("<serial_number>") {
         value_lookup.insert(

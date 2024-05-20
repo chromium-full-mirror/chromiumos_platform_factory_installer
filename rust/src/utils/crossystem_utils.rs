@@ -7,13 +7,13 @@ use anyhow::Result;
 use crate::system::context::Context;
 use crate::utils::process_utils::StringOutput;
 
-/// Gets the value of hardware id.
-pub fn get_hwid(context: &mut dyn Context) -> Result<String> {
-    let output = context.command("crossystem").arg("hwid").output()?;
+/// Gets the value by parameter.
+pub fn get_value(param: &str, context: &mut dyn Context) -> Result<String> {
+    let output = context.command("crossystem").arg(param).output()?;
     if output.status.success() {
         Ok(output.stdout())
     } else {
-        anyhow::bail!("Get HWID fail.")
+        anyhow::bail!("Get {} fail.", param)
     }
 }
 
@@ -35,24 +35,24 @@ mod tests {
     use crate::utils::crossystem_utils;
 
     #[test]
-    fn test_get_hwid_success() {
+    fn test_get_value_success() {
         let mut context = ContextImpl::new();
-        context.set_command_stdout("crossystem", "hwid".to_string());
+        context.set_command_stdout("crossystem", "res".to_string());
 
-        let result = crossystem_utils::get_hwid(&mut context);
+        let result = crossystem_utils::get_value("", &mut context);
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), "hwid");
+        assert_eq!(result.unwrap(), "res");
     }
 
     #[test]
-    fn test_get_hwid_failed() {
+    fn test_get_value_failed() {
         let mut context = ContextImpl::new();
         context.set_command_stderr("crossystem", "error".to_string());
 
-        let result = crossystem_utils::get_hwid(&mut context);
+        let result = crossystem_utils::get_value("key", &mut context);
         let err = result.unwrap_err();
         let message = err.root_cause();
-        assert_eq!(format!("{}", message), "Get HWID fail.");
+        assert_eq!(format!("{}", message), "Get key fail.");
     }
 
     #[test]

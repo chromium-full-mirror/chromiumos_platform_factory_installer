@@ -26,6 +26,32 @@ impl fmt::Display for ChargeControl {
     }
 }
 
+pub enum RebootCommand {
+    Cancel,
+    RO,
+    RW,
+    Cold,
+    DisableJump,
+    Hibernate,
+    HibernateClearApOff,
+    ColdApOff,
+}
+
+impl fmt::Display for RebootCommand {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            RebootCommand::Cancel => write!(f, "cancel"),
+            RebootCommand::RO => write!(f, "RO"),
+            RebootCommand::RW => write!(f, "RW"),
+            RebootCommand::Cold => write!(f, "cold"),
+            RebootCommand::DisableJump => write!(f, "disable-jump"),
+            RebootCommand::Hibernate => write!(f, "hibernate"),
+            RebootCommand::HibernateClearApOff => write!(f, "hibernate-clear-ap-off"),
+            RebootCommand::ColdApOff => write!(f, "cold-ap-off"),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct BatteryInfo {
     pub battery_percentage: i32,
@@ -94,10 +120,12 @@ pub fn cutoff(context: &mut dyn Context) -> Result<()> {
     Ok(())
 }
 
-pub fn hibernate(context: &mut dyn Context) -> Result<()> {
+// Reboot ec with command.
+// Check src/platform/ec/util/ectool.cc
+pub fn reboot_ec(cmd: RebootCommand, context: &mut dyn Context) -> Result<()> {
     let output = context
         .command("ectool")
-        .args(["reboot_ec", "hibernate", "at-shutdown"])
+        .args(["reboot_ec", &cmd.to_string(), "at-shutdown"])
         .output()?;
     if !output.status.success() {
         anyhow::bail!("Reboot ec fail: {}", output.stderr());
@@ -109,7 +137,7 @@ pub fn hibernate(context: &mut dyn Context) -> Result<()> {
 mod tests {
 
     use crate::system::context::ContextImpl;
-    use crate::utils::ectool_utils::{self, ChargeControl};
+    use crate::utils::ectool_utils::{self, ChargeControl, RebootCommand};
 
     #[test]
     fn test_get_battery_info_success() {
@@ -201,18 +229,18 @@ mod tests {
     }
 
     #[test]
-    fn test_hibernate_success() {
+    fn test_reboot_ec_success() {
         let mut context = ContextImpl::new();
         context.set_command_stdout("ectool", "".to_string());
-        let result = ectool_utils::hibernate(&mut context);
+        let result = ectool_utils::reboot_ec(RebootCommand::ColdApOff, &mut context);
         assert!(result.is_ok());
     }
 
     #[test]
-    fn test_hibernate_fail() {
+    fn test_reboot_ec_fail() {
         let mut context = ContextImpl::new();
         context.set_command_stderr("ectool", "stderr".to_string());
-        let result = ectool_utils::hibernate(&mut context);
+        let result = ectool_utils::reboot_ec(RebootCommand::ColdApOff, &mut context);
         let err = result.unwrap_err();
         let message = err.root_cause();
         assert_eq!(format!("{}", message), "Reboot ec fail: stderr");
