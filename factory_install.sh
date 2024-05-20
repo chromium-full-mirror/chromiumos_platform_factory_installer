@@ -1571,7 +1571,7 @@ action_v() {
     echo "${FAI_VPD_CONFIG}" > "${temp_config}"
     echo
     echo "VPD:"
-    /usr/sbin/factory_fai --config-path "${temp_config}" || true
+    /usr/sbin/factory_installer fai --config-path "${temp_config}" || true
     rm "${temp_config}"
 
     echo

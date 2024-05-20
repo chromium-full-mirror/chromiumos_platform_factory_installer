@@ -34,28 +34,28 @@ cp /tmp/mount_point/factory_fai_${MODEL}_*.json ./
 ## Development Guide
 
 ### Build
-Factory FAI is built with `factory_installer`:
+Factory FAI is built with `factory_installer_rust`:
 
 ```
 (inside chroot)
-cros_workon --board $BOARD start factory_installer
-emerge-$BOARD factory_installer
+cros_workon --board $BOARD start factory_installer_rust
+emerge-$BOARD factory_installer_rust
 ```
 
-The built binary can be found in `/build/$BOARD/usr/sbin/factory_fai`.
+The built binary can be found in `/build/$BOARD/usr/sbin/factory_installer`.
 
 ### Execute FAI from shell
 
 Dump FAI data to `fai_data.json`:
 ```
-(on DUT) $ /usr/sbin/factory_fai -o fai_data.json
+(on DUT) $ /usr/sbin/factory_installer fai -o fai_data.json
 ```
 
 Customize collected data by modifying config file:
 ```
-(on DUT) $ /usr/sbin/factory_fai --dump-config /tmp/fai_config.json
+(on DUT) $ /usr/sbin/factory_installer fai --dump-config /tmp/fai_config.json
 # Modify your config
-(on DUT) $ /usr/sbin/factory_fai -c /tmp/fai_config.json
+(on DUT) $ /usr/sbin/factory_installer fai -c /tmp/fai_config.json
 ```
 
 ### Configuration
