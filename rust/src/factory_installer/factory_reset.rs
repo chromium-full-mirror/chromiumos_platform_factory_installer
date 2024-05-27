@@ -126,7 +126,7 @@ pub fn display_qrcode(context: &mut dyn Context) -> Result<()> {
     Ok(())
 }
 
-fn inform_shopfloor(context: &mut dyn Context) -> Result<()> {
+pub fn inform_shopfloor(context: &mut dyn Context) -> Result<()> {
     // inform_shopfloor will load factory server URL from lsb-factory, and
     // ignore the request if FACTORY_SEVER_URL is not set. Note that
     // notification to shopfloor is proxied by the factory server, so we need a

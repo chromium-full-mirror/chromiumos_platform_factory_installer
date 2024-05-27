@@ -29,6 +29,7 @@ pub enum Action {
     ChargeBattery,
     CheckAcState,
     Clear,
+    InformShopfloor,
     HttpRequest(HttpRequest),
     DisplayQRcode(DisplayQRcode),
     StopAndConfirm(String),
@@ -65,6 +66,7 @@ mod tests {
             "ResetDevice",
             "ChargeBattery",
             "CheckAcState",
+            "InformShopfloor",
             "Clear",
         {
             "HttpRequest": {"url": "fake_url", "post_arg": {"key": "value"}}
@@ -91,6 +93,7 @@ mod tests {
                 Action::ResetDevice,
                 Action::ChargeBattery,
                 Action::CheckAcState,
+                Action::InformShopfloor,
                 Action::Clear,
                 Action::HttpRequest(HttpRequest {
                     url: "fake_url".to_string(),

@@ -39,10 +39,15 @@ fn check_ac_state(context: &mut dyn Context) -> Result<()> {
     cutoff::check_ac_state(context)
 }
 
+// TODO(b/342942582): This action is still not stable.
 fn http_request(request: HttpRequest, context: &mut dyn Context) -> Result<()> {
     let args = replace_json_value(request.post_arg, context)?;
     context.http_post(request.url, args)?;
     Ok(())
+}
+
+fn inform_shopfloor(context: &mut dyn Context) -> Result<()> {
+    factory_reset::inform_shopfloor(context)
 }
 
 fn replace_json_value(
@@ -169,6 +174,7 @@ pub fn do_custom_reset_process(context: &mut dyn Context) -> Result<()> {
             Action::ChargeBattery => charge_battery(context),
             Action::CheckAcState => check_ac_state(context),
             Action::Clear => Ok(terminal_utils::clear()),
+            Action::InformShopfloor => inform_shopfloor(context),
             Action::HttpRequest(v) => http_request(v, context),
             Action::DisplayQRcode(v) => display_qrcode(v, context),
             Action::StopAndConfirm(v) => stop_and_confirm(v),
