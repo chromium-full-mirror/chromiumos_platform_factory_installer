@@ -89,6 +89,7 @@ DLC_IDS=()
 
 DLC_COUNT=0
 TOTAL_DLC_PREALLOCATE_SIZE=0
+DLC_METADATA_DIR=opt/google/dlc
 
 FAI_VPD_CONFIG='{
   "ro_vpd": {
@@ -983,12 +984,45 @@ factory_install_network() {
   factory_install_cros_payload "${OMAHA}" "${json_path}" "${dlc_path}"
 }
 
+# DLC metadata after image version `15875.0.0` are compressed and cannot be
+# read directly.
+use_legacy_dlc_metadata_format() {
+  local release_rootfs_mnt lsb_release image_version
+  release_rootfs_mnt="$1"
+  lsb_release="${release_rootfs_mnt}/etc/lsb-release"
+  image_version="$(getLSBValue \
+    "$(grep "^GOOGLE_RELEASE" "${lsb_release}" | tail -1)")"
+  # Get the major image version.
+  image_version="$(echo "${image_version}" | cut -d '.' -f 1)"
+
+  [ "${image_version}" -lt 15875 ]
+}
+
+# Decompress DLC metadata to a destination directory.
+decompress_dlc_metadata() {
+  local release_rootfs_mnt dst_dir dlc_ids_str
+  release_rootfs_mnt="$1"
+  dst_dir="$2"
+  dlc_ids_str="$(chroot "${release_rootfs_mnt}" dlc_metadata_util \
+    --metadata_dir=/"${DLC_METADATA_DIR}" --list --factory_install \
+    2>/dev/null)"
+  for dlc_id in $(echo "${dlc_ids_str}" | tr -d '[]"' | tr ',' '\n' )
+  do
+    local metadata_dir
+    metadata_dir="${dst_dir}/${DLC_METADATA_DIR}/${dlc_id}/package"
+    mkdir -p "${metadata_dir}"
+    # The old format only has the fields in `manifest`.
+    chroot "${release_rootfs_mnt}" dlc_metadata_util --get --id="${dlc_id}" \
+          | jq '.manifest' > "${metadata_dir}/imageloader.json"
+  done
+}
+
 # Get the total number of factory installed DLC images and their pre-allocated
 # size from `/opt/google/dlc` of rootfs.
 get_factory_installed_dlc_cnt_and_size() {
   local rootfs_mount_point="$1"
 
-  for d in "${rootfs_mount_point}"/opt/google/dlc/* ; do
+  for d in "${rootfs_mount_point}/${DLC_METADATA_DIR}"/* ; do
     # Read the metadata.
     local metadata="${d}"/package/imageloader.json
     if [ ! -f "${metadata}" ]; then
@@ -1447,7 +1481,16 @@ action_r() {
                  "${DST_RELEASE_ROOTFS_PART}")"
   mount -o ro "${release_dev}" "${release_rootfs_mount_point}"
 
-  get_factory_installed_dlc_cnt_and_size "${release_rootfs_mount_point}"
+  local rootfs_with_dlc_metadata
+  if use_legacy_dlc_metadata_format "${release_rootfs_mount_point}"; then
+    rootfs_with_dlc_metadata="${release_rootfs_mount_point}"
+  else
+    local dlc_metadata_path=/tmp/dlc_metadata
+    decompress_dlc_metadata "${release_rootfs_mount_point}" \
+       "${dlc_metadata_path}"
+    rootfs_with_dlc_metadata="${dlc_metadata_path}"
+  fi
+  get_factory_installed_dlc_cnt_and_size "${rootfs_with_dlc_metadata}"
   log "Number of factory installed DLC metadata: ${DLC_COUNT}"
   if [ "${DLC_COUNT}" != 0 ]; then
     # Install the factory installed DLC images to dlc_path.
@@ -1471,7 +1514,7 @@ action_r() {
       die "Expected to have ${DLC_COUNT} DLCs. Current: ${#DLC_IMG_PATHS[@]}."
     fi
 
-    verify_dlc_hash "${release_rootfs_mount_point}"
+    verify_dlc_hash "${rootfs_with_dlc_metadata}"
 
     log "Remove existing factory installed DLC images on stateful partition..."
     local dlc_stateful="${state_mount_point}"/unencrypted/dlc-factory-images
