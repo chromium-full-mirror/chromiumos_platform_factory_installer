@@ -1,5 +1,5 @@
 #!/bin/sh
-# Copyright 2015 The Chromium OS Authors. All rights reserved.
+# Copyright 2015 The ChromiumOS Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -23,12 +23,17 @@ export TTY_FILE LOG_FILE OVERLORD_READY
 
 main() {
   tty_init
+  # tty_init will delete frecon console, so we need to
+  # redirect logs to the log file.
+  exec 2>"${LOG_FILE}"
+  exec 1>"${LOG_FILE}"
 
   # Setup and display log files
   mkdir -p "$(dirname "${TTY_FILE}")" "$(dirname "${LOG_FILE}")"
   touch "${TTY_FILE}" "${LOG_FILE}"
 
-  local omahaserver="$(kernel_get_var omahaserver)"
+  local omahaserver
+  omahaserver="$(kernel_get_var omahaserver)"
   if [ -n "${omahaserver}" ]; then
     # Should be netboot-ready environment. Try to start Overlord service.
     if ! bringup_network ||
@@ -44,7 +49,7 @@ main() {
 
          Press [q] to refresh, [g/G] to begin/end of logs, [b/f]
          to backward/forward pages, or navigation keys to scroll.
-        ---------------------------------------------------------" >${LOG_FILE}
+        --------------------------------------------------------" >"${LOG_FILE}"
     if [ -e "${INITRAMFS_LOG_FILE}" ]; then
       cat "${INITRAMFS_LOG_FILE}" >>"${LOG_FILE}"
     fi
@@ -53,7 +58,6 @@ main() {
     setsid sh -c \
       "script -afqc '${LOG_VIEWER_COMMAND}' /dev/null <${LOG_TTY} >${LOG_TTY}" &
   fi
-
   # Patch lsb-factory and cutoff config.
   cros_payload_patch_lsb_factory
   cros_payload_patch_cutoff_config
