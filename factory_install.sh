@@ -249,10 +249,10 @@ is_rsu_required() {
 
 block_devmode() {
   local fwmp_block_dev_mode_flag="0x41"
-  local dm_binary="device_management_client"
+  local dm_binary="/usr/sbin/device_management_client"
 
   # cryptohome as fallback for factory branch cherry-pick compatibility.
-  if [ -z "${dm_binary}" ]; then
+  if [ ! -f "${dm_binary}" ]; then
     dm_binary="cryptohome"
   fi
 
@@ -1151,10 +1151,10 @@ print_header() {
 
 print_devmode_block_status() {
   local flags
-  local dm_binary="device_management_client"
+  local dm_binary="/usr/sbin/device_management_client"
 
   # cryptohome as fallback for factory branch cherry-pick compatibility.
-  if [ -z "${dm_binary}" ]; then
+  if [ ! -f "${dm_binary}" ]; then
     dm_binary="cryptohome"
   fi
 
