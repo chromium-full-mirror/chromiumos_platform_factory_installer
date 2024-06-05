@@ -5,7 +5,7 @@
 #[cfg(feature = "factory-ufs")]
 pub mod factory_ufs;
 
-#[cfg(feature = "factory-fai")]
+#[cfg(feature = "factory-installer")]
 pub mod factory_fai;
 
 #[cfg(feature = "factory-installer")]
