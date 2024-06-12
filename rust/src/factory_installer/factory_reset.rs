@@ -393,5 +393,9 @@ mod tests {
         fs::create_dir_all(dir.clone()).unwrap();
         File::create(dir.join("vt0")).unwrap();
         fs::write(dir.join("pid"), frecon_id).unwrap();
+        let dir = context.root_dir().join("usr/share/cutoff");
+        fs::create_dir_all(&dir).unwrap();
+        File::create(dir.join("cutoff.json")).unwrap();
+        File::create(dir.join("display_wipe_message.sh")).unwrap();
     }
 }

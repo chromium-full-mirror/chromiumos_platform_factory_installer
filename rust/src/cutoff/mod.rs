@@ -26,6 +26,7 @@ use crate::utils::{sys_utils, terminal_utils};
 pub mod config;
 
 const CUTOFF_DIR: &str = "usr/share/cutoff";
+const TOOLKIT_DIR: &str = "usr/local/factory";
 
 pub fn do_cutoff(context: &mut dyn Context) -> Result<()> {
     let output = context.command("activate_date").arg("--clean").output()?;
@@ -36,7 +37,6 @@ pub fn do_cutoff(context: &mut dyn Context) -> Result<()> {
     let config = get_cutoff_config(context)?;
     eprintln!("{:?}", config);
     check_battery(context)?;
-
     ectool_utils::charge_control(ChargeControl::Idle, context)?;
     check_ac_state(context)?;
     display_qrcode(&config.qrcode_info, context)?;
@@ -47,8 +47,26 @@ pub fn do_cutoff(context: &mut dyn Context) -> Result<()> {
 }
 
 pub fn get_cutoff_config(context: &mut dyn Context) -> Result<CutoffConfig> {
-    let path = context.root_dir().join(CUTOFF_DIR).join("cutoff.json");
-    // TODO(jasonchuang): Also need to access the path of cutoff.json for toolkit.
+    let shim_path = context.root_dir().join(CUTOFF_DIR).join("cutoff.json");
+    let toolkit_path = context
+        .root_dir()
+        .join(TOOLKIT_DIR)
+        .join("sh/cutoff")
+        .join("cutoff.json");
+    let private_overlay_path = context
+        .root_dir()
+        .join(TOOLKIT_DIR)
+        .join("py/config")
+        .join("cutoff.json");
+    let path = if shim_path.exists() {
+        shim_path
+    } else if toolkit_path.exists() {
+        toolkit_path
+    } else if private_overlay_path.exists() {
+        private_overlay_path
+    } else {
+        anyhow::bail!("Cutoff config not found.")
+    };
 
     let config: CutoffConfig = serde_json::from_str(&fs::read_to_string(path)?)?;
     Ok(config)
@@ -244,15 +262,24 @@ pub fn check_ac_state(context: &mut dyn Context) -> Result<()> {
 }
 
 fn display_message(message: &str, context: &mut dyn Context) -> Result<()> {
+    let shim_path = context
+        .root_dir()
+        .join(CUTOFF_DIR)
+        .join("display_wipe_message.sh");
+    let toolkit_path = context
+        .root_dir()
+        .join(TOOLKIT_DIR)
+        .join("sh/cutoff")
+        .join("display_wipe_message.sh");
+    let path = if toolkit_path.exists() {
+        toolkit_path
+    } else if shim_path.exists() {
+        shim_path
+    } else {
+        anyhow::bail!("Cannot find display_wipe_message.sh");
+    };
     let mut child = context
-        .command(
-            &context
-                .root_dir()
-                .join(CUTOFF_DIR)
-                .join("display_wipe_message.sh")
-                .to_str()
-                .unwrap(),
-        )
+        .command(&path.to_str().unwrap())
         .arg(message)
         .spawn()?;
     child.wait()?;
@@ -318,7 +345,7 @@ mod tests {
         context.set_command_stdout("activate_date", "".to_string());
         context.set_command_stderr("vpd", "".to_string());
         context.set_command_stdout("modprobe", "".to_string());
-        create_cutoff_config(
+        create_cutoff_files(
             json!({
                 "CUTOFF_METHOD": "reboot",
                 "CUTOFF_AC_STATE": "remove_ac"
@@ -364,7 +391,7 @@ mod tests {
                 .join("usr/share/cutoff/display_wipe_message.sh"),
             "".to_string(),
         );
-        create_cutoff_config(
+        create_cutoff_files(
             json!({
                 "CUTOFF_METHOD": "reboot",
                 "CUTOFF_AC_STATE": "connect_ac"
@@ -387,7 +414,7 @@ mod tests {
                 .join("usr/share/cutoff/display_wipe_message.sh"),
             "".to_string(),
         );
-        create_cutoff_config(
+        create_cutoff_files(
             json!({
                 "CUTOFF_METHOD": "ectool_cutoff",
                 "CUTOFF_AC_STATE": "connect_ac"
@@ -410,7 +437,7 @@ mod tests {
                 .join("usr/share/cutoff/display_wipe_message.sh"),
             "".to_string(),
         );
-        create_cutoff_config(
+        create_cutoff_files(
             json!({
                 "CUTOFF_METHOD": "battery_cutoff",
                 "CUTOFF_AC_STATE": "connect_ac"
@@ -433,7 +460,7 @@ mod tests {
                 .join("usr/share/cutoff/display_wipe_message.sh"),
             "".to_string(),
         );
-        create_cutoff_config(
+        create_cutoff_files(
             json!({
                 "CUTOFF_METHOD": "ec_hibernate",
                 "CUTOFF_AC_STATE": "connect_ac"
@@ -457,7 +484,7 @@ mod tests {
                 .join("usr/share/cutoff/display_wipe_message.sh"),
             "".to_string(),
         );
-        create_cutoff_config(
+        create_cutoff_files(
             json!({
                 "CUTOFF_METHOD": "shutdown",
                 "CUTOFF_AC_STATE": "connect_ac"
@@ -479,7 +506,7 @@ mod tests {
                 .join("usr/share/cutoff/display_wipe_message.sh"),
             "".to_string(),
         );
-        create_cutoff_config(
+        create_cutoff_files(
             json!({
                 "CUTOFF_METHOD": "unknown",
                 "CUTOFF_AC_STATE": "connect_ac"
@@ -503,7 +530,7 @@ mod tests {
                 .join("usr/share/cutoff/display_wipe_message.sh"),
             "".to_string(),
         );
-        create_cutoff_config(
+        create_cutoff_files(
             json!({
                 "CUTOFF_METHOD": "shutdown",
             }),
@@ -528,7 +555,7 @@ mod tests {
                 .join("usr/share/cutoff/display_wipe_message.sh"),
             "".to_string(),
         );
-        create_cutoff_config(
+        create_cutoff_files(
             json!({
                 "CUTOFF_AC_STATE": "connect_ac",
             }),
@@ -547,7 +574,7 @@ mod tests {
     fn test_check_battery_ok() {
         let mut context = ContextImpl::new();
         context.set_command_stdout("modprobe", "".to_string());
-        create_cutoff_config(
+        create_cutoff_files(
             json!({
                 "CUTOFF_AC_STATE": "connect_ac",
                 "CUTOFF_METHOD": "shutdown",
@@ -564,7 +591,7 @@ mod tests {
     fn test_check_battery_max_percentage_negative() {
         let mut context = ContextImpl::new();
         context.set_command_stdout("modprobe", "".to_string());
-        create_cutoff_config(
+        create_cutoff_files(
             json!({
                 "CUTOFF_AC_STATE": "connect_ac",
                 "CUTOFF_METHOD": "shutdown",
@@ -587,7 +614,7 @@ mod tests {
     fn test_check_battery_min_percentage_larger_than_100() {
         let mut context = ContextImpl::new();
         context.set_command_stdout("modprobe", "".to_string());
-        create_cutoff_config(
+        create_cutoff_files(
             json!({
                 "CUTOFF_AC_STATE": "connect_ac",
                 "CUTOFF_METHOD": "shutdown",
@@ -610,7 +637,7 @@ mod tests {
     fn test_check_battery_charge() {
         let mut context = ContextImpl::new();
         context.set_command_stdout("modprobe", "".to_string());
-        create_cutoff_config(
+        create_cutoff_files(
             json!({
                 "CUTOFF_AC_STATE": "connect_ac",
                 "CUTOFF_METHOD": "shutdown",
@@ -645,7 +672,7 @@ mod tests {
     fn test_check_battery_discharge() {
         let mut context = ContextImpl::new();
         context.set_command_stdout("modprobe", "".to_string());
-        create_cutoff_config(
+        create_cutoff_files(
             json!({
                 "CUTOFF_AC_STATE": "connect_ac",
                 "CUTOFF_METHOD": "shutdown",
@@ -757,8 +784,93 @@ mod tests {
     }
 
     #[test]
+    fn test_cutoff_use_toolkit_path() {
+        let mut context = ContextImpl::new();
+        context.set_command_stdout("ectool", "".to_string());
+        context.set_command_stdout(
+            context
+                .root_dir()
+                .join("usr/local/factory/sh/cutoff/display_wipe_message.sh"),
+            "".to_string(),
+        );
+        let dir = context.root_dir().join("usr/local/factory/sh/cutoff");
+        fs::create_dir_all(dir.clone()).unwrap();
+        let config = json!({
+            "CUTOFF_METHOD": "reboot",
+            "CUTOFF_AC_STATE": "connect_ac"
+        });
+        fs::write(dir.join("cutoff.json"), config.to_string()).unwrap();
+        File::create(dir.join("display_wipe_message.sh")).unwrap();
+
+        let result = cutoff::cutoff_battery(&mut context);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_cutoff_use_private_overlay_path() {
+        let mut context = ContextImpl::new();
+        context.set_command_stdout("ectool", "".to_string());
+        context.set_command_stdout(
+            context
+                .root_dir()
+                .join("usr/local/factory/sh/cutoff/display_wipe_message.sh"),
+            "".to_string(),
+        );
+        let dir = context.root_dir().join("usr/local/factory/py/config");
+        fs::create_dir_all(dir.clone()).unwrap();
+        let config = json!({
+            "CUTOFF_METHOD": "reboot",
+            "CUTOFF_AC_STATE": "connect_ac"
+        });
+        fs::write(dir.join("cutoff.json"), config.to_string()).unwrap();
+        let dir = context.root_dir().join("usr/local/factory/sh/cutoff");
+        fs::create_dir_all(dir.clone()).unwrap();
+        File::create(dir.join("display_wipe_message.sh")).unwrap();
+
+        let result = cutoff::cutoff_battery(&mut context);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_cutoff_config_not_exist() {
+        let mut context = ContextImpl::new();
+        context.set_command_stdout("ectool", "".to_string());
+        context.set_command_stdout(
+            context
+                .root_dir()
+                .join("usr/share/cutoff/display_wipe_message.sh"),
+            "".to_string(),
+        );
+        let dir = context.root_dir().join("usr/share/cutoff");
+        fs::create_dir_all(dir.clone()).unwrap();
+        File::create(dir.join("display_wipe_message.sh")).unwrap();
+
+        let result = cutoff::cutoff_battery(&mut context);
+
+        let err = result.unwrap_err();
+        let message = err.root_cause();
+        assert_eq!(format!("{}", message), "Cutoff config not found.");
+    }
+
+    #[test]
+    fn test_display_script_not_exist() {
+        let mut context = ContextImpl::new();
+        context.set_command_stdout("ectool", "".to_string());
+
+        let result = cutoff::cutoff_battery(&mut context);
+
+        let err = result.unwrap_err();
+        let message = err.root_cause();
+        assert_eq!(
+            format!("{}", message),
+            "Cannot find display_wipe_message.sh"
+        );
+    }
+
+    #[test]
     fn test_failed() {
         let mut context = ContextImpl::new();
+        create_cutoff_files(json!("{}"), &mut context);
         context.set_command_stdout(
             context
                 .root_dir()
@@ -794,9 +906,10 @@ mod tests {
         fs::write(dir.join("pid"), frecon_id).unwrap();
     }
 
-    fn create_cutoff_config(config: serde_json::Value, context: &mut ContextImpl) {
+    fn create_cutoff_files(config: serde_json::Value, context: &mut ContextImpl) {
         let dir = context.root_dir().join("usr/share/cutoff");
         fs::create_dir_all(dir.clone()).unwrap();
         fs::write(dir.join("cutoff.json"), config.to_string()).unwrap();
+        File::create(dir.join("display_wipe_message.sh")).unwrap();
     }
 }

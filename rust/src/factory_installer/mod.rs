@@ -340,6 +340,7 @@ mod tests {
             .to_string(),
         )
         .unwrap();
+        File::create(dir.join("display_wipe_message.sh")).unwrap();
     }
 
     fn create_config(config: serde_json::Value, context: &mut ContextImpl) {
