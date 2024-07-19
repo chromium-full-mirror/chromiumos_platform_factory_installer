@@ -86,13 +86,6 @@ pub fn cutoff_battery(context: &mut dyn Context) -> Result<()> {
     for _ in 1..5 {
         let result = match config.cutoff_method {
             CutoffMethod::Reboot => sys_utils::reboot(),
-            // If virtual dev mode was enabled, ectool cutoff will leave the device
-            // in developer mode. Unfortunately we can't check that because TPM
-            // service was not running, and tpm_nvread won't work.
-            CutoffMethod::EctoolCutoff => {
-                ectool_utils::cutoff(context)?;
-                sys_utils::shutdown()
-            }
             CutoffMethod::BatteryCutoff => {
                 crossystem_utils::set_battery_cutoff_request(1, context)?;
                 sys_utils::sleep(3.0)?;
@@ -394,29 +387,6 @@ mod tests {
         create_cutoff_files(
             json!({
                 "CUTOFF_METHOD": "reboot",
-                "CUTOFF_AC_STATE": "connect_ac"
-            }),
-            &mut context,
-        );
-
-        let result = cutoff::cutoff_battery(&mut context);
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_cutoff_battery_ectool_cutoff() {
-        let mut context = ContextImpl::new();
-        context.set_command_stdout("ectool", "".to_string());
-        context.set_command_stdout("ectool", "".to_string());
-        context.set_command_stdout(
-            context
-                .root_dir()
-                .join("usr/share/cutoff/display_wipe_message.sh"),
-            "".to_string(),
-        );
-        create_cutoff_files(
-            json!({
-                "CUTOFF_METHOD": "ectool_cutoff",
                 "CUTOFF_AC_STATE": "connect_ac"
             }),
             &mut context,

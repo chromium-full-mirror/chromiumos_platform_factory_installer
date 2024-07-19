@@ -41,7 +41,6 @@ fn i32_max() -> i32 {
 pub enum CutoffMethod {
     Shutdown,
     Reboot,
-    EctoolCutoff,
     BatteryCutoff,
     EcHibernate,
 }

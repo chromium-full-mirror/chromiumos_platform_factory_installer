@@ -109,17 +109,6 @@ pub fn charge_control(mode: ChargeControl, context: &mut dyn Context) -> Result<
     Ok(())
 }
 
-pub fn cutoff(context: &mut dyn Context) -> Result<()> {
-    let output = context
-        .command("ectool")
-        .args(["batterycutoff", "at-shutdown"])
-        .output()?;
-    if !output.status.success() {
-        anyhow::bail!("Battery cutoff fail: {}", output.stderr());
-    }
-    Ok(())
-}
-
 // Reboot ec with command.
 // Check src/platform/ec/util/ectool.cc
 pub fn reboot_ec(cmd: RebootCommand, context: &mut dyn Context) -> Result<()> {
@@ -208,24 +197,6 @@ mod tests {
         let err = result.unwrap_err();
         let message = err.root_cause();
         assert_eq!(format!("{}", message), "Charge control fail: stderr");
-    }
-
-    #[test]
-    fn test_cutoff_success() {
-        let mut context = ContextImpl::new();
-        context.set_command_stdout("ectool", "".to_string());
-        let result = ectool_utils::cutoff(&mut context);
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_cutoff_fail() {
-        let mut context = ContextImpl::new();
-        context.set_command_stderr("ectool", "stderr".to_string());
-        let result = ectool_utils::cutoff(&mut context);
-        let err = result.unwrap_err();
-        let message = err.root_cause();
-        assert_eq!(format!("{}", message), "Battery cutoff fail: stderr");
     }
 
     #[test]
