@@ -1374,6 +1374,8 @@ action_i() {
   log "Factory Installer Complete."
   sync
 
+  # Make sure the next boot will boot to the factory toolkit.
+  crossystem dev_default_boot=disk
   factory_on_complete
   # Both kernel command line and lsb-factory can disable complete prompt.
   if is_complete_prompt_disabled || [ "${COMPLETE_PROMPT}" = "false" ] \
@@ -1685,6 +1687,11 @@ action_e() {
       "write-protection and restart to proceed."
   log "If you are a large-scale repair center, press any key to continue RSU."
   read -N 1
+  if [ "${RMA_AUTORUN}" = "true" ]; then
+    # This will make DUT boot to the shim directly after RSU succeds, which will
+    # enable VB2_GBB_FLAG_FORCE_DEV_BOOT_USB.
+    crossystem dev_default_boot=usb
+  fi
   tpm_perform_rsu
 }
 
@@ -1701,8 +1708,8 @@ enable_factory_mode_and_reboot() {
   gbb_force_dev_mode
 
   if [ "${default_boot_usb}" = "true" ]; then
-    # This will make DUT boot to the shim directly.
-    crossystem dev_boot_usb=1
+    # This will make DUT boot to the shim directly since we've already enabled
+    # VB2_GBB_FLAG_FORCE_DEV_BOOT_USB.
     crossystem dev_default_boot=usb
   fi
 
