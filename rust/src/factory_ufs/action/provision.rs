@@ -49,6 +49,11 @@ const SUPPORT_WB_MASK: u32 = 1 << 8;
 
 /// Rescans to bring the device up.
 fn rescan_dev_and_sync(sys_dev_path: &Path, rescan_timeout: u32) -> Result<()> {
+    println!(
+        "Rescan to bring the device up. sys_dev_path: {}, rescan_timeout: {}",
+        sys_dev_path.display(),
+        rescan_timeout
+    );
     if path_utils::is_pci_path(sys_dev_path) {
         let pci_remove_path = Path::new(&sys_dev_path).join("remove");
 
