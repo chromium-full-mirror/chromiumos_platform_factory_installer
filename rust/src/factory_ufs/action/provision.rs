@@ -286,17 +286,16 @@ fn config_write_booster<T: WriteBoosterConfig>(
     Ok(())
 }
 
-/// Provisions the UFS if needed.
+/// Provisions the UFS.
 ///
 /// This function compares the current UFS config and the newly generated
-/// config, and skips provisioning if these two configs are the same.
-fn provision_ufs_if_needed<
-    'de,
-    T: CommonDescriptorTrait<'de> + ProvisionLun0 + WriteBoosterConfig,
->(
+/// config, and skips provisioning if these two configs are the same and
+/// arg force is set to false.
+fn provision_ufs<'de, T: CommonDescriptorTrait<'de> + ProvisionLun0 + WriteBoosterConfig>(
     ufs_path: &UFSPath,
     cur_config_binary: &'de Vec<u8>,
     rescan_timeout: u32,
+    force: bool,
 ) -> Result<()> {
     let cur_config = deserialize_config::<'de, T>(cur_config_binary)?;
 
@@ -305,14 +304,19 @@ fn provision_ufs_if_needed<
 
     config_write_booster(&ufs_path.sys_dev, &mut new_config)?;
 
-    println!("Current UFS config on DUT: {:#?}", cur_config);
+    println!("The current UFS config on DUT: {:#?}", cur_config);
 
     if cur_config == new_config {
-        println!("Current UFS config is the same as the new config. Skip UFS provisioning.");
-        return Ok(());
+        println!("The current UFS config is the same as the new one.");
+        if force {
+            println!("Force re-provisioning UFS...");
+        } else {
+            println!("Skip UFS provisioning.");
+            return Ok(());
+        }
+    } else {
+        println!("New UFS config: {:#?}", new_config);
     }
-
-    println!("New UFS config: {:#?}", new_config);
 
     write_ufs_config(&ufs_path.bsg_node, &new_config)?;
     rescan_dev_and_sync(&ufs_path.sys_dev, rescan_timeout)?;
@@ -322,7 +326,7 @@ fn provision_ufs_if_needed<
 }
 
 /// Provisions UFS storage.
-pub fn action_provision(ufs_path: &UFSPath, rescan_timeout: u32) -> Result<()> {
+pub fn action_provision(ufs_path: &UFSPath, rescan_timeout: u32, force: bool) -> Result<()> {
     // We need to parse the header of current UFS config to decide which UFS
     // spec to load.
     println!("Running action_provision...");
@@ -336,18 +340,20 @@ pub fn action_provision(ufs_path: &UFSPath, rescan_timeout: u32) -> Result<()> {
     match header_value {
         ufs_2_1::HEADER_LENGTH => {
             println!("Provision UFS 2.1...");
-            provision_ufs_if_needed::<UFS2ConfigDescriptor>(
+            provision_ufs::<UFS2ConfigDescriptor>(
                 &ufs_path,
                 &cur_config_binary,
                 rescan_timeout,
+                force,
             )?;
         }
         ufs_3_1::HEADER_LENGTH => {
             println!("Provision UFS 3.1...");
-            provision_ufs_if_needed::<UFS3ConfigDescriptor>(
+            provision_ufs::<UFS3ConfigDescriptor>(
                 &ufs_path,
                 &cur_config_binary,
                 rescan_timeout,
+                force,
             )?;
         }
         value => anyhow::bail!(

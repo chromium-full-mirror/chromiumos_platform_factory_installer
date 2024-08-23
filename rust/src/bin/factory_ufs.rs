@@ -50,8 +50,9 @@ fn main() -> Result<()> {
     match args.command {
         Commands::Purge { timeout } => purge::action_purge(&ufs_path, timeout),
         Commands::Show => show::action_show(&ufs_path),
-        Commands::Provision { rescan_timeout } => {
-            provision::action_provision(&ufs_path, rescan_timeout)
-        }
+        Commands::Provision {
+            rescan_timeout,
+            force,
+        } => provision::action_provision(&ufs_path, rescan_timeout, force),
     }
 }

@@ -22,6 +22,10 @@ pub enum Commands {
         /// Timeout seconds for PCI rescan
         #[clap(short, long, default_value_t=PCI_RESCAN_DEFAUT_TIMEOUT_SEC)]
         rescan_timeout: u32,
+
+        /// Force re-provisioning even if the UFS config is the same.
+        #[clap(short, long)]
+        force: bool,
     },
 }
 
