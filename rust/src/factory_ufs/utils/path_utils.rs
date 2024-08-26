@@ -89,9 +89,38 @@ pub fn get_power_control_node() -> Result<PathBuf> {
 }
 
 pub fn is_pci_path(sys_dev_path: &Path) -> bool {
-    sys_dev_path.starts_with("/sys/devices/pci")
+    sys_dev_path
+        .display()
+        .to_string()
+        .starts_with("/sys/devices/pci")
 }
 
 pub fn is_platform_path(sys_dev_path: &Path) -> bool {
-    sys_dev_path.starts_with("/sys/devices/platform/soc")
+    sys_dev_path
+        .display()
+        .to_string()
+        .starts_with("/sys/devices/platform/soc")
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use crate::factory_ufs::utils::path_utils;
+
+    #[test]
+    fn test_is_pci_path() {
+        let pci_path = Path::new("/sys/devices/pci0000:00/0000:00:12.7");
+        assert!(path_utils::is_pci_path(pci_path));
+        let non_pci_path = Path::new("/sys/devices/platform/soc");
+        assert!(!path_utils::is_pci_path(non_pci_path));
+    }
+
+    #[test]
+    fn test_is_platform_path() {
+        let platform_path = Path::new("/sys/devices/platform/soc/16810000.ufshci/");
+        assert!(path_utils::is_platform_path(platform_path));
+        let non_platform_path = Path::new("/sys/devices/pci0000:00/");
+        assert!(!path_utils::is_platform_path(non_platform_path));
+    }
 }
