@@ -1314,6 +1314,10 @@ menu() {
 
 # i = Install.
 action_i() {
+  if is_netboot; then
+    ectool chargecontrol idle
+  fi
+
   # `print_rma_info` prints the information about the usb shim.
   # Skip printing when using netboot.
   if ! is_netboot; then
