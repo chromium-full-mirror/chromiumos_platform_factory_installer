@@ -1085,6 +1085,10 @@ action_f() {
 
 # I = Install.
 action_i() {
+  if is_netboot; then
+    ectool chargecontrol idle
+  fi
+
   reset_chromeos_device
 
   log "Checking for Firmware Write Protect"
