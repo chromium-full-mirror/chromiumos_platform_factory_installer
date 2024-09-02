@@ -1331,6 +1331,10 @@ menu() {
 
 # I = Install.
 action_i() {
+  if is_netboot; then
+    ectool chargecontrol idle
+  fi
+
   reset_chromeos_device
 
   clear_fwwp
