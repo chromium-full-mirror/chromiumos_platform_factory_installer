@@ -130,6 +130,13 @@ patch_new_root() {
   # The laptop_mode may be triggered from udev.
   rm -f "${new_root}/etc/udev/rules.d/99-laptop-mode.rules"
 
+  # Removing floss.conf as the required user "bluetooth" will not be created in
+  # shim env, causing the shim to repair itself, see b/364156308 for details.
+  # We can also add package net-wireless/bluez to create the user correctly but
+  # as the floss package is not required for the shim, we can just remove this
+  # file when patching new root.
+  rm -f "${new_root}/usr/lib/tmpfiles.d/floss.conf"
+
   printf ""
 }
 
