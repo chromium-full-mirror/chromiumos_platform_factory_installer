@@ -70,13 +70,9 @@ patch_new_root() {
   # Never execute the firmware updater from shim.
   touch "${new_root}"/root/.leave_firmware_alone
 
-  # Modify some files that does not work (and not required) in tmpfs chroot.
-  # This may be removed when we can build factory installer in "embedded" mode.
-  file="${new_root}/usr/sbin/mount-encrypted"
-  if check_exists "${file}" "${new_root}"; then
-    echo '#!/bin/sh' >"${file}"
-    echo 'echo "Sorry, $0 is disabled on factory installer image."' >>"${file}"
-  fi
+  # Do not use encrypted stateful.
+  file="${new_root}/etc/init/startup.conf"
+  sed -i 's/--encrypted_stateful/--noencrypted_stateful/' "${file}"
 
   # Copy and override factory-shim specific jobs.
   for file in "${new_root}"/usr/share/factory_installer/init/*.conf; do
