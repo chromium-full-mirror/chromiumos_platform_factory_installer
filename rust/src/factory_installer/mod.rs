@@ -144,8 +144,6 @@ fn display_qrcode(arg: DisplayQRcode, context: &mut dyn Context) -> Result<()> {
     }
     for mut qrcode in arg.qrcodes {
         qrcode.content = replace_by_lookup(qrcode.content, value_lookup.clone())?;
-        // TODO(jasonchuang): We're not sure when will the qrcode be cleared,
-        // need to consult with frecon team.
         qrcode_utils::display_qrcode(&qrcode, context)?;
     }
     if let Some(key) = arg.continue_key {

@@ -13,6 +13,10 @@ use qrcode::QrCode;
 use serde::Deserialize;
 
 use crate::system::context::Context;
+#[cfg(not(test))]
+use crate::utils::sys_utils;
+#[cfg(test)]
+use crate::utils::sys_utils::mock as sys_utils;
 
 #[derive(PartialEq, Deserialize, Debug)]
 pub struct QRcode {
@@ -47,6 +51,9 @@ pub fn display_qrcode(qrcode: &QRcode, context: &mut dyn Context) -> Result<()> 
         None => format!("\x1b]image:file=/{}\x1b\\", name),
         Some(p) => format!("\x1b]image:file=/{};location={},{}\x1b\\", name, p.0, p.1),
     };
+    // TODO(jasonchuang): We need to consult with frecon team when will the
+    // qrcode be cleared, sleep a while as a workaround.
+    sys_utils::sleep(0.2)?;
     Ok(fs::write(terminal_path, frecon_string)?)
 }
 
