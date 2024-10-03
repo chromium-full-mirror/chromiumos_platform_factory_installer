@@ -12,18 +12,6 @@ GSCTOOL="gsctool_cmd"
 PROD_CR50_PATH="$(gsc_image_base_name | sed -E 's/^\///g').prod"
 TPM_NAME="$(gsc_name)"
 
-# Since ti50 fw version < 0.23.0 has boot issues on the second boot, we need
-# to update it on the first boot.
-need_to_update_ti50() {
-  if [ "${TPM_NAME}" != "ti50" ]; then
-    return 1;
-  fi;
-  local device_version device_version_major
-  device_version="$(_get_cr50_rw_version)"
-  device_version_major=$(_get_cr50_major_version "${device_version}")
-  [ "${device_version_major}" -lt 23 ]
-}
-
 _copy_prod_cr50_firmware() {
   # Create a copy of prod cr50 firmware in rootfs to a temporary file.
   # The caller is responsible for deleting the temp file.

@@ -1202,38 +1202,6 @@ menu_line() {
   printf "%-22s%s\n" "$3" "$4"
 }
 
-update_ti50_firmware_from_release_rootfs() {
-  log "Update ti50 firmware..."
-  local rootfs_dev result=0
-  rootfs_dev="$(make_partition_dev "${DST_DRIVE}" "${DST_RELEASE_ROOTFS_PART}")"
-  local update_retries
-  update_retries=3
-  # Workaround for ti50 update failure on preflashed ti50 image 0.21.1.
-  for i in $(seq "${update_retries}"); do
-    log "Try updating ti50 firmware. This is the ${i} time."
-    tpm_update_firmware "${rootfs_dev}" || result="$?"
-    echo "ti50 update result: ${result}"
-    case "${result}" in
-      "0" )
-        log "ti50 FW not updated."
-        break
-        ;;
-      "1" | "2" )
-        log "ti50 FW updated."
-        break
-        ;;
-      *)
-        if [ "${i}" == "${update_retries}" ]; then
-          die "Ti50 update failed."
-        fi
-        log "gsctool execution failed as ${result}."
-        log "Will try again after 60 seconds..."
-        sleep 60
-        ;;
-    esac
-  done
-}
-
 # Virtual function to show menu of board-specific actions.
 menu_board() {
   return 0
@@ -1368,10 +1336,6 @@ action_i() {
   # gbb flag here.
   log "Setting user-friendly gbb flags 0x39..."
   gbb_force_dev_mode
-
-  if need_to_update_ti50; then
-    update_ti50_firmware_from_release_rootfs
-  fi
 
   colorize green
   echo_huge_ok
