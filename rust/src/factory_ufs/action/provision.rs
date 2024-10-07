@@ -197,6 +197,8 @@ pub fn get_current_config_binary(bsg_node_path: &Path) -> Result<Vec<u8>> {
             "1",
             "-p",
             &bsg_node_path.display().to_string(),
+            "-D",
+            &cur_config_path.display().to_string(),
         ])
         .current_dir(env::temp_dir())
         .output()
