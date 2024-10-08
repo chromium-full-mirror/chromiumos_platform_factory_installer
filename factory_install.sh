@@ -70,17 +70,16 @@ DST_STATE_PART=1
 # Each action x is implemented in an action_$x handler (e.g.,
 # action_i); see the handlers for more information about what
 # each option is.
-SUPPORTED_ACTIONS=bcdefimprstuvyz
+SUPPORTED_ACTIONS=bcdefimprstvyz
 SUPPORTED_ACTIONS_BOARD=
 
 # Supported actions when hardware writeprotect is enabled.
 # Add limitation of actions for security issue.
-SUPPORTED_ACTIONS_WP_ENABLED=bdefmprtuv
+SUPPORTED_ACTIONS_WP_ENABLED=bdefmprtv
 
 # Supported actions when RSU is required.
-# We only support [e] RMA unlock to do RSU, and [u] Update Cr50 in case a device
-# has an older Cr50 version that doesn't support RSU.
-SUPPORTED_ACTIONS_RSU_REQUIRED=eu
+# We only support [e] RMA unlock to do RSU.
+SUPPORTED_ACTIONS_RSU_REQUIRED=e
 
 # These two arrays are shared b/w get_dlc_image_from_dlc_factory_cach and
 # verify_dlc_hash.
@@ -1252,8 +1251,6 @@ menu() {
               "Verifies the storage has been erased with option C"
   menu_line t "${supported_actions}" \
               "Reset TPM" "Call chromeos-tpm-recovery"
-  menu_line u "${supported_actions}" \
-              "Update TPM firmware" "Update TPM firmware"
   menu_line e "${supported_actions}" \
               "Perform RSU" "Perform RSU (RMA Server Unlock)"
   menu_line m "${supported_actions}" \
@@ -1621,33 +1618,6 @@ action_t() {
   chromeos-tpm-recovery
 }
 
-# u = Update TPM firmware
-action_u() {
-  local result=0
-  tpm_update_firmware || result="$?"
-  echo "TPM update result: ${result}"
-
-  case "${result}" in
-    "0" )
-      log "TPM FW not updated. Returning to shim menu."
-      # sleep for a while to show the messages
-      sleep 3
-      return 0
-      ;;
-    "1" | "2" )
-      log "TPM FW updated. System will reboot shortly."
-      # sleep for a while to show the messages
-      sleep 3
-      reboot
-      sleep 1d
-      return 0
-      ;;
-    *)
-      die "gsctool execution failed as ${result}."
-      ;;
-  esac
-}
-
 # e = Perform RSU
 action_e() {
   echo
@@ -1765,11 +1735,6 @@ read_default_option() {
         ;;
       supported)
         read_default_rma_autorun_tpm_support_option
-        ;;
-      need_update)
-          log "TPM version is old."
-          log "Set default action to (u) Update TPM."
-          DEFAULT_ACTION=u
         ;;
     esac
   fi

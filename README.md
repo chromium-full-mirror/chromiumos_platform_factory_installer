@@ -74,7 +74,6 @@ by a prompt to select an action.
       c SeCure erase         Performs full storage erase, write a verification pattern
       y VerifY erase         Verifies the storage has been erased with option c
       t Reset TPM            Call chromeos-tpm-recovery
-      u Update TPM Firmware  Update TPM firmware
       e Perform RSU          Perform RSU (RMA Server Unlock)
       m Enable factory mode  Enable TPM factory mode
       f Perform factory FAI  Perform Factory FAI (First Article Inspection)

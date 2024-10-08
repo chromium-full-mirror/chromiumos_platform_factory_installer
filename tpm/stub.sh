@@ -12,16 +12,8 @@ tpm_perform_rsu() {
 # Possible outputs are:
 #   "unsupported"
 #   "supported"
-#   "need_update"
 tpm_check_rsu_support() {
   echo "unsupported"
-}
-
-# Update TPM firmware.
-# If possible, the firmware binary should be loaded from release image.
-tpm_update_firmware() {
-  # Do nothing.
-  return 0
 }
 
 # Enable "factory mode". Make the device ready to run factory software.

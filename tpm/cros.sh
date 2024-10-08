@@ -9,36 +9,8 @@
 . "/usr/share/cros/gsc-constants.sh"
 
 GSCTOOL="gsctool_cmd"
-PROD_CR50_PATH="$(gsc_image_base_name | sed -E 's/^\///g').prod"
 TPM_NAME="$(gsc_name)"
 
-_copy_prod_cr50_firmware() {
-  # Create a copy of prod cr50 firmware in rootfs to a temporary file.
-  # The caller is responsible for deleting the temp file.
-  local rootfs_dev="$1"
-
-  local temp_firmware
-  temp_firmware="$(mktemp)"
-
-  if [ -z "${rootfs_dev}" ]; then
-    # rootfs_dev is not given, let's use the prod firmware from the rootfs of
-    # the factory shim. We don't need to find and mount the rootfs again.
-    # Because the content is already copied to the current root by
-    # `bootstrap.sh`.
-    cp "/${PROD_CR50_PATH}" "${temp_firmware}"
-  else
-    local mount_point firmware_path
-    mount_point="$(mktemp -d)"
-    firmware_path="${mount_point}/${PROD_CR50_PATH}"
-
-    mount -o ro "${rootfs_dev}" "${mount_point}"
-    cp "${firmware_path}" "${temp_firmware}"
-    umount "${rootfs_dev}"
-    rmdir "${mount_point}"
-  fi
-
-  echo "${temp_firmware}"
-}
 
 _get_cr50_output_value() {
   local output="$1"
@@ -48,42 +20,6 @@ _get_cr50_output_value() {
 
 _get_cr50_rw_version() {
   _get_cr50_output_value "$(${GSCTOOL} -a -f -M)" 'RW_FW_VER'
-}
-
-_get_cr50_image_rw_version() {
-  _get_cr50_output_value "$(${GSCTOOL} -b -M "$1")" 'IMAGE_RW_FW_VER'
-}
-
-_get_cr50_major_version() {
-  echo "$1" | cut -d '.' -f 2
-}
-
-_get_cr50_minor_version() {
-  echo "$1" | cut -d '.' -f 3
-}
-
-_check_need_update_cr50() {
-  local temp_firmware image_version image_version_major image_version_minor
-  temp_firmware="$(_copy_prod_cr50_firmware)"
-  image_version="$(_get_cr50_image_rw_version "${temp_firmware}")"
-  image_version_major=$(_get_cr50_major_version "${image_version}")
-  image_version_minor=$(_get_cr50_minor_version "${image_version}")
-  rm "${temp_firmware}"
-
-  local device_version device_version_major device_version_minor
-  device_version="$(_get_cr50_rw_version)"
-  device_version_major=$(_get_cr50_major_version "${device_version}")
-  device_version_minor=$(_get_cr50_minor_version "${device_version}")
-
-  # Update only if cr50 version on the device is smaller than the cr50 version
-  # in install shim. Some older devices may have cr50 version 0.0.*, 0.1.* or
-  # 0.2.*, and we also update these devices to 0.3.*.
-  # See go/cr50-release-notes for more information.
-  if [ "${device_version_major}" -ne "${image_version_major}" ]; then
-    [ "${device_version_major}" -lt "${image_version_major}" ]
-  else
-    [ "${device_version_minor}" -lt "${image_version_minor}" ]
-  fi
 }
 
 _is_cr50_factory_mode_enabled() {
@@ -122,31 +58,8 @@ tpm_check_rsu_support() {
     return 0
   fi
 
-  if _check_need_update_cr50; then
-    echo "need_update"
-    return 0
-  else
-    echo "supported"
-    return 0;
-  fi
-}
-
-tpm_update_firmware() {
-  local rootfs_dev="$1"
-  local temp_firmware image_version
-  temp_firmware="$(_copy_prod_cr50_firmware "${rootfs_dev}")"
-  image_version="$(_get_cr50_image_rw_version "${temp_firmware}")"
-  echo "Attempt to update with the TPM prod fw (version: ${image_version})"
-
-  local result=0
-  "${GSCTOOL}" -a -u "${temp_firmware}" || result="$?"
-
-  rm "${temp_firmware}"
-
-  # Allow 0(no-op), 1(all_updated), 2(rw_updated), other return values are
-  # considered fail.
-  # See trunk/src/platform/ec/extra/usb_updater/gsctool.h for more detail.
-  return "${result}"
+  echo "supported"
+  return 0;
 }
 
 tpm_enable_factory_mode() {
