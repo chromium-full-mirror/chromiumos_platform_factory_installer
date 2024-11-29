@@ -27,6 +27,10 @@ pub mod config;
 
 const CUTOFF_DIR: &str = "usr/share/cutoff";
 const TOOLKIT_DIR: &str = "usr/local/factory";
+#[cfg(test)]
+const QRCODE_SIZE: u32 = 100;
+#[cfg(not(test))]
+const QRCODE_SIZE: u32 = 232;
 
 pub fn do_cutoff(context: &mut dyn Context) -> Result<()> {
     let output = context.command("activate_date").arg("--clean").output()?;
@@ -301,18 +305,22 @@ pub fn display_qrcode(qrcode_info: &str, context: &mut dyn Context) -> Result<()
         }
         eprintln!("display string = {:?}", contents);
     }
-    for content in contents {
+    for (i, content) in contents.iter().enumerate() {
         terminal_utils::clear();
-        eprintln!("Press enter to continue...");
+        if i < contents.len() - 1 {
+            eprintln!("Press enter to continue...");
+        }
         qrcode_utils::display_qrcode(
             &QRcode {
-                size: 100,
-                content: content,
+                size: QRCODE_SIZE,
+                content: content.to_string(),
                 position: None,
             },
             context,
         )?;
-        terminal_utils::wait_enter("")?;
+        if i < contents.len() - 1 {
+            terminal_utils::wait_enter("")?;
+        }
     }
     Ok(())
 }
