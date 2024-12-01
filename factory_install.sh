@@ -1458,6 +1458,19 @@ prepare_reset() {
     log "Install the DLCs to stateful partition..."
     mv "${dlc_path}"/unencrypted/dlc-factory-images \
        "${state_mount_point}"/unencrypted
+
+    model_name="$(cros_config / name)"
+    total_mem="$(free -m | awk '/^Mem:/ {print $2 / 1024}')"
+
+    if (( $(echo "$total_mem <= 4" | bc -l) )); then
+      cd "${state_mount_point}"/unencrypted
+      for d in */; do
+        if [[ ! "${d}" =~ "${model_name}" && ! "${d}" =~ "sample-dlc" ]]; then
+          rm -rf "${d}"
+        fi
+      done
+      cd -
+    fi
   else
     log "No factory installed DLC metadata found. Skip copying..."
   fi
