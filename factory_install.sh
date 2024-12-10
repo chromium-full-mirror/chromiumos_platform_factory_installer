@@ -1411,14 +1411,26 @@ action_i() {
   log "Factory Installer Complete."
   sync
 
-  factory_on_complete
-  # Both kernel command line and lsb-factory can disable complete prompt.
-  if is_complete_prompt_disabled || [ "${COMPLETE_PROMPT}" = "false" ] \
-                                 || [ "${TTY}" = /dev/null ]; then
-    sleep 3
+  # some projects may use panel_id to distinguish different mipi panel,if RMA
+  # use non-matched panel,it might not light and operator cannot operater without
+  # log in screen, for this special case, set back skuid to 0x7fffffff to support
+  # different panel, see b:383032925
+  # TODO: remove this WA when b/383032925 get long time solution
+  allow_reset_sku_list=("starmie")
+  model_name="$(cros_config / name)"
+  if [[ ! "${allow_reset_sku_list[@]}" =~ "${model_name}" ]]; then
+    factory_on_complete
+    # Both kernel command line and lsb-factory can disable complete prompt.
+    if is_complete_prompt_disabled || [ "${COMPLETE_PROMPT}" = "false" ] \
+                                   || [ "${TTY}" = /dev/null ]; then
+      sleep 3
+    else
+      printf "Press Enter to restart... "
+      head -c 1 >/dev/null
+    fi
   else
-    printf "Press Enter to restart... "
-    head -c 1 >/dev/null
+    # Set skuid back to 0x7fffffff to support different mipi panel
+    ectool cbi set 2  0x7fffffff 4
   fi
 
   # Default action after installation: reboot.
