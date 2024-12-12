@@ -1280,7 +1280,9 @@ menu() {
 # i = Install.
 action_i() {
   if is_netboot; then
-    ectool chargecontrol idle
+    if ectool battery | grep -q AC_PRESENT; then
+      ectool chargecontrol idle
+    fi
   fi
 
   # `print_rma_info` prints the information about the usb shim.
