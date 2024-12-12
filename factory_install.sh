@@ -1332,7 +1332,9 @@ menu() {
 # I = Install.
 action_i() {
   if is_netboot; then
-    ectool chargecontrol idle
+    if ectool battery | grep -q AC_PRESENT; then
+      ectool chargecontrol idle
+    fi
   fi
 
   reset_chromeos_device
