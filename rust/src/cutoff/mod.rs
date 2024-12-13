@@ -45,7 +45,7 @@ pub fn do_cutoff(context: &mut dyn Context) -> Result<()> {
     check_ac_state(context)?;
     display_qrcode(&config.qrcode_info, context)?;
     println!("Press {} to continue", config.continue_key);
-    terminal_utils::wait_enter(&config.continue_key)?;
+    terminal_utils::wait_keys(&config.continue_key)?;
     cutoff_battery(context)?;
     Ok(())
 }
@@ -319,7 +319,7 @@ pub fn display_qrcode(qrcode_info: &str, context: &mut dyn Context) -> Result<()
             context,
         )?;
         if i < contents.len() - 1 {
-            terminal_utils::wait_enter("")?;
+            terminal_utils::wait_enter()?;
         }
     }
     Ok(())
