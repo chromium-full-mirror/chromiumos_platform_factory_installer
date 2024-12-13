@@ -147,14 +147,13 @@ fn display_qrcode(arg: DisplayQRcode, context: &mut dyn Context) -> Result<()> {
         qrcode_utils::display_qrcode(&qrcode, context)?;
     }
     if let Some(key) = arg.continue_key {
-        terminal_utils::wait_enter(&key)?;
+        terminal_utils::wait_keys(&key)?;
     }
     Ok(())
 }
 
 fn stop_and_confirm(arg: String) -> Result<()> {
-    println!("Input {} and press enter to continue...", arg);
-    terminal_utils::wait_enter(&arg)
+    terminal_utils::wait_keys(&arg)
 }
 
 pub fn do_custom_reset_process(context: &mut dyn Context) -> Result<()> {
