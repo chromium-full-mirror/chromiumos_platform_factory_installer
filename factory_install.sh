@@ -1086,7 +1086,8 @@ action_f() {
 # I = Install.
 action_i() {
   if is_netboot; then
-    if ectool battery | grep -q AC_PRESENT; then
+    # Only set idle mode when both AC and battery are present.
+    if ectool battery | grep -q "Flags.*AC_PRESENT.*BATT_PRESENT"; then
       ectool chargecontrol idle
     fi
   fi
