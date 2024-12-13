@@ -1280,7 +1280,10 @@ menu() {
 # i = Install.
 action_i() {
   if is_netboot; then
-    ectool chargecontrol idle
+    # Only set idle mode when both AC and battery are present.
+    if ectool battery | grep -q "Flags.*AC_PRESENT.*BATT_PRESENT"; then
+      ectool chargecontrol idle
+    fi
   fi
 
   # `print_rma_info` prints the information about the usb shim.
