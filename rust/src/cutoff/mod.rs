@@ -176,7 +176,9 @@ fn charge_battery(config: &CutoffConfig, context: &mut dyn Context) -> Result<()
 }
 
 fn discharge_battery(config: &CutoffConfig, context: &mut dyn Context) -> Result<()> {
-    ectool_utils::charge_control(ChargeControl::Discharge, context)?;
+    if ectool_utils::charge_control(ChargeControl::Discharge, context).is_err() {
+        eprintln!("Not set to discharge mode since AC is disconnected.");
+    }
 
     // Use stressapptest to discharge battery faster.
     // It may crash the system if it use too much memory on Factory Shim.
@@ -666,6 +668,40 @@ mod tests {
             "remove_ac".to_string(),
         );
         context.set_command_stdout("ectool", "discharge".to_string());
+        context.set_command_stdout("stressapptest", "".to_string());
+        context.set_command_stdout(
+            context
+                .root_dir()
+                .join("usr/share/cutoff/display_wipe_message.sh"),
+            "discharging".to_string(),
+        );
+        mock_battery_info(80, true, &mut context); // Wait discharge
+        mock_battery_info(70, true, &mut context); // Discharge completed
+
+        let result = cutoff::check_battery(&mut context);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_check_battery_discharge_ac_disconnected() {
+        let mut context = ContextImpl::new();
+        context.set_command_stdout("modprobe", "".to_string());
+        create_cutoff_files(
+            json!({
+                "CUTOFF_AC_STATE": "connect_ac",
+                "CUTOFF_METHOD": "shutdown",
+                "CUTOFF_BATTERY_MAX_PERCENTAGE": 70,
+            }),
+            &mut context,
+        );
+        mock_battery_info(80, true, &mut context); // Need to discharge
+        context.set_command_stdout(
+            context
+                .root_dir()
+                .join("usr/share/cutoff/display_wipe_message.sh"),
+            "remove_ac".to_string(),
+        );
+        context.set_command_stderr("ectool", "discharge fail".to_string());
         context.set_command_stdout("stressapptest", "".to_string());
         context.set_command_stdout(
             context
