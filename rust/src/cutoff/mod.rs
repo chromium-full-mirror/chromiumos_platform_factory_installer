@@ -176,9 +176,7 @@ fn charge_battery(config: &CutoffConfig, context: &mut dyn Context) -> Result<()
 }
 
 fn discharge_battery(config: &CutoffConfig, context: &mut dyn Context) -> Result<()> {
-    if ectool_utils::charge_control(ChargeControl::Discharge, context).is_err() {
-        eprintln!("Not set to discharge mode since AC is disconnected.");
-    }
+    ectool_utils::charge_control(ChargeControl::Discharge, context)?;
 
     // Use stressapptest to discharge battery faster.
     // It may crash the system if it use too much memory on Factory Shim.
@@ -356,7 +354,8 @@ mod tests {
             &mut context,
         );
         mock_battery_info(60, true, &mut context); // No need to charge or discharge
-        context.set_command_stdout("ectool", "".to_string());
+        mock_battery_info(60, true, &mut context); // For charge control
+        context.set_command_stdout("ectool", "idle".to_string());
         mock_battery_info(60, true, &mut context); // Wait ac disconnected
         context.set_command_stdout(
             context
@@ -365,7 +364,8 @@ mod tests {
             "remove ac".to_string(),
         );
         mock_battery_info(60, false, &mut context); // ac disconnected
-        context.set_command_stdout("ectool", "".to_string());
+        mock_battery_info(60, true, &mut context); // For charge control
+        context.set_command_stdout("ectool", "normal".to_string());
         context.set_command_stdout(
             context
                 .root_dir()
@@ -387,7 +387,8 @@ mod tests {
     #[test]
     fn test_cutoff_battery_reboot() {
         let mut context = ContextImpl::new();
-        context.set_command_stdout("ectool", "".to_string());
+        mock_battery_info(60, true, &mut context); // For charge control
+        context.set_command_stdout("ectool", "normal".to_string());
         context.set_command_stdout(
             context
                 .root_dir()
@@ -409,7 +410,8 @@ mod tests {
     #[test]
     fn test_cutoff_battery_battery_cutoff() {
         let mut context = ContextImpl::new();
-        context.set_command_stdout("ectool", "".to_string());
+        mock_battery_info(60, true, &mut context); // For charge control
+        context.set_command_stdout("ectool", "normal".to_string());
         context.set_command_stdout("crossystem", "".to_string());
         context.set_command_stdout(
             context
@@ -432,7 +434,8 @@ mod tests {
     #[test]
     fn test_cutoff_battery_ec_hibernate() {
         let mut context = ContextImpl::new();
-        context.set_command_stdout("ectool", "".to_string());
+        mock_battery_info(60, true, &mut context); // For charge control
+        context.set_command_stdout("ectool", "normal".to_string());
         context.set_command_stdout("ectool", "".to_string());
         context.set_command_stdout(
             context
@@ -455,7 +458,8 @@ mod tests {
     #[test]
     fn test_cutoff_battery_shutdown() {
         let mut context = ContextImpl::new();
-        context.set_command_stdout("ectool", "".to_string());
+        mock_battery_info(60, true, &mut context); // For charge control
+        context.set_command_stdout("ectool", "normal".to_string());
         context.set_command_stdout("crossystem", "recovery".to_string());
         context.set_command_stdout("ectool", "".to_string());
         context.set_command_stdout(
@@ -479,7 +483,8 @@ mod tests {
     #[test]
     fn test_cutoff_battery_unknown_method() {
         let mut context = ContextImpl::new();
-        context.set_command_stdout("ectool", "".to_string());
+        mock_battery_info(60, true, &mut context); // For charge control
+        context.set_command_stdout("ectool", "normal".to_string());
         context.set_command_stdout(
             context
                 .root_dir()
@@ -503,7 +508,8 @@ mod tests {
     #[test]
     fn test_cutoff_battery_config_missing_state() {
         let mut context = ContextImpl::new();
-        context.set_command_stdout("ectool", "".to_string());
+        mock_battery_info(60, true, &mut context); // For charge control
+        context.set_command_stdout("ectool", "normal".to_string());
         context.set_command_stdout(
             context
                 .root_dir()
@@ -528,7 +534,8 @@ mod tests {
     #[test]
     fn test_cutoff_battery_config_missing_method() {
         let mut context = ContextImpl::new();
-        context.set_command_stdout("ectool", "".to_string());
+        mock_battery_info(60, true, &mut context); // For charge control
+        context.set_command_stdout("ectool", "normal".to_string());
         context.set_command_stdout(
             context
                 .root_dir()
@@ -634,6 +641,7 @@ mod tests {
             "connect_ac".to_string(),
         );
         mock_battery_info(60, true, &mut context); // Ac connected
+        mock_battery_info(60, true, &mut context); // For charge control
         context.set_command_stdout("ectool", "normal".to_string());
         context.set_command_stdout(
             context
@@ -667,41 +675,8 @@ mod tests {
                 .join("usr/share/cutoff/display_wipe_message.sh"),
             "remove_ac".to_string(),
         );
+        mock_battery_info(60, true, &mut context); // For charge control
         context.set_command_stdout("ectool", "discharge".to_string());
-        context.set_command_stdout("stressapptest", "".to_string());
-        context.set_command_stdout(
-            context
-                .root_dir()
-                .join("usr/share/cutoff/display_wipe_message.sh"),
-            "discharging".to_string(),
-        );
-        mock_battery_info(80, true, &mut context); // Wait discharge
-        mock_battery_info(70, true, &mut context); // Discharge completed
-
-        let result = cutoff::check_battery(&mut context);
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_check_battery_discharge_ac_disconnected() {
-        let mut context = ContextImpl::new();
-        context.set_command_stdout("modprobe", "".to_string());
-        create_cutoff_files(
-            json!({
-                "CUTOFF_AC_STATE": "connect_ac",
-                "CUTOFF_METHOD": "shutdown",
-                "CUTOFF_BATTERY_MAX_PERCENTAGE": 70,
-            }),
-            &mut context,
-        );
-        mock_battery_info(80, true, &mut context); // Need to discharge
-        context.set_command_stdout(
-            context
-                .root_dir()
-                .join("usr/share/cutoff/display_wipe_message.sh"),
-            "remove_ac".to_string(),
-        );
-        context.set_command_stderr("ectool", "discharge fail".to_string());
         context.set_command_stdout("stressapptest", "".to_string());
         context.set_command_stdout(
             context
@@ -800,7 +775,8 @@ mod tests {
     #[test]
     fn test_cutoff_use_toolkit_path() {
         let mut context = ContextImpl::new();
-        context.set_command_stdout("ectool", "".to_string());
+        mock_battery_info(60, true, &mut context); // For charge control
+        context.set_command_stdout("ectool", "normal".to_string());
         context.set_command_stdout(
             context
                 .root_dir()
@@ -823,7 +799,8 @@ mod tests {
     #[test]
     fn test_cutoff_use_private_overlay_path() {
         let mut context = ContextImpl::new();
-        context.set_command_stdout("ectool", "".to_string());
+        mock_battery_info(60, true, &mut context); // For charge control
+        context.set_command_stdout("ectool", "normal".to_string());
         context.set_command_stdout(
             context
                 .root_dir()
@@ -848,7 +825,8 @@ mod tests {
     #[test]
     fn test_cutoff_config_not_exist() {
         let mut context = ContextImpl::new();
-        context.set_command_stdout("ectool", "".to_string());
+        mock_battery_info(60, true, &mut context); // For charge control
+        context.set_command_stdout("ectool", "normal".to_string());
         context.set_command_stdout(
             context
                 .root_dir()
@@ -869,7 +847,8 @@ mod tests {
     #[test]
     fn test_display_script_not_exist() {
         let mut context = ContextImpl::new();
-        context.set_command_stdout("ectool", "".to_string());
+        mock_battery_info(60, true, &mut context); // For charge control
+        context.set_command_stdout("ectool", "normal".to_string());
 
         let result = cutoff::cutoff_battery(&mut context);
 
