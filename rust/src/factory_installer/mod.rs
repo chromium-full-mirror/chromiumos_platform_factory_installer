@@ -319,7 +319,12 @@ mod tests {
     }
 
     fn mock_cutoff_battery(context: &mut ContextImpl) {
-        context.set_command_stdout("ectool", "".to_string());
+        context.set_command_stdout(
+            "ectool",
+            "Design capacity: 100 mAh Remaining capacity 100 mAh Present voltage 10 mV AC_PRESENT"
+                .to_string(),
+        ); // For charge control
+        context.set_command_stdout("ectool", "normal".to_string());
         context.set_command_stdout(
             context
                 .root_dir()

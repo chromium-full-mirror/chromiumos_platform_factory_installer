@@ -99,6 +99,11 @@ pub fn get_battery_info(context: &mut dyn Context) -> Result<BatteryInfo> {
 }
 
 pub fn charge_control(mode: ChargeControl, context: &mut dyn Context) -> Result<()> {
+    let info = get_battery_info(context)?;
+    if !info.is_ac_connected {
+        eprintln!("Can't modify the charge mode since AC is disconnected.");
+        return Ok(());
+    }
     let output = context
         .command("ectool")
         .args(["chargecontrol", &mode.to_string()])
@@ -184,6 +189,11 @@ mod tests {
     #[test]
     fn test_charge_control_success() {
         let mut context = ContextImpl::new();
+        context.set_command_stdout(
+            "ectool",
+            "Design capacity: 100 mAh Remaining capacity 100 mAh Present voltage 10 mV AC_PRESENT"
+                .to_string(),
+        );
         context.set_command_stdout("ectool", "".to_string());
         let result = ectool_utils::charge_control(ChargeControl::Idle, &mut context);
         assert!(result.is_ok());
@@ -192,11 +202,27 @@ mod tests {
     #[test]
     fn test_charge_control_fail() {
         let mut context = ContextImpl::new();
+        context.set_command_stdout(
+            "ectool",
+            "Design capacity: 100 mAh Remaining capacity 100 mAh Present voltage 10 mV AC_PRESENT"
+                .to_string(),
+        );
         context.set_command_stderr("ectool", "stderr".to_string());
         let result = ectool_utils::charge_control(ChargeControl::Idle, &mut context);
         let err = result.unwrap_err();
         let message = err.root_cause();
         assert_eq!(format!("{}", message), "Charge control fail: stderr");
+    }
+
+    #[test]
+    fn test_charge_control_ac_disconnected_skip() {
+        let mut context = ContextImpl::new();
+        context.set_command_stdout(
+            "ectool",
+            "Design capacity: 100 mAh Remaining capacity 100 mAh Present voltage 10 mV".to_string(),
+        );
+        let result = ectool_utils::charge_control(ChargeControl::Idle, &mut context);
+        assert!(result.is_ok());
     }
 
     #[test]
