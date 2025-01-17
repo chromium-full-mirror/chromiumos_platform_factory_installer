@@ -83,8 +83,9 @@ SUPPORTED_ACTIONS_RSU_REQUIRED=e
 
 # These two arrays are shared b/w get_dlc_image_from_dlc_factory_cach and
 # verify_dlc_hash.
-DLC_IMG_PATHS=()
-DLC_IDS=()
+CURRENT_DLC_IMG_PATHS=()
+CURRENT_DLC_IDS=()
+EXPECTED_DLC_IDS=()
 
 DLC_COUNT=0
 TOTAL_DLC_PREALLOCATE_SIZE=0
@@ -1008,8 +1009,11 @@ get_factory_installed_dlc_cnt_and_size() {
     --metadata_dir=${rootfs_mount_point}/opt/google/dlc/"
 
   local dlc_list
-  if dlc_list=$(${metadata_cmd} --list --factory_install); then
+  local model
+  model="$(cros_config / name)" || true
+  if dlc_list=$(${metadata_cmd} --list --attribute="${model}"); then
     for dlc_id in $(echo "${dlc_list}" | jq -r '.[]'); do
+      EXPECTED_DLC_IDS+=("${dlc_id}")
       local metadata
       if metadata=$(${metadata_cmd} --get --id="${dlc_id}"); then
         ((++DLC_COUNT))
@@ -1031,8 +1035,8 @@ get_dlc_image_from_dlc_factory_cache() {
     local image_path="${d}"/package/dlc.img
 
     if [ -f "${image_path}" ]; then
-      DLC_IMG_PATHS+=( "${image_path}" )
-      DLC_IDS+=( "$(basename "${d}")" )
+      CURRENT_DLC_IMG_PATHS+=( "${image_path}" )
+      CURRENT_DLC_IDS+=( "$(basename "${d}")" )
     fi
   done
 }
@@ -1040,7 +1044,7 @@ get_dlc_image_from_dlc_factory_cache() {
 # Verify the DLC hash by calling `dlcverify`.
 verify_dlc_hash() {
   local release_rootfs_mount_point="$1"
-  log "DLCs to be verified: ${DLC_IDS[*]}"
+  log "DLCs to be verified: ${CURRENT_DLC_IDS[*]}"
   # `dlcverify` locates at stateful partition of the shim.
   local stateful_dev mount_point
   stateful_dev="$(get_usb_dev_stateful)"
@@ -1049,10 +1053,10 @@ verify_dlc_hash() {
   mount -o ro "${stateful_dev}" "${mount_point}"
 
   local dlcverify_bin="${mount_point}"/dev_image/bin/dlcverify
-  for index in ${!DLC_IMG_PATHS[*]}; do
+  for index in ${!CURRENT_DLC_IMG_PATHS[*]}; do
     local verify_ret
-    verify_ret="$("${dlcverify_bin}" --id="${DLC_IDS[${index}]}" \
-                  --image="${DLC_IMG_PATHS[${index}]}" \
+    verify_ret="$("${dlcverify_bin}" --id="${CURRENT_DLC_IDS[${index}]}" \
+                  --image="${CURRENT_DLC_IMG_PATHS[${index}]}" \
                   --rootfs_mount="${release_rootfs_mount_point}")"
     log "${verify_ret}"
     if echo "${verify_ret}" | grep -q ERROR; then
@@ -1419,64 +1423,81 @@ prepare_reset() {
 
   # Then check if the release rootfs has factory installed DLC metadata.
   # If so, we copy the DLC images from network or RMA shim.
-  # local release_rootfs_mount_point release_dev
-  # release_rootfs_mount_point=/tmp/release_rootfs
-  # mkdir -p "${release_rootfs_mount_point}"
-  # release_dev="$(make_partition_dev "${DST_DRIVE}" \
-  #                "${DST_RELEASE_ROOTFS_PART}")"
-  # mount -o ro "${release_dev}" "${release_rootfs_mount_point}"
+   local release_rootfs_mount_point release_dev
+   release_rootfs_mount_point=/tmp/release_rootfs
+   mkdir -p "${release_rootfs_mount_point}"
+   release_dev="$(make_partition_dev "${DST_DRIVE}" \
+                  "${DST_RELEASE_ROOTFS_PART}")"
+   mount -o ro "${release_dev}" "${release_rootfs_mount_point}"
 
-  # get_factory_installed_dlc_cnt_and_size "${release_rootfs_mount_point}"
-  # log "Number of factory installed DLC metadata: ${DLC_COUNT}"
-  # if [ "${DLC_COUNT}" != 0 ]; then
-  #   # Install the factory installed DLC images to dlc_path.
-  #   local dlc_path=/tmp/dlc
-  #   mkdir -p "${dlc_path}"
-  #   log "Get factory installed DLC images from usb/network..."
-  #   if [ -n "${FACTORY_INSTALL_FROM_USB}" ]; then
-  #     factory_install_usb "${dlc_path}"
-  #   else
-  #     connect_to_ethernet
-  #     factory_install_network "${dlc_path}"
-  #   fi
+   get_factory_installed_dlc_cnt_and_size "${release_rootfs_mount_point}"
+   log "Number of factory installed DLC metadata: ${DLC_COUNT}"
+   if [ "${DLC_COUNT}" != 0 ]; then
+     # Install the factory installed DLC images to dlc_path.
+     local dlc_path=/tmp/dlc
+     mkdir -p "${dlc_path}"
+     log "Get factory installed DLC images from usb/network..."
+     if [ -n "${FACTORY_INSTALL_FROM_USB}" ]; then
+       factory_install_usb "${dlc_path}"
+     else
+       connect_to_ethernet
+       factory_install_network "${dlc_path}"
+     fi
 
-  #   # Unzip the DLC and verify their hashes.
-  #   log "Unpack factory installed DLC images to ${dlc_path}"
-  #   tar -xpvf "${dlc_path}"/release_image.dlc_factory_cache -C "${dlc_path}"
-  #   get_dlc_image_from_dlc_factory_cache \
-  #     "${dlc_path}"/unencrypted/dlc-factory-images
+     # Unzip the DLC and verify their hashes.
+     log "Unpack factory installed DLC images to ${dlc_path}"
+     tar -xpvf "${dlc_path}"/release_image.dlc_factory_cache -C "${dlc_path}"
+     get_dlc_image_from_dlc_factory_cache \
+       "${dlc_path}"/unencrypted/dlc-factory-images
 
-  #   if [ "${DLC_COUNT}" != "${#DLC_IMG_PATHS[@]}" ]; then
-  #     die "Expected to have ${DLC_COUNT} DLCs. Current: ${#DLC_IMG_PATHS[@]}."
-  #   fi
+     # Check if all elements in EXPECTED_DLC_IDS are present in CURRENT_DLC_IDS
+     all_found=true
+     for expected_id in "${EXPECTED_DLC_IDS[@]}"; do
+       found=false
+       for current_id in "${CURRENT_DLC_IDS[@]}"; do
+         if [ "${expected_id}" = "${current_id}" ]; then
+           found=true
+           break
+         fi
+       done
+       if ! ${found}; then
+         all_found=false
+         break
+       fi
+     done
 
-  #   verify_dlc_hash "${release_rootfs_mount_point}"
+     if ! ${all_found}; then
+       die "Not all expected DLCs found. Expected: ${EXPECTED_DLC_IDS[*]}, " \
+           "Current: ${CURRENT_DLC_IDS[*]}."
+     fi
 
-  #   log "Remove existing factory installed DLC images on stateful partition..."
-  #   local dlc_stateful="${state_mount_point}"/unencrypted/dlc-factory-images
-  #   if [ -d "${dlc_stateful}" ]; then
-  #     rm -rf "${dlc_stateful}"
-  #   fi
+     verify_dlc_hash "${release_rootfs_mount_point}"
 
-  #   log "Install the DLCs to stateful partition..."
-  #   mv "${dlc_path}"/unencrypted/dlc-factory-images \
-  #      "${state_mount_point}"/unencrypted
+     log "Remove existing factory installed DLC images on stateful partition..."
+     local dlc_stateful="${state_mount_point}"/unencrypted/dlc-factory-images
+     if [ -d "${dlc_stateful}" ]; then
+       rm -rf "${dlc_stateful}"
+     fi
 
-  #   model_name="$(cros_config / name)"
-  #   total_mem="$(free -m | awk '/^Mem:/ {print $2 / 1024}')"
+     log "Install the DLCs to stateful partition..."
+     mv "${dlc_path}"/unencrypted/dlc-factory-images \
+        "${state_mount_point}"/unencrypted
 
-  #   if (( $(echo "$total_mem <= 4" | bc -l) )); then
-  #     cd "${state_mount_point}"/unencrypted
-  #     for d in */; do
-  #       if [[ ! "${d}" =~ "${model_name}" && ! "${d}" =~ "sample-dlc" ]]; then
-  #         rm -rf "${d}"
-  #       fi
-  #     done
-  #     cd -
-  #   fi
-  # else
-  #   log "No factory installed DLC metadata found. Skip copying..."
-  # fi
+     model_name="$(cros_config / name)"
+     total_mem="$(free -m | awk '/^Mem:/ {print $2 / 1024}')"
+
+     if (( $(echo "$total_mem <= 4" | bc -l) )); then
+       cd "${state_mount_point}"/unencrypted
+       for d in */; do
+         if [[ ! "${d}" =~ "${model_name}" && ! "${d}" =~ "sample-dlc" ]]; then
+           rm -rf "${d}"
+         fi
+       done
+       cd -
+     fi
+   else
+     log "No factory installed DLC metadata found. Skip copying..."
+   fi
 
   umount "${state_mount_point}"
 
