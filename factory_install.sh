@@ -87,7 +87,6 @@ CURRENT_DLC_IMG_PATHS=()
 CURRENT_DLC_IDS=()
 EXPECTED_DLC_IDS=()
 
-DLC_COUNT=0
 TOTAL_DLC_PREALLOCATE_SIZE=0
 
 FAI_VPD_CONFIG='{
@@ -717,7 +716,7 @@ enlarge_partition() {
   test_rootfs_dev="$(make_partition_dev "${DST_DRIVE}" \
                   "${DST_FACTORY_ROOTFS_PART}")"
   mount -o ro "${test_rootfs_dev}" "${test_rootfs_mount_point}"
-  get_factory_installed_dlc_cnt_and_size "${test_rootfs_mount_point}"
+  calculate_dlc_preallocate_size "${dev}" "${test_rootfs_mount_point}"
   umount "${test_rootfs_mount_point}"
   rmdir "${test_rootfs_mount_point}"
 
@@ -1000,33 +999,45 @@ factory_install_network() {
   factory_install_cros_payload "${OMAHA}" "${json_path}" "${dlc_path}"
 }
 
-# Get the total number of factory installed DLC images and their pre-allocated
-# size from `/opt/google/dlc` of rootfs.
-get_factory_installed_dlc_cnt_and_size() {
+# Retrieves the IDs of factory-installed DLC images from the rootfs
+# partition's `/opt/google/dlc` directory.
+get_expected_factory_installed_dlc() {
   local rootfs_mount_point="$1"
-
-  local metadata_cmd="dlc_metadata_util \
+  local metadata_cmd dlc_list model
+  metadata_cmd="dlc_metadata_util \
     --metadata_dir=${rootfs_mount_point}/opt/google/dlc/"
-
-  local dlc_list
-  local model
   model="$(cros_config / name)" || true
   if dlc_list=$(${metadata_cmd} --list --attribute="${model}"); then
     for dlc_id in $(echo "${dlc_list}" | jq -r '.[]'); do
       EXPECTED_DLC_IDS+=("${dlc_id}")
-      local metadata
-      if metadata=$(${metadata_cmd} --get --id="${dlc_id}"); then
-        ((++DLC_COUNT))
-        local pre_alloc_size
-        pre_alloc_size=$(echo "${metadata}" | \
-          jq -r '."manifest"."pre-allocated-size"')
-        # The run time overhead of factory installed DLC images is
-        # `2 * pre-allocated-size`. We need to allocate additional space for
-        # this in `enlarge_partition`.
-        ((TOTAL_DLC_PREALLOCATE_SIZE += pre_alloc_size * 2))
-      fi
     done
   fi
+}
+
+# Calculates the total pre-allocated size required for factory-installed DLC
+# images. This size is used for partition enlargement.
+calculate_dlc_preallocate_size() {
+  local stateful_mnt_pnt="$1"
+  local rootfs_mount_point="$2"
+  # Get the CURRENT_DLC_IDS from the existing DLC directory
+  get_dlc_image_from_dlc_factory_cache \
+    "${stateful_mnt_pnt}"/unencrypted/dlc-factory-images
+
+  # Calculate the pre-allocate size
+  local metadata_cmd="dlc_metadata_util \
+    --metadata_dir=${rootfs_mount_point}/opt/google/dlc/"
+  for dlc_id in "${CURRENT_DLC_IDS[@]}"; do
+    local metadata
+    if metadata=$(${metadata_cmd} --get --id="${dlc_id}"); then
+      local pre_alloc_size
+      pre_alloc_size=$(echo "${metadata}" | \
+        jq -r '."manifest"."pre-allocated-size"')
+      # The run time overhead of factory installed DLC images is
+      # `2 * pre-allocated-size`. We need to allocate additional space for
+      # this in `enlarge_partition`.
+      ((TOTAL_DLC_PREALLOCATE_SIZE += pre_alloc_size * 2))
+    fi
+  done
 }
 
 get_dlc_image_from_dlc_factory_cache() {
@@ -1430,9 +1441,9 @@ prepare_reset() {
                   "${DST_RELEASE_ROOTFS_PART}")"
    mount -o ro "${release_dev}" "${release_rootfs_mount_point}"
 
-   get_factory_installed_dlc_cnt_and_size "${release_rootfs_mount_point}"
-   log "Number of factory installed DLC metadata: ${DLC_COUNT}"
-   if [ "${DLC_COUNT}" != 0 ]; then
+   get_expected_factory_installed_dlc "${release_rootfs_mount_point}"
+   log "Number of factory installed DLC metadata: ${#EXPECTED_DLC_IDS[@]}"
+   if [ ${#EXPECTED_DLC_IDS[@]} -gt 0 ]; then
      # Install the factory installed DLC images to dlc_path.
      local dlc_path=/tmp/dlc
      mkdir -p "${dlc_path}"
@@ -1482,19 +1493,6 @@ prepare_reset() {
      log "Install the DLCs to stateful partition..."
      mv "${dlc_path}"/unencrypted/dlc-factory-images \
         "${state_mount_point}"/unencrypted
-
-     model_name="$(cros_config / name)"
-     total_mem="$(free -m | awk '/^Mem:/ {print $2 / 1024}')"
-
-     if (( $(echo "$total_mem <= 4" | bc -l) )); then
-       cd "${state_mount_point}"/unencrypted
-       for d in */; do
-         if [[ ! "${d}" =~ "${model_name}" && ! "${d}" =~ "sample-dlc" ]]; then
-           rm -rf "${d}"
-         fi
-       done
-       cd -
-     fi
    else
      log "No factory installed DLC metadata found. Skip copying..."
    fi
