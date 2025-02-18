@@ -91,7 +91,7 @@ pub fn get_release_stateful_partition(context: &mut dyn Context) -> Result<Strin
     if vg_name.len() > 0 {
         context
             .command("vgchange")
-            .args(["-ay", &vg_name])
+            .args(["-ay", "-v", &vg_name])
             .output()?
             .exit_ok()?;
         return Ok(format!("/dev/{}/unencrypted", vg_name));
