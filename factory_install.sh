@@ -1003,15 +1003,38 @@ factory_install_network() {
 # partition's `/opt/google/dlc` directory.
 get_expected_factory_installed_dlc() {
   local rootfs_mount_point="$1"
-  local metadata_cmd dlc_list model
+  local metadata_cmd variant modem_dlc_attribute dlc_list_str dlc_list
   metadata_cmd="chroot ${rootfs_mount_point} dlc_metadata_util \
     --metadata_dir=/opt/google/dlc/"
-  model="$(cros_config / name)" || true
-  if dlc_list=$(${metadata_cmd} --list --attribute="${model}"); then
-    for dlc_id in $(echo "${dlc_list}" | jq -r '.[]'); do
-      EXPECTED_DLC_IDS+=("${dlc_id}")
-    done
+
+  variant="$(cros_config /modem firmware-variant)" || true
+
+  if [[ -z "${variant}" ]]; then
+    log "Warning: NO LTE on this device. Skipping DLC check."
+    return
   fi
+
+  # Check if variant is in the expected format. E.g. rynax_rw101
+  if [[ "${variant}" =~ ^[[:alnum:]]+_[[:alnum:]]+$ ]]; then
+    # Extract the first part
+    modem_dlc_attribute="${variant%%_*}"
+    log "modem_dlc_attribute: ${modem_dlc_attribute}"
+  else
+    die "Error: Invalid variant format: ${variant}"
+  fi
+
+  dlc_list_str=$(
+    ${metadata_cmd} --list --attribute="${modem_dlc_attribute}"
+  )
+  mapfile -t dlc_list < <(echo "${dlc_list_str}" | jq -r '.[]')
+
+  if [[ ${#dlc_list[@]} -eq 0 ]]; then
+    die "Error: No DLCs found for modem_dlc_attribute: ${modem_dlc_attribute}"
+  fi
+
+  for dlc_id in "${dlc_list[@]}"; do
+    EXPECTED_DLC_IDS+=("${dlc_id}")
+  done
 }
 
 # Calculates the total pre-allocated size required for factory-installed DLC
@@ -1453,12 +1476,12 @@ prepare_reset() {
       connect_to_ethernet
       factory_install_network "${dlc_path}"
     fi
-     # Unzip the DLC and verify their hashes.
+    # Unzip the DLC and verify their hashes.
     log "Unpack factory installed DLC images to ${dlc_path}"
     tar -xpvf "${dlc_path}"/release_image.dlc_factory_cache -C "${dlc_path}"
     get_dlc_image_from_dlc_factory_cache \
       "${dlc_path}"/unencrypted/dlc-factory-images
-     # Check if all elements in EXPECTED_DLC_IDS are present in CURRENT_DLC_IDS
+    # Check if all elements in EXPECTED_DLC_IDS are present in CURRENT_DLC_IDS
     all_found=true
     for expected_id in "${EXPECTED_DLC_IDS[@]}"; do
       found=false
