@@ -1014,27 +1014,37 @@ get_expected_factory_installed_dlc() {
     return
   fi
 
-  # Check if variant is in the expected format. E.g. rynax_rw101
+  # Check if variant is in the expected format: `<model>_<modem>`.
+  # E.g. rynax_rw101
+  # Usually, <model> `matches cros_config / name`. However, exceptions exist.
+  # For instance, multiple models might share the same modem firmware (e.g.,
+  # anraggar & anraggar360). In such scenarios, the modem variant name
+  # would be anraggar_fm101 (using the base model name).
   if [[ "${variant}" =~ ^[[:alnum:]]+_[[:alnum:]]+$ ]]; then
-    # Extract the first part
-    modem_dlc_attribute="${variant%%_*}"
-    log "modem_dlc_attribute: ${modem_dlc_attribute}"
+    # Extract the first part, model
+    model="${variant%%_*}"
+    log "model: ${model}"
   else
     die "Error: Invalid variant format: ${variant}"
   fi
 
-  dlc_list_str=$(
-    ${metadata_cmd} --list --attribute="${modem_dlc_attribute}"
-  )
-  mapfile -t dlc_list < <(echo "${dlc_list_str}" | jq -r '.[]')
+  # Before crrev/i/8065591, the attribute was `model`.
+  # After that, it became `variant`.
+  # For backward compatibility, we check both.
+  for attribute in "${model}" "${variant}"; do
+    dlc_list_str=$(
+      ${metadata_cmd} --list --attribute="${attribute}"
+    )
+    mapfile -t dlc_list < <(echo "${dlc_list_str}" | jq -r '.[]')
 
-  if [[ ${#dlc_list[@]} -eq 0 ]]; then
-    die "Error: No DLCs found for modem_dlc_attribute: ${modem_dlc_attribute}"
-  fi
-
-  for dlc_id in "${dlc_list[@]}"; do
-    EXPECTED_DLC_IDS+=("${dlc_id}")
+    for dlc_id in "${dlc_list[@]}"; do
+      EXPECTED_DLC_IDS+=("${dlc_id}")
+    done
   done
+
+  if [[ ${#EXPECTED_DLC_IDS[@]} -eq 0 ]]; then
+    die "Error: No DLCs found for either model: ${model} or variant: ${variant}"
+  fi
 }
 
 # Calculates the total pre-allocated size required for factory-installed DLC
