@@ -818,6 +818,18 @@ is_ME_locked() {
   return "${is_locked}"
 }
 
+is_flexible_eom_supported() {
+  local unsupported_boards="dedede"
+
+  for board in $unsupported_boards; do
+    if [ "$BOARD" = "$board" ]; then
+      return 1
+    fi
+  done
+
+  return 0
+}
+
 factory_install_cros_payload() {
   local src_media="$1"
   local json_path="$2"
@@ -914,11 +926,15 @@ factory_install_cros_payload() {
     local unlock_flag
     if is_intel_platform; then
       log "DUT is using Intel platform."
-      if is_ME_locked; then
-        log "ME has already been locked!"
+      if is_flexible_eom_supported; then
+        if is_ME_locked; then
+          log "ME has already been locked!"
+        else
+          log "ME is unlocked. Flash unlocked firmware..."
+          unlock_flag="--quirks=unlock_csme"
+        fi
       else
-        log "ME is unlocked. Flash unlocked firmware..."
-        unlock_flag="--quirks=unlock_csme"
+        log "${BOARD} does not support flexible EOM..."
       fi
     fi
     # TODO(hungte) Check if we need to run --mode=recovery if WP is enabled.
