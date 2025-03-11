@@ -84,10 +84,11 @@ SUPPORTED_ACTIONS_RSU_REQUIRED=eu
 
 # These two arrays are shared b/w get_dlc_image_from_dlc_factory_cach and
 # verify_dlc_hash.
-DLC_IMG_PATHS=()
-DLC_IDS=()
+CURRENT_DLC_IMG_PATHS=()
+CURRENT_DLC_IDS=()
 
-DLC_COUNT=0
+EXPECTED_DLC_IDS=()
+
 TOTAL_DLC_PREALLOCATE_SIZE=0
 DLC_METADATA_DIR=opt/google/dlc
 
@@ -728,7 +729,7 @@ enlarge_partition() {
   test_rootfs_dev="$(make_partition_dev "${DST_DRIVE}" \
                   "${DST_FACTORY_ROOTFS_PART}")"
   mount -o ro "${test_rootfs_dev}" "${test_rootfs_mount_point}"
-  get_factory_installed_dlc_cnt_and_size "${test_rootfs_mount_point}"
+  calculate_dlc_preallocate_size "${test_rootfs_mount_point}"
   umount "${test_rootfs_mount_point}"
   rmdir "${test_rootfs_mount_point}"
 
@@ -1017,9 +1018,114 @@ decompress_dlc_metadata() {
   done
 }
 
-# Get the total number of factory installed DLC images and their pre-allocated
-# size from `/opt/google/dlc` of rootfs.
-get_factory_installed_dlc_cnt_and_size() {
+dlc_has_attribute() {
+  local release_rootfs_mnt lsb_release image_version
+  release_rootfs_mnt="$1"
+  lsb_release="${release_rootfs_mnt}/etc/lsb-release"
+  image_version="$(getLSBValue \
+    "$(grep "^GOOGLE_RELEASE" "${lsb_release}" | tail -1)")"
+  # Extract the major image version.
+  image_version="$(echo "${image_version}" | cut -d '.' -f 1)"
+
+  # Use numerical comparison for version check
+  [ "${image_version}" -gt 16150 ]
+}
+
+# Compatibility is determined based on the presence of either the
+# device's model or full variant within the DLC's attributes, or, for older
+# DLCs, by checking if the model is part of the DLC's ID.
+is_dlc_modem_compatible() {
+  local dlc_metadata="$1"
+  local variant="$2"
+  local model="$3"
+  local dlc_has_attr="$4"
+
+  local metadata="$(jq -r '.' "${dlc_metadata}")"
+
+  if [[ "${dlc_has_attr}" == "true" ]]; then
+    local attributes="$(jq -r '.attributes[]' "${dlc_metadata}")"
+    if [[ -n "${attributes}" ]]; then
+      for attr in ${attributes}; do
+        if [[ "${attr}" == "${model}" || "${attr}" == "${variant}" ]]; then
+          return 0
+        fi
+      done
+      return 1
+    else
+      return 1
+    fi
+  else
+    local dlc_id="$(jq -r '.id' "${dlc_metadata}")"
+    if [[ "${dlc_id}" == *"${model}"* ]]; then
+      return 0
+    else
+      return 1
+    fi
+  fi
+}
+
+# Get the list of factory-installed DLC IDs that are compatible with the current
+# device's modem variant. This function parses the DLC metadata in
+# `/opt/google/dlc` to determine which DLCs are required.
+# The compatibility check involves verifying the `factory-install` flag and
+# matching the DLC's supported models or variants against the device's modem
+# variant.
+get_expected_factory_installed_dlc() {
+  local rootfs_mount_point="$1"
+  local variant model dlc_has_attr dlc_metadata_dir dlc_id metadata
+
+  dlc_metadata_dir="${rootfs_mount_point}/opt/google/dlc"
+
+  variant="$(cros_config /modem firmware-variant)" || true
+  if [[ -z "${variant}" ]]; then
+    log "Warning: NO LTE on this device. Skipping DLC check."
+    return
+  fi
+
+  # Check if variant is in the expected format: `<model>_<modem>`.
+  # E.g. rynax_rw101
+  # Usually, <model> `matches cros_config / name`. However, exceptions exist.
+  # For instance, multiple models might share the same modem firmware (e.g.,
+  # anraggar & anraggar360). In such scenarios, the modem variant name
+  # would be anraggar_fm101 (using the base model name).
+  if [[ "${variant}" =~ ^[[:alnum:]]+_[[:alnum:]]+$ ]]; then
+    model="${variant%%_*}"
+    log "model: ${model}"
+  else
+    die "Error: Invalid variant format: ${variant}"
+  fi
+
+  if dlc_has_attribute "${rootfs_mount_point}"; then
+    dlc_has_attr="true"
+  else
+    dlc_has_attr="false"
+  fi
+
+  # Before crrev/i/8065591, the attribute was `model`.
+  # After that, it became `variant`.
+  # For backward compatibility, we check both.
+  for dlc_id in "${dlc_metadata_dir}"/*; do
+    if [[ -d "${dlc_id}" ]]; then
+      metadata="${dlc_id}/package/imageloader.json"
+      if [[ -f "${metadata}" ]]; then
+        if [[ "$(jq -r '."factory-install"' "${metadata}")" == "true" ]]; then
+          if is_dlc_modem_compatible \
+            "${metadata}" "${variant}" "${model}" "${dlc_has_attr}"; then
+            EXPECTED_DLC_IDS+=("$(basename "${dlc_id}")")
+          fi
+        fi
+      fi
+    fi
+  done
+
+  if [[ ${#EXPECTED_DLC_IDS[@]} -eq 0 ]]; then
+    die "Error: No DLCs found for model: ${model} and variant: ${variant}"
+  fi
+}
+
+# Calculates the total pre-allocated size required for factory-installed DLC
+# images. This size is used for partition enlargement.
+calculate_dlc_preallocate_size() {
   local rootfs_mount_point="$1"
 
   for d in "${rootfs_mount_point}/${DLC_METADATA_DIR}"/* ; do
@@ -1031,7 +1137,6 @@ get_factory_installed_dlc_cnt_and_size() {
 
     # A DLC is factory installed DLC if `factory_install` is true.
     if [ "$(jq '."factory-install"' "${metadata}")" = "true" ]; then
-      DLC_COUNT=$((DLC_COUNT + 1))
       # The run time overhead of factory installed DLC images is
       # `2 * pre-allocated-size`. We need to allocate additional space for
       # this in `enlarge_partition`.
@@ -1046,10 +1151,9 @@ get_dlc_image_from_dlc_factory_cache() {
   local dlc_factory_cache_dir="$1"
   for d in "${dlc_factory_cache_dir}"/* ; do
     local image_path="${d}"/package/dlc.img
-
     if [ -f "${image_path}" ]; then
-      DLC_IMG_PATHS+=( "${image_path}" )
-      DLC_IDS+=( "$(basename "${d}")" )
+      CURRENT_DLC_IMG_PATHS+=( "${image_path}" )
+      CURRENT_DLC_IDS+=( "$(basename "${d}")" )
     fi
   done
 }
@@ -1057,19 +1161,17 @@ get_dlc_image_from_dlc_factory_cache() {
 # Verify the DLC hash by calling `dlcverify`.
 verify_dlc_hash() {
   local release_rootfs_mount_point="$1"
-  log "DLCs to be verified: ${DLC_IDS[*]}"
+  log "DLCs to be verified: ${CURRENT_DLC_IDS[*]}"
   # `dlcverify` locates at stateful partition of the shim.
   local stateful_dev mount_point
   stateful_dev="$(get_usb_dev_stateful)"
-
   mount_point="$(mktemp -d)"
   mount -o ro "${stateful_dev}" "${mount_point}"
-
   local dlcverify_bin="${mount_point}"/dev_image/bin/dlcverify
-  for index in ${!DLC_IMG_PATHS[*]}; do
+  for index in ${!CURRENT_DLC_IMG_PATHS[*]}; do
     local verify_ret
-    verify_ret="$("${dlcverify_bin}" --id="${DLC_IDS[${index}]}" \
-                  --image="${DLC_IMG_PATHS[${index}]}" \
+    verify_ret="$("${dlcverify_bin}" --id="${CURRENT_DLC_IDS[${index}]}" \
+                  --image="${CURRENT_DLC_IMG_PATHS[${index}]}" \
                   --rootfs_mount="${release_rootfs_mount_point}")"
     log "${verify_ret}"
     if echo "${verify_ret}" | grep -q ERROR; then
@@ -1077,9 +1179,7 @@ verify_dlc_hash() {
           "extracted from the same release image on the DUT."
     fi
   done
-
   log "Verification succeeded!"
-
   umount "${stateful_dev}"
   rmdir "${mount_point}"
 }
@@ -1490,9 +1590,9 @@ action_r() {
        "${dlc_metadata_path}"
     rootfs_with_dlc_metadata="${dlc_metadata_path}"
   fi
-  get_factory_installed_dlc_cnt_and_size "${rootfs_with_dlc_metadata}"
-  log "Number of factory installed DLC metadata: ${DLC_COUNT}"
-  if [ "${DLC_COUNT}" != 0 ]; then
+  get_expected_factory_installed_dlc "${rootfs_with_dlc_metadata}"
+  log "Number of factory installed DLC metadata: ${#EXPECTED_DLC_IDS[@]}"
+  if [ ${#EXPECTED_DLC_IDS[@]} -gt 0 ]; then
     # Install the factory installed DLC images to dlc_path.
     local dlc_path=/tmp/dlc
     mkdir -p "${dlc_path}"
@@ -1509,28 +1609,39 @@ action_r() {
     tar -xpvf "${dlc_path}"/release_image.dlc_factory_cache -C "${dlc_path}"
     get_dlc_image_from_dlc_factory_cache \
       "${dlc_path}"/unencrypted/dlc-factory-images
-
-    if [ "${DLC_COUNT}" != "${#DLC_IMG_PATHS[@]}" ]; then
-      die "Expected to have ${DLC_COUNT} DLCs. Current: ${#DLC_IMG_PATHS[@]}."
+    # Check if all elements in EXPECTED_DLC_IDS are present in CURRENT_DLC_IDS
+    all_found=true
+    for expected_id in "${EXPECTED_DLC_IDS[@]}"; do
+      found=false
+      for current_id in "${CURRENT_DLC_IDS[@]}"; do
+        if [ "${expected_id}" = "${current_id}" ]; then
+          found=true
+          break
+        fi
+      done
+      if ! ${found}; then
+        all_found=false
+        break
+      fi
+    done
+    if ! ${all_found}; then
+      die "Not all expected DLCs found. Expected: ${EXPECTED_DLC_IDS[*]}, " \
+          "Current: ${CURRENT_DLC_IDS[*]}."
     fi
-
     verify_dlc_hash "${rootfs_with_dlc_metadata}"
-
     log "Remove existing factory installed DLC images on stateful partition..."
     local dlc_stateful="${state_mount_point}"/unencrypted/dlc-factory-images
     if [ -d "${dlc_stateful}" ]; then
       rm -rf "${dlc_stateful}"
     fi
-
     log "Install the DLCs to stateful partition..."
     mv "${dlc_path}"/unencrypted/dlc-factory-images \
        "${state_mount_point}"/unencrypted
   else
     log "No factory installed DLC metadata found. Skip copying..."
   fi
-
   umount "${state_mount_point}"
-
+  umount "${release_rootfs_mount_point}"
   reset_chromeos_device
   factory_reset
 }
