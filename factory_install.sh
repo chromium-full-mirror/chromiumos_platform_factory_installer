@@ -65,6 +65,7 @@ DST_FACTORY_ROOTFS_PART=3
 DST_RELEASE_KERNEL_PART=4
 DST_RELEASE_ROOTFS_PART=5
 DST_STATE_PART=1
+DST_POWERWASH_PART=11
 
 # Supported actions (a set of lowercase characters)
 # Each action x is implemented in an action_$x handler (e.g.,
@@ -1448,9 +1449,30 @@ prepare_reset() {
   state_dev="$(get_path_to_lvm_stateful "${state_dev}")"
   log "Device path to stateful partition: ${state_dev}"
 
+  # If powerwash (partnum=11) partition formatted as ext4, this device should
+  # have been created as dm-default-key stateful. For this kind of devices,
+  # as the stateful is encrypted, it is impossible to mount it like LVM/non-LVM
+  # case to try to put DLC back. Re-format it into pure ext4 first and create
+  # unencrypted/dlc-factory-images directory again so that below logic stays
+  # the same.
+  powerwash_dev="$(make_partition_dev "${DST_DRIVE}" "${DST_POWERWASH_PART}")"
+  if blkid -o value -s TYPE "${powerwash_dev}" | grep -q "ext4"; then
+    # Zero out the first block to prevent from mkfs confusion.
+    dd if=/dev/zero of="${state_dev}" bs=1M count=1 > /dev/null 2>&1
+    mkfs.ext4 -L "H-STATE" "${state_dev}"
+
+    # Also zero out & mkfs on powerwash partition to discard previous session
+    # crypto information.
+    dd if=/dev/zero of="${powerwash_dev}" bs=1M count=1 > /dev/null 2>&1
+    mkfs.ext4 "${powerwash_dev}"
+  fi
+
   # Mount as rw since we might need to copy factory installed DLC images
   # to the stateful partition.
   mount -o rw "${state_dev}" "${state_mount_point}"
+
+  # In case we need to re-create unencrypted directory
+  mkdir -p "${state_mount_point}"/unencrypted
 
   local factory_exists=false
   [ -e "${state_mount_point}"/dev_image/factory ] && factory_exists=true

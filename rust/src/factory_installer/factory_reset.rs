@@ -64,9 +64,19 @@ pub fn do_reset(disk_path: &str, context: &mut dyn Context) -> Result<()> {
     // directory, so that the files can be correctly preserved.
     let state_mount_point = "/mnt/stateful_partition";
     sys_utils::mount(state_dev, state_mount_point, true)?;
+
+    // For dm-default-key layout, if we see partition 11 formatted as ext4,
+    // we should not clobber device into LVM layout to ensure dm-default-key
+    // is enabled.
+    let mut wipe_args = vec!["factory", "fast"];
+    if device::is_powerwash_part_format_as_ext4(context)? {
+        eprintln!("Clobbering with dm-default-key layout.");
+        wipe_args.push("disable_lvm_install");
+    }
+
     let mut child = context
         .command("clobber-state")
-        .args(["factory", "fast"])
+        .args(wipe_args)
         .env("ROOT_DEV", &root_dev)
         .env("ROOT_DISK", disk_path)
         .spawn()?;
