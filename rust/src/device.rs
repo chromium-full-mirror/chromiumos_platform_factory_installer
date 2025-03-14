@@ -29,6 +29,40 @@ pub fn get_fixed_device_storage(context: &mut dyn Context) -> Result<String> {
         .to_string())
 }
 
+/// Returns the status of whether powerwash partition is formatted as ext4.
+/// This is helpful to determine if the device has to be clobber into the
+/// dm-default-key layout or not.
+pub fn is_powerwash_part_format_as_ext4(context: &mut dyn Context) -> Result<bool> {
+    let mut fixed_device_storage = get_fixed_device_storage(context)?;
+    // If the last character is digit, it is the case of `/dev/mmcblk0`, Otherwise is the case of
+    // `/dev/sda`.
+    if fixed_device_storage
+        .chars()
+        .last()
+        .unwrap_or(' ')
+        .is_digit(10)
+    {
+        fixed_device_storage.push_str("p11");
+    } else {
+        fixed_device_storage.push_str("11");
+    }
+
+    let part_type = context
+    .command("blkid")
+    .args([
+        "-o",
+        "value",
+        "-s",
+        "TYPE",
+        &fixed_device_storage,
+    ])
+    .output()?
+    .stdout();
+
+    part_type.to_lowercase().retain(|c| !c.is_whitespace());
+    Ok(part_type.contains("ext4"))
+}
+
 /// Gets the rootfs partition of release image.
 /// There're two cases of storage device path:
 ///   /dev/sda -> release rootfs at /dev/sda5
