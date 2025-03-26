@@ -1592,6 +1592,11 @@ action_r() {
   fi
   get_expected_factory_installed_dlc "${rootfs_with_dlc_metadata}"
   log "Number of factory installed DLC metadata: ${#EXPECTED_DLC_IDS[@]}"
+  local dlc_stateful="${state_mount_point}"/unencrypted/dlc-factory-images
+  if [ -d "${dlc_stateful}" ]; then
+    log "Remove existing factory installed DLC images on stateful partition..."
+    rm -rf "${dlc_stateful}"
+  fi
   if [ ${#EXPECTED_DLC_IDS[@]} -gt 0 ]; then
     # Install the factory installed DLC images to dlc_path.
     local dlc_path=/tmp/dlc
@@ -1629,11 +1634,6 @@ action_r() {
           "Current: ${CURRENT_DLC_IDS[*]}."
     fi
     verify_dlc_hash "${rootfs_with_dlc_metadata}"
-    log "Remove existing factory installed DLC images on stateful partition..."
-    local dlc_stateful="${state_mount_point}"/unencrypted/dlc-factory-images
-    if [ -d "${dlc_stateful}" ]; then
-      rm -rf "${dlc_stateful}"
-    fi
     log "Install the DLCs to stateful partition..."
     mv "${dlc_path}"/unencrypted/dlc-factory-images \
        "${state_mount_point}"/unencrypted
