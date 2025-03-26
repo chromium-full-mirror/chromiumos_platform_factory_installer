@@ -1497,6 +1497,11 @@ prepare_reset() {
   mount -o ro "${release_dev}" "${release_rootfs_mount_point}"
   get_expected_factory_installed_dlc "${release_rootfs_mount_point}"
   log "Number of factory installed DLC metadata: ${#EXPECTED_DLC_IDS[@]}"
+  local dlc_stateful="${state_mount_point}"/unencrypted/dlc-factory-images
+  if [ -d "${dlc_stateful}" ]; then
+    log "Remove existing factory installed DLC images on stateful partition..."
+    rm -rf "${dlc_stateful}"
+  fi
   if [ ${#EXPECTED_DLC_IDS[@]} -gt 0 ]; then
     # Install the factory installed DLC images to dlc_path.
     local dlc_path=/tmp/dlc
@@ -1534,13 +1539,7 @@ prepare_reset() {
     fi
 
     verify_dlc_hash "${release_rootfs_mount_point}"
-
-    log "Remove existing factory installed DLC images on stateful partition..."
-    local dlc_stateful="${state_mount_point}"/unencrypted/dlc-factory-images
-    if [ -d "${dlc_stateful}" ]; then
-      rm -rf "${dlc_stateful}"
-    fi
-     log "Install the DLCs to stateful partition..."
+    log "Install the DLCs to stateful partition..."
     mv "${dlc_path}"/unencrypted/dlc-factory-images \
        "${state_mount_point}"/unencrypted
   else
