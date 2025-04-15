@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Copyright (c) 2014 The Chromium OS Authors. All rights reserved.
+# Copyright 2014 The ChromiumOS Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
@@ -16,17 +16,17 @@ if [ $# -ne 0 ]; then
 fi
 
 
-# On dedede, it was tested that `busybox less` will suffer from segmentation
-# fault so we take `busybox more` as a WA here. Even though it cannot scroll
-# back, at least it could display logs. As we're seeing less board-specific
-# issues lately, in the common scene, we oftentimes can reproduce bugs on other
-# boards with `busybox less` working so it's a acceptable WA on dedede.
 . "$(dirname "$0")/factory_common.sh"
 
 PAGER="busybox less"
 BOARD="$(findLSBValue CHROMEOS_RELEASE_BOARD)"
 
-if [ "${BOARD}" == "dedede" ]; then
+# On some boards, `busybox less` will suffer from segmentation
+# fault so we take `busybox more` as a WA here. Even though it cannot scroll
+# back, at least it could display logs. As we're seeing less board-specific
+# issues lately, in the common scene, we oftentimes can reproduce bugs on other
+# boards with `busybox less` working so it's an acceptable WA on dedede & rauru.
+if [[ "${BOARD}" == "dedede" || "${BOARD}" == "rauru" ]]; then
   PAGER="busybox more"
 fi
 
