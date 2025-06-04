@@ -647,12 +647,23 @@ run_postinst() {
 stateful_postinst() {
   local stateful_dev="$1"
   local mount_point="$(mktemp -d)"
+  local dev_image_mount_point
 
   mount "${stateful_dev}" "${mount_point}"
-  mkdir -p "$(dirname "${output_file}")"
+
+  local lsb_factory="${mount_point}/dev_image/etc/lsb-factory"
+
+  # After M135, dev_image is now a sparse file system rather than a directory
+  # on some board, as a result we need to mount it if it exists, before
+  # installing stub files.
+  dev_image_mount_point="$(mktemp -d)"
+  local block_file="${mount_point}/unencrypted/dev_image.block"
+  if [ -f "${block_file}" ]; then
+    mount "${block_file}" "${dev_image_mount_point}"
+    lsb_factory="${dev_image_mount_point}/dev_image/etc/lsb-factory"
+  fi
 
   # Update lsb-factory on stateful partition.
-  local lsb_factory="${mount_point}/dev_image/etc/lsb-factory"
   if [ -z "${FACTORY_INSTALL_FROM_USB}" ]; then
     log "Save active factory server URL to stateful partition lsb-factory."
     echo "FACTORY_OMAHA_URL=${OMAHA}" >>"${lsb_factory}"
@@ -661,6 +672,10 @@ stateful_postinst() {
     cat "${LSB_FACTORY_FILE}" >>"${lsb_factory}"
   fi
 
+  if [ -f "${block_file}" ]; then
+    umount "${dev_image_mount_point}" || true
+    rmdir "${dev_image_mount_point}" || true
+  fi
   umount "${mount_point}" || true
   rmdir "${mount_point}" || true
 }
