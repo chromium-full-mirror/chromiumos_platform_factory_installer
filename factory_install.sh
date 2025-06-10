@@ -846,6 +846,65 @@ is_flexible_eom_supported() {
   return 0
 }
 
+# Gets the size in byte of the release_image.dlc_factory_cache file
+# Usage: get_dlc_gz_size JSON_PATH
+get_dlc_gz_size() {
+  local json_url dlc_gz_file dlc_gz_size
+  json_url="$1"
+
+  if [ -n "${FACTORY_INSTALL_FROM_USB}" ]; then
+    dlc_gz_file="$(jq -r \
+                  '."release_image"."dlc_factory_cache"' "${json_url}")"
+    dlc_gz_file="$(dirname "${json_url}")/${dlc_gz_file}"
+    dlc_gz_size="$(du -B1 "${dlc_gz_file}" | \
+                  awk '{ size=$1 } END { print size }')"
+  else
+    dlc_gz_file="$(curl "${json_url}" | \
+                  jq -r '."release_image"."dlc_factory_cache"')"
+    dlc_gz_file="$(dirname "${json_url}")/${dlc_gz_file}"
+    # curl -sI returns the header information of the DLC file.
+    # The header looks like this:
+    #   Location: <url_to_dlc_file>
+    #   Date: <date>
+    #   ...
+    #   Content-Length: <size_of_content>
+    #   ...
+    # We use `awk` to get the second column of the Content-Length, which is
+    # the size of the DLC file, and trim off the white spaces using `tr`.
+    dlc_gz_size="$(curl -sI "${dlc_gz_file}" | grep -i Content-Length | \
+                  awk '{ print $2 }' | tr -d '[:space:]')"
+  fi
+
+  echo "${dlc_gz_size}"
+}
+
+# Enlarges the dev_image.block if exists, with specified size_in_byte
+# Usage: enlarge_dev_image_if_needed state_dev size_in_byte
+enlarge_dev_image_if_needed() {
+  local state_dev mount_point image block_size minimal reserve size_in_byte
+
+  state_dev="$1"
+  size_in_byte="$2"
+
+  if [ "${size_in_byte}" -gt 0 ]; then
+    mount_point="$(mktemp -d)"
+    mount "${state_dev}" "${mount_point}"
+    image="${mount_point}/unencrypted/dev_image.block"
+
+    if [ -f "${image}" ]; then
+      block_size="$(dumpe2fs -h "${image}" | sed -n 's/Block size: *//p')"
+      minimal="$(resize2fs -P "${image}" | sed -n 's/Estimated .*: //p')"
+
+      e2fsck -f -y "${image}"
+      reserve=$((size_in_byte / block_size))
+      resize2fs "${image}" "$((minimal + reserve))" || true
+    fi
+
+    umount "${mount_point}"
+    rmdir "${mount_point}"
+  fi
+}
+
 factory_install_cros_payload() {
   local src_media="$1"
   local json_path="$2"
@@ -853,6 +912,9 @@ factory_install_cros_payload() {
   local src_mount=""
   local tmp_dir="$(mktemp -d)"
   local json_url="${src_media}/${json_path}"
+  local dlc_gz_size
+  local state_dev
+  local cur_tmpfs_size
 
   if [ -b "${src_media}" ]; then
     src_mount="$(mktemp -d)"
@@ -867,35 +929,16 @@ factory_install_cros_payload() {
   # Say hello to server if available.
   omaha_greetings "hello" "${uuid}"
 
+  # Get DLC factory cache size
+  dlc_gz_size="$(get_dlc_gz_size "${json_url}")"
+
   if [ -n "${dlc_path}" ]; then
     log "Installation will fail if factory server version is less than" \
         "20211102181209!"
     # Estimate the size of the DLC and resize the tmpfs accordingly.
     # This is a short term solution since the max size of the tmpfs is
     # limited by the size of the memory on DUT.
-    local dlc_gz_file dlc_gz_size cur_tmpfs_size
-    if [ -n "${FACTORY_INSTALL_FROM_USB}" ]; then
-      dlc_gz_file="$(jq -r \
-                    '."release_image"."dlc_factory_cache"' "${json_url}")"
-      dlc_gz_file="$(dirname "${json_url}")/${dlc_gz_file}"
-      dlc_gz_size="$(du -B1 "${dlc_gz_file}" | \
-                    awk '{ size=$1 } END { print size }')"
-    else
-      dlc_gz_file="$(curl "${json_url}" | \
-                    jq -r '."release_image"."dlc_factory_cache"')"
-      dlc_gz_file="$(dirname "${json_url}")/${dlc_gz_file}"
-      # curl -sI returns the header information of the DLC file.
-      # The header looks like this:
-      #   Location: <url_to_dlc_file>
-      #   Date: <date>
-      #   ...
-      #   Content-Length: <size_of_content>
-      #   ...
-      # We use `awk` to get the second column of the Content-Length, which is
-      # the size of the DLC file, and trim off the white spaces using `tr`.
-      dlc_gz_size="$(curl -sI "${dlc_gz_file}" | grep -i Content-Length \
-                    | awk '{ print $2 }' | tr -d '[:space:]')"
-    fi
+
     # tmpfs mounts on /
     cur_tmpfs_size="$(df -B1 / | awk '(NR>1) { size=$2 } END { print size }')"
     # The size of the compressed and decompressed DLC images are similar.
@@ -906,9 +949,16 @@ factory_install_cros_payload() {
   else
     cros_payload install "${json_url}" "${DST_DRIVE}" test_image release_image
 
+    state_dev="$(make_partition_dev "${DST_DRIVE}" "${DST_STATE_PART}")"
+
     # Test image stateful partition may be pretty full and we may want more
     # space, before installing toolkit (which may be huge).
-    enlarge_partition "$(make_partition_dev "${DST_DRIVE}" "${DST_STATE_PART}")"
+    enlarge_partition "${state_dev}"
+
+    # For boards having dev_image.block sparse filesystem, in order to install
+    # DLC factory cache, after partition enlargement, we need to also enlarge
+    # dev_image filesystem as well.
+    enlarge_dev_image_if_needed "${state_dev}" "${dlc_gz_size}"
 
     cros_payload install "${json_url}" "${DST_DRIVE}" toolkit
 
