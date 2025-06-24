@@ -1085,7 +1085,7 @@ factory_install_network() {
 # partition's `/opt/google/dlc` directory.
 get_expected_factory_installed_dlc() {
   local rootfs_mount_point="$1"
-  local metadata_cmd variant modem_dlc_attribute dlc_list_str dlc_list
+  local metadata_cmd variant dlc_list_str dlc_list
   metadata_cmd="chroot ${rootfs_mount_point} dlc_metadata_util \
     --metadata_dir=/opt/google/dlc/"
 
@@ -1098,20 +1098,24 @@ get_expected_factory_installed_dlc() {
 
   # Check if variant is in the expected format. E.g. rynax_rw101
   if [[ "${variant}" =~ ^[[:alnum:]]+_[[:alnum:]]+$ ]]; then
-    # Extract the first part
-    modem_dlc_attribute="${variant%%_*}"
-    log "modem_dlc_attribute: ${modem_dlc_attribute}"
+    log "modem firmware variant: ${variant}"
   else
     die "Error: Invalid variant format: ${variant}"
   fi
 
   dlc_list_str=$(
-    ${metadata_cmd} --list --attribute="${modem_dlc_attribute}"
+    ${metadata_cmd} --list --attribute="${variant}"
   )
   mapfile -t dlc_list < <(echo "${dlc_list_str}" | jq -r '.[]')
 
   if [[ ${#dlc_list[@]} -eq 0 ]]; then
-    die "Error: No DLCs found for modem_dlc_attribute: ${modem_dlc_attribute}"
+    log "No DLCs found for attribute: ${variant}"
+    if is_pvt_phase; then
+      die "ERROR: DLCs are mandatory in the current (PVT) stage. Aborting."
+    else
+      log "Currently in an early development phase, so missing DLCs " \
+          "are permitted. Proceeding with caution."
+    fi
   fi
 
   for dlc_id in "${dlc_list[@]}"; do
@@ -1558,72 +1562,68 @@ prepare_reset() {
   check_host_swwp && check_ec_swwp || ! is_pvt_phase || \
     die "SW write protect is not enabled in the device with PVT phase."
 
-  if is_pvt_phase; then
-    # Then check if the release rootfs has factory installed DLC metadata.
-    # If so, we copy the DLC images from network or RMA shim.
-    local release_rootfs_mount_point release_dev
-    release_rootfs_mount_point=/tmp/release_rootfs
-    mkdir -p "${release_rootfs_mount_point}"
-    release_dev="$(make_partition_dev "${DST_DRIVE}" \
-                   "${DST_RELEASE_ROOTFS_PART}")"
-    mount -o ro "${release_dev}" "${release_rootfs_mount_point}"
-    get_expected_factory_installed_dlc "${release_rootfs_mount_point}"
-    log "Number of factory installed DLC metadata: ${#EXPECTED_DLC_IDS[@]}"
-    local dlc_stateful="${state_mount_point}"/unencrypted/dlc-factory-images
-    if [ -d "${dlc_stateful}" ]; then
-      log "Remove existing factory installed DLC images on stateful partition.."
-      rm -rf "${dlc_stateful}"
+  # Then check if the release rootfs has factory installed DLC metadata.
+  # If so, we copy the DLC images from network or RMA shim.
+  local release_rootfs_mount_point release_dev
+  release_rootfs_mount_point=/tmp/release_rootfs
+  mkdir -p "${release_rootfs_mount_point}"
+  release_dev="$(make_partition_dev "${DST_DRIVE}" \
+                "${DST_RELEASE_ROOTFS_PART}")"
+  mount -o ro "${release_dev}" "${release_rootfs_mount_point}"
+  get_expected_factory_installed_dlc "${release_rootfs_mount_point}"
+  log "Number of factory installed DLC metadata: ${#EXPECTED_DLC_IDS[@]}"
+  local dlc_stateful="${state_mount_point}"/unencrypted/dlc-factory-images
+  if [ -d "${dlc_stateful}" ]; then
+    log "Remove existing factory installed DLC images on stateful partition..."
+    rm -rf "${dlc_stateful}"
+  fi
+  if [ ${#EXPECTED_DLC_IDS[@]} -gt 0 ]; then
+    # Install the factory installed DLC images to dlc_path.
+    local dlc_path=/tmp/dlc
+    mkdir -p "${dlc_path}"
+    log "Get factory installed DLC images from usb/network..."
+    if [ -n "${FACTORY_INSTALL_FROM_USB}" ]; then
+      factory_install_usb "${dlc_path}"
+    else
+      connect_to_ethernet
+      factory_install_network "${dlc_path}"
     fi
-    if [ ${#EXPECTED_DLC_IDS[@]} -gt 0 ]; then
-      # Install the factory installed DLC images to dlc_path.
-      local dlc_path=/tmp/dlc
-      mkdir -p "${dlc_path}"
-      log "Get factory installed DLC images from usb/network..."
-      if [ -n "${FACTORY_INSTALL_FROM_USB}" ]; then
-        factory_install_usb "${dlc_path}"
-      else
-        connect_to_ethernet
-        factory_install_network "${dlc_path}"
-      fi
-      # Unzip the DLC and verify their hashes.
-      log "Unpack factory installed DLC images to ${dlc_path}"
-      tar -xpvf "${dlc_path}"/release_image.dlc_factory_cache -C "${dlc_path}"
-      get_dlc_image_from_dlc_factory_cache \
-        "${dlc_path}"/unencrypted/dlc-factory-images
-      # Check if all elements in EXPECTED_DLC_IDS are present in CURRENT_DLC_IDS
-      all_found=true
-      for expected_id in "${EXPECTED_DLC_IDS[@]}"; do
-        found=false
-        for current_id in "${CURRENT_DLC_IDS[@]}"; do
-          if [ "${expected_id}" = "${current_id}" ]; then
-            found=true
-            break
-          fi
-        done
-        if ! ${found}; then
-          all_found=false
+    # Unzip the DLC and verify their hashes.
+    log "Unpack factory installed DLC images to ${dlc_path}"
+    tar -xpvf "${dlc_path}"/release_image.dlc_factory_cache -C "${dlc_path}"
+    get_dlc_image_from_dlc_factory_cache \
+      "${dlc_path}"/unencrypted/dlc-factory-images
+    # Check if all elements in EXPECTED_DLC_IDS are present in CURRENT_DLC_IDS
+    all_found=true
+    for expected_id in "${EXPECTED_DLC_IDS[@]}"; do
+      found=false
+      for current_id in "${CURRENT_DLC_IDS[@]}"; do
+        if [ "${expected_id}" = "${current_id}" ]; then
+          found=true
           break
         fi
       done
-      if ! ${all_found}; then
-        die "Not all expected DLCs found. Expected: ${EXPECTED_DLC_IDS[*]}, " \
-            "Current: ${CURRENT_DLC_IDS[*]}."
+      if ! ${found}; then
+        all_found=false
+        break
       fi
-
-      verify_dlc_hash "${release_rootfs_mount_point}"
-      log "Install the DLCs to stateful partition..."
-      mv "${dlc_path}"/unencrypted/dlc-factory-images \
-        "${state_mount_point}"/unencrypted
-    else
-      log "No factory installed DLC metadata found. Skip copying..."
+    done
+    if ! ${all_found}; then
+      die "Not all expected DLCs found. Expected: ${EXPECTED_DLC_IDS[*]}, " \
+          "Current: ${CURRENT_DLC_IDS[*]}."
     fi
 
-    umount "${release_rootfs_mount_point}"
+    verify_dlc_hash "${release_rootfs_mount_point}"
+    log "Install the DLCs to stateful partition..."
+    mv "${dlc_path}"/unencrypted/dlc-factory-images \
+       "${state_mount_point}"/unencrypted
   else
-    log "Skipping DLC check since it's pre-PVT stage..."
+    log "No factory installed DLC metadata found. Skip copying..."
   fi
 
   umount "${state_mount_point}"
+  umount "${release_rootfs_mount_point}"
+
   reset_chromeos_device
 }
 # r = Factory reset.
