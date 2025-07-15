@@ -988,13 +988,8 @@ factory_install_network() {
 # DLC metadata after image version `15875.0.0` are compressed and cannot be
 # read directly.
 use_legacy_dlc_metadata_format() {
-  local release_rootfs_mnt lsb_release image_version
-  release_rootfs_mnt="$1"
-  lsb_release="${release_rootfs_mnt}/etc/lsb-release"
-  image_version="$(getLSBValue \
-    "$(grep "^GOOGLE_RELEASE" "${lsb_release}" | tail -1)")"
-  # Get the major image version.
-  image_version="$(echo "${image_version}" | cut -d '.' -f 1)"
+  local release_rootfs_mnt="$1"
+  local image_version="$(_get_image_major_version "${release_rootfs_mnt}")"
 
   [ "${image_version}" -lt 15875 ]
 }
@@ -1018,14 +1013,34 @@ decompress_dlc_metadata() {
   done
 }
 
-dlc_has_attribute() {
-  local release_rootfs_mnt lsb_release image_version
-  release_rootfs_mnt="$1"
-  lsb_release="${release_rootfs_mnt}/etc/lsb-release"
-  image_version="$(getLSBValue \
+_get_image_major_version() {
+  local release_rootfs_mnt="$1"
+  local lsb_release="${release_rootfs_mnt}/etc/lsb-release"
+
+  # Ensure the lsb-release file exists before attempting to read it
+  if [ ! -f "${lsb_release}" ]; then
+    die "Required lsb-release file not found at ${lsb_release}."
+  fi
+
+  local image_version_full
+  image_version_full="$(getLSBValue \
     "$(grep "^GOOGLE_RELEASE" "${lsb_release}" | tail -1)")"
+
+  # It's also possible getLSBValue or grep/cut fail to extract a version.
+  if [ -z "${image_version_full}" ]; then
+    die "Failed to extract GOOGLE_RELEASE version from ${lsb_release}."
+  fi
+
   # Extract the major image version.
-  image_version="$(echo "${image_version}" | cut -d '.' -f 1)"
+  local major_version
+  major_version="$(echo "${image_version_full}" | cut -d '.' -f 1)"
+
+  echo "${major_version}"
+}
+
+dlc_has_attribute() {
+  local release_rootfs_mnt="$1"
+  local image_version="$(_get_image_major_version "${release_rootfs_mnt}")"
 
   # Use numerical comparison for version check
   [ "${image_version}" -gt 16150 ]
@@ -1046,7 +1061,8 @@ is_dlc_modem_compatible() {
     local attributes="$(jq -r '.attributes[]' "${dlc_metadata}")"
     if [[ -n "${attributes}" ]]; then
       for attr in ${attributes}; do
-        if [[ "${attr}" == "${model}" || "${attr}" == "${variant}" ]]; then
+        if jq -e ".attributes | has(\"${model}\") or \
+                  has(\"${variant}\")" "${dlc_metadata}" >/dev/null 2>&1; then
           return 0
         fi
       done
@@ -1071,10 +1087,11 @@ is_dlc_modem_compatible() {
 # matching the DLC's supported models or variants against the device's modem
 # variant.
 get_expected_factory_installed_dlc() {
-  local rootfs_mount_point="$1"
+  local dlc_metadata_source_dir="$1"
+  local rootfs_mount_point="$2"
   local variant model dlc_has_attr dlc_metadata_dir dlc_id metadata
 
-  dlc_metadata_dir="${rootfs_mount_point}/opt/google/dlc"
+  dlc_metadata_dir="${dlc_metadata_source_dir}/opt/google/dlc"
 
   variant="$(cros_config /modem firmware-variant)" || true
   if [[ -z "${variant}" ]]; then
@@ -1581,20 +1598,21 @@ action_r() {
                  "${DST_RELEASE_ROOTFS_PART}")"
   mount -o ro "${release_dev}" "${release_rootfs_mount_point}"
 
-  local rootfs_with_dlc_metadata
+  local dlc_metadata_source_dir
   if use_legacy_dlc_metadata_format "${release_rootfs_mount_point}"; then
-    rootfs_with_dlc_metadata="${release_rootfs_mount_point}"
+    dlc_metadata_source_dir="${release_rootfs_mount_point}"
   else
     local dlc_metadata_path=/tmp/dlc_metadata
     decompress_dlc_metadata "${release_rootfs_mount_point}" \
-       "${dlc_metadata_path}"
-    rootfs_with_dlc_metadata="${dlc_metadata_path}"
+                              "${dlc_metadata_path}"
+    dlc_metadata_source_dir="${dlc_metadata_path}"
   fi
-  get_expected_factory_installed_dlc "${rootfs_with_dlc_metadata}"
+  get_expected_factory_installed_dlc "${dlc_metadata_source_dir}" \
+                                       "${release_rootfs_mount_point}"
   log "Number of factory installed DLC metadata: ${#EXPECTED_DLC_IDS[@]}"
+  log "Remove existing factory installed DLC images on stateful partition..."
   local dlc_stateful="${state_mount_point}"/unencrypted/dlc-factory-images
   if [ -d "${dlc_stateful}" ]; then
-    log "Remove existing factory installed DLC images on stateful partition..."
     rm -rf "${dlc_stateful}"
   fi
   if [ ${#EXPECTED_DLC_IDS[@]} -gt 0 ]; then
@@ -1633,7 +1651,7 @@ action_r() {
       die "Not all expected DLCs found. Expected: ${EXPECTED_DLC_IDS[*]}, " \
           "Current: ${CURRENT_DLC_IDS[*]}."
     fi
-    verify_dlc_hash "${rootfs_with_dlc_metadata}"
+    verify_dlc_hash "${dlc_metadata_source_dir}"
     log "Install the DLCs to stateful partition..."
     mv "${dlc_path}"/unencrypted/dlc-factory-images \
        "${state_mount_point}"/unencrypted
