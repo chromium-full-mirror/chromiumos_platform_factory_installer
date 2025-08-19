@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::factory_ufs::ufs::descriptor::common::CommonDescriptorTrait;
 use crate::factory_ufs::ufs::descriptor::config::ConfigDescriptor;
 use crate::factory_ufs::ufs::descriptor::device::{GetDeviceField, WriteBooster};
-use crate::factory_ufs::ufs::descriptor::unit::{GetUnitField, ProvisionLun};
+use crate::factory_ufs::ufs::descriptor::unit::{EnableLUWriteBooster, GetUnitField, ProvisionLun};
 use crate::factory_ufs::ufs::spec::constants;
 use crate::utils::error::Error;
 
@@ -79,6 +79,10 @@ impl WriteBooster for DeviceConfigDescriptor {
         anyhow::bail!(Error::NotImplementedError)
     }
 
+    fn enable_lu_write_booster(&mut self) -> Result<()> {
+        anyhow::bail!(Error::NotImplementedError)
+    }
+
     fn disable_write_booster(&mut self) -> Result<()> {
         anyhow::bail!(Error::NotImplementedError)
     }
@@ -136,6 +140,16 @@ impl GetUnitField for UnitConfigDescriptor {
     }
     fn get_provisioning_type(&self) -> u8 {
         self.b_provisioning_type
+    }
+}
+
+impl EnableLUWriteBooster for UnitConfigDescriptor {
+    fn enable_lu_write_booster(
+        &mut self,
+        _wb_max_alloc_units: u32,
+        _lun0_alloc_units: u32,
+    ) -> Result<u32> {
+        anyhow::bail!(Error::NotImplementedError)
     }
 }
 

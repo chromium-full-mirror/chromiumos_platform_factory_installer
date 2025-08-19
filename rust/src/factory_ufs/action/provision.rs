@@ -249,6 +249,10 @@ fn config_write_booster<T: WriteBoosterConfig>(
         }
         _ => false,
     };
+    let support_lu_based_buffer = match FromPrimitive::from_u32(wb_sup_wb_type) {
+        Some(SupportedWBBufferTypes::LUBased) | Some(SupportedWBBufferTypes::SupportBoth) => true,
+        _ => false,
+    };
 
     println!(
         "DEVICE_DESC.dExtendedUFSFeaturesSupport: {}",
@@ -276,6 +280,22 @@ fn config_write_booster<T: WriteBoosterConfig>(
         );
         println!("Enable write booster...");
         let wb_alloc_units = ufs_config.enable_write_booster(wb_max_alloc_units)?;
+        println!(
+            "{} units is allocated for write booster buffer.",
+            wb_alloc_units
+        );
+    } else if support_write_booster && support_preserver_user_space && support_lu_based_buffer {
+        // Reads the GEOM_DESC.dWriteBoosterBufferMaxNAllocUnits bits.
+        // This is the maximum total write booster buffer size which is
+        // supported by the entire device.
+        let wb_max_alloc_units =
+            file_utils::read_geometry_descriptor(&sys_dev_path, "wb_max_alloc_units")?;
+        println!(
+            "GEOM_DESC.dWriteBoosterBufferMaxNAllocUnits: {}",
+            wb_max_alloc_units
+        );
+        println!("Enable LU-based write booster...");
+        let wb_alloc_units = ufs_config.enable_lu_write_booster(wb_max_alloc_units)?;
         println!(
             "{} units is allocated for write booster buffer.",
             wb_alloc_units

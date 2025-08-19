@@ -1,4 +1,4 @@
-// Copyright 2022 The ChromiumOS Authors.
+// Copyright 2022 The ChromiumOS Authors
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use crate::factory_ufs::ufs::descriptor::common::CommonDescriptorTrait;
 use crate::factory_ufs::ufs::descriptor::config::ConfigDescriptor;
 use crate::factory_ufs::ufs::descriptor::device::{GetDeviceField, WriteBooster};
-use crate::factory_ufs::ufs::descriptor::unit::{GetUnitField, ProvisionLun};
+use crate::factory_ufs::ufs::descriptor::unit::{EnableLUWriteBooster, GetUnitField, ProvisionLun};
 use crate::factory_ufs::ufs::spec::constants;
 
 /// Defines the config descriptor for device.
@@ -96,6 +96,13 @@ impl WriteBooster for DeviceConfigDescriptor {
         Ok(self.d_num_shared_write_booster_buffer_alloc_units)
     }
 
+    fn enable_lu_write_booster(&mut self) -> Result<()> {
+        self.b_write_booster_buffer_preserve_user_space_en = 0x1;
+        self.b_write_booster_buffer_type = 0x0;
+        self.d_num_shared_write_booster_buffer_alloc_units = 0x0;
+        Ok(())
+    }
+
     fn disable_write_booster(&mut self) -> Result<()> {
         self.b_write_booster_buffer_preserve_user_space_en = 0x0;
         self.b_write_booster_buffer_type = 0x0;
@@ -121,10 +128,10 @@ pub struct UnitConfigDescriptor {
     pub w_context_capabilities: u16,
     pub reserved_empty_1: u16,
     pub reserved_empty_2: u8,
-    pub reserved_hpb: u16,
+    pub w_lu_max_active_hpb_regions: u16,
     pub w_hpb_pinned_region_start_idx: u16,
     pub w_num_hpb_pinned_regions: u16,
-    pub w_lu_max_active_hpb_regions: u32,
+    pub d_lu_num_write_booster_buffer_alloc_units: u32,
 }
 
 impl Default for UnitConfigDescriptor {
@@ -141,10 +148,10 @@ impl Default for UnitConfigDescriptor {
             w_context_capabilities: 0x0,
             reserved_empty_1: 0x0,
             reserved_empty_2: 0x0,
-            reserved_hpb: 0x0,
+            w_lu_max_active_hpb_regions: 0x0,
             w_hpb_pinned_region_start_idx: 0x0,
             w_num_hpb_pinned_regions: 0x0,
-            w_lu_max_active_hpb_regions: 0x0,
+            d_lu_num_write_booster_buffer_alloc_units: 0x0,
         }
     }
 }
@@ -166,6 +173,20 @@ impl GetUnitField for UnitConfigDescriptor {
     }
     fn get_provisioning_type(&self) -> u8 {
         self.b_provisioning_type
+    }
+}
+
+impl EnableLUWriteBooster for UnitConfigDescriptor {
+    fn enable_lu_write_booster(
+        &mut self,
+        wb_max_alloc_units: u32,
+        lun0_alloc_units: u32,
+    ) -> Result<u32> {
+        // min(10% of total capacity, the maximum allowed value)
+        let ten_percent_total_alloc = lun0_alloc_units / 10;
+        self.d_lu_num_write_booster_buffer_alloc_units =
+            min(ten_percent_total_alloc, wb_max_alloc_units);
+        Ok(self.d_lu_num_write_booster_buffer_alloc_units)
     }
 }
 
