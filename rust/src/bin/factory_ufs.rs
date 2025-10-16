@@ -12,17 +12,15 @@ use factory_installer::utils::file_utils::PathError;
 
 const UFS_BSG_ERROR_MSG: &str = "Unexpected error occurs when finding";
 
-fn main() -> Result<()> {
-    let args = Args::parse();
-
-    let ufs_bsg_node_path = path_utils::get_ufs_bsg_node();
-    let ufs_bsg_node_path = match ufs_bsg_node_path {
+fn prepare_ufs_path() -> Result<UFSPath> {
+    let ufs_bsg_node_path = match path_utils::get_ufs_bsg_node() {
         Ok(path) => path,
         Err(err) => {
             if let Some(err) = err.downcast_ref::<PathMatchError>() {
                 if matches!(err, PathMatchError::PathNotFound) {
                     println!("No UFS BSG node found. Do nothing.");
-                    return Ok(());
+                    // Exit gracefully if no UFS device is found.
+                    std::process::exit(0);
                 }
             }
             anyhow::bail!("{} UFS BSG node: {}", UFS_BSG_ERROR_MSG, err)
@@ -42,17 +40,41 @@ fn main() -> Result<()> {
         .ok_or(PathError::NoParentDirError)?
         .to_path_buf();
 
-    let ufs_path = UFSPath {
+    Ok(UFSPath {
         bsg_node: ufs_bsg_node_path,
         sys_dev: ufs_dev_path,
-    };
+    })
+}
+
+fn main() -> Result<()> {
+    let args = Args::parse();
 
     match args.command {
-        Commands::Purge { timeout } => purge::action_purge(&ufs_path, timeout),
-        Commands::Show => show::action_show(&ufs_path),
+        Commands::Purge { timeout } => {
+            let ufs_path = prepare_ufs_path()?;
+            purge::action_purge(&ufs_path, timeout)
+        }
+        Commands::Show => {
+            let ufs_path = prepare_ufs_path()?;
+            show::action_show(&ufs_path)
+        }
         Commands::Provision {
             rescan_timeout,
             force,
-        } => provision::action_provision(&ufs_path, rescan_timeout, force),
+        } => {
+            let ufs_path = prepare_ufs_path()?;
+            provision::action_provision(&ufs_path, rescan_timeout, force)
+        }
+        Commands::ProvisionFile {
+            input_config_descriptor,
+            input_device_descriptor,
+            input_geometry_descriptor,
+            output_file,
+        } => provision::action_provision_file(
+            &input_config_descriptor,
+            &input_device_descriptor,
+            &input_geometry_descriptor,
+            &output_file,
+        ),
     }
 }

@@ -27,6 +27,21 @@ pub enum Commands {
         #[clap(short, long)]
         force: bool,
     },
+    /// Provision the UFS with descriptor files
+    ProvisionFile {
+        /// The configuration descriptor file.
+        #[clap(short = 'c', long)]
+        input_config_descriptor: String,
+        /// The device descriptor file.
+        #[clap(short = 'd', long)]
+        input_device_descriptor: String,
+        /// The geometry descriptor file.
+        #[clap(short = 'g', long)]
+        input_geometry_descriptor: String,
+        /// The path to write the new, modified configuration descriptor.
+        #[clap(short = 'o', long)]
+        output_file: String,
+    },
 }
 
 /// ChromeOS Factory UFS.

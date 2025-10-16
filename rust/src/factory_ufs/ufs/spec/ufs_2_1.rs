@@ -79,7 +79,7 @@ impl WriteBooster for DeviceConfigDescriptor {
         anyhow::bail!(Error::NotImplementedError)
     }
 
-    fn enable_lu_write_booster(&mut self) -> Result<()> {
+    fn enable_lu_write_booster(&mut self) -> Result<u32> {
         anyhow::bail!(Error::NotImplementedError)
     }
 

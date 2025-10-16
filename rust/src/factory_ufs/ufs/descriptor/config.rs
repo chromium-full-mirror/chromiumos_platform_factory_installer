@@ -64,7 +64,11 @@ where
 pub trait WriteBoosterConfig {
     fn support_write_booster(&self) -> bool;
     fn enable_write_booster(&mut self, wb_max_alloc_units: u32) -> Result<u32>;
-    fn enable_lu_write_booster(&mut self, wb_max_alloc_units: u32) -> Result<u32>;
+    fn enable_lu_write_booster(
+        &mut self,
+        wb_max_alloc_units: u32,
+        lun0_alloc_units: u32,
+    ) -> Result<u32>;
     fn disable_write_booster(&mut self) -> Result<()>;
 }
 
@@ -82,10 +86,13 @@ where
             .enable_write_booster(wb_max_alloc_units, self.units_config[0].get_alloc_units())
     }
 
-    fn enable_lu_write_booster(&mut self, wb_max_alloc_units: u32) -> Result<u32> {
+    fn enable_lu_write_booster(
+        &mut self,
+        wb_max_alloc_units: u32,
+        lun0_alloc_units: u32,
+    ) -> Result<u32> {
         self.device_config.enable_lu_write_booster()?;
-        self.units_config[0]
-            .enable_lu_write_booster(wb_max_alloc_units, self.units_config[0].get_alloc_units())
+        self.units_config[0].enable_lu_write_booster(wb_max_alloc_units, lun0_alloc_units)
     }
 
     fn disable_write_booster(&mut self) -> Result<()> {

@@ -20,7 +20,7 @@ use crate::factory_ufs::ufs::spec::constants;
 /// deserialized in big-endian.
 /// For spec, please refer to `UFS 3.1 table 14.10`.
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
-#[repr(C)]
+#[repr(C, packed)]
 pub struct DeviceConfigDescriptor {
     pub b_length: u8,
     pub b_descriptor_type: u8,
@@ -96,11 +96,11 @@ impl WriteBooster for DeviceConfigDescriptor {
         Ok(self.d_num_shared_write_booster_buffer_alloc_units)
     }
 
-    fn enable_lu_write_booster(&mut self) -> Result<()> {
+    fn enable_lu_write_booster(&mut self) -> Result<u32> {
         self.b_write_booster_buffer_preserve_user_space_en = 0x1;
         self.b_write_booster_buffer_type = 0x0;
         self.d_num_shared_write_booster_buffer_alloc_units = 0x0;
-        Ok(())
+        Ok(0)
     }
 
     fn disable_write_booster(&mut self) -> Result<()> {
@@ -115,7 +115,7 @@ impl WriteBooster for DeviceConfigDescriptor {
 ///
 /// For spec, please refer to `UFS 3.1 table 14.12`.
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
-#[repr(C)]
+#[repr(C, packed)]
 pub struct UnitConfigDescriptor {
     pub b_lu_enable: u8,
     pub b_boot_lun_id: u8,
@@ -183,7 +183,7 @@ impl EnableLUWriteBooster for UnitConfigDescriptor {
         lun0_alloc_units: u32,
     ) -> Result<u32> {
         // min(10% of total capacity, the maximum allowed value)
-        let ten_percent_total_alloc = lun0_alloc_units / 10;
+        let ten_percent_total_alloc = (lun0_alloc_units as f32 * 0.1) as u32;
         self.d_lu_num_write_booster_buffer_alloc_units =
             min(ten_percent_total_alloc, wb_max_alloc_units);
         Ok(self.d_lu_num_write_booster_buffer_alloc_units)
@@ -214,7 +214,8 @@ mod tests {
         unit_config.provision_lun(alloc_units);
 
         assert_eq!(unit_config.b_lu_enable, 0x01);
-        assert_eq!(unit_config.d_num_alloc_units, alloc_units);
+        let num_alloc_units = unit_config.d_num_alloc_units;
+        assert_eq!(num_alloc_units, alloc_units);
         assert_eq!(
             unit_config.b_provisioning_type,
             constants::PROVISIONING_TYPE,
