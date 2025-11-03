@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.0"
-bincode = "~1.0.1"
+bincode = "1.0.1"
 byteorder = "1.4.3"
 clap = { version = "3.1.0", features = ["derive"] }
 glob = "0.3.0"
