@@ -1,0 +1,18 @@
+# Copyright 2025 The ChromiumOS Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+FROM rust:alpine as builder
+
+WORKDIR /usr/src/factory_installer
+COPY . .
+
+# Install musl-dev for static linking
+RUN apk add --no-cache musl-dev
+
+# Build factory_ufs
+RUN cargo build --release --bin factory_ufs
+
+# We don't need a runtime stage here because we are extracting the binary
+# in cros_docker.sh
+
