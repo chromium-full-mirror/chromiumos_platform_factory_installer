@@ -26,7 +26,8 @@ BOARD="$(findLSBValue CHROMEOS_RELEASE_BOARD)"
 # back, at least it could display logs. As we're seeing less board-specific
 # issues lately, in the common scene, we oftentimes can reproduce bugs on other
 # boards with `busybox less` working so it's an acceptable WA on dedede & rauru.
-if [[ "${BOARD}" == "dedede" || "${BOARD}" == "rauru" ]]; then
+if [[ "${BOARD}" == "dedede" ||
+      "${BOARD}" == "rauru" || "${BOARD}" == "skywalker" ]]; then
   PAGER="busybox more"
 fi
 
