@@ -233,7 +233,10 @@ fn wait_ac_connected(context: &mut dyn Context) -> Result<()> {
     if !ectool_utils::get_battery_info(context)?.is_ac_connected {
         display_message("connect_ac", context)?;
     }
-    while !ectool_utils::get_battery_info(context)?.is_ac_connected {
+    while !ectool_utils::get_battery_info(context)
+        .map(|info| info.is_ac_connected)
+        .unwrap_or(false)
+    {
         sys_utils::sleep(0.5)?;
     }
     Ok(())
@@ -243,7 +246,10 @@ fn wait_ac_disconnected(context: &mut dyn Context) -> Result<()> {
     if ectool_utils::get_battery_info(context)?.is_ac_connected {
         display_message("remove_ac", context)?;
     }
-    while ectool_utils::get_battery_info(context)?.is_ac_connected {
+    while ectool_utils::get_battery_info(context)
+        .map(|info| info.is_ac_connected)
+        .unwrap_or(true)
+    {
         sys_utils::sleep(0.5)?;
     }
     Ok(())

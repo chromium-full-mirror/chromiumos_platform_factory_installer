@@ -80,14 +80,17 @@ pub fn get_battery_info(context: &mut dyn Context) -> Result<BatteryInfo> {
     let stdout = context.command("ectool").arg("battery").output()?.stdout();
     let mut re = Regex::new(r".*Design capacity:* *([0-9]+) mAh.*")?;
     let Some(design_capacity) = re.captures(&stdout) else {
+        eprintln!("Unexpected output from ectool battery: {}", stdout);
         anyhow::bail!("Design capacity not found.");
     };
     re = Regex::new(r".*Remaining capacity *([0-9]+) mAh.*")?;
     let Some(remaining_capacity) = re.captures(&stdout) else {
+        eprintln!("Unexpected output from ectool battery: {}", stdout);
         anyhow::bail!("Remaining capacity not found.");
     };
     re = Regex::new(r".*Present voltage *([0-9]+) mV.*")?;
     let Some(present_voltage) = re.captures(&stdout) else {
+        eprintln!("Unexpected output from ectool battery: {}", stdout);
         anyhow::bail!("Present voltage not found.");
     };
     Ok(BatteryInfo {
