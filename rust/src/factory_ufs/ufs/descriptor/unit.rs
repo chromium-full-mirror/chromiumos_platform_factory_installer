@@ -6,6 +6,7 @@ use anyhow::Result;
 
 pub trait ProvisionLun {
     fn provision_lun(&mut self, alloc_units: u32);
+    fn disable_lun(&mut self);
 }
 
 pub trait GetUnitField {

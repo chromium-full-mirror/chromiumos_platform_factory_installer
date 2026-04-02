@@ -162,6 +162,12 @@ impl ProvisionLun for UnitConfigDescriptor {
         self.d_num_alloc_units = alloc_units;
         self.b_provisioning_type = constants::PROVISIONING_TYPE;
     }
+
+    fn disable_lun(&mut self) {
+        self.b_lu_enable = 0x00;
+        self.d_num_alloc_units = 0;
+        self.b_provisioning_type = 0x00;
+    }
 }
 
 impl GetUnitField for UnitConfigDescriptor {

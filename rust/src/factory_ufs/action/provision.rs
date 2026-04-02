@@ -366,13 +366,13 @@ fn config_write_booster<T: WriteBoosterConfig>(
 /// Provisions the UFS from a file.
 fn provision_ufs_from_file<
     'de,
-    T: CommonDescriptorTrait<'de> + ProvisionLun0 + WriteBoosterConfig,
+    T: CommonDescriptorTrait<'de> + ProvisionLun0 + WriteBoosterConfig + Default,
 >(
-    cur_config_binary: &'de Vec<u8>,
+    _cur_config_binary: &'de Vec<u8>,
     device_desc: &DeviceDescriptor,
     geometry_desc: &GeometryDescriptor,
 ) -> Result<Vec<u8>> {
-    let mut new_config = deserialize_config::<'de, T>(cur_config_binary)?;
+    let mut new_config = T::default();
 
     let desc_values = DescriptorValues::from_descriptors(device_desc, geometry_desc)?;
 
@@ -513,8 +513,9 @@ mod tests {
         self, SupportedWBBufferTypes, SupportedWBBufferUserSpaceReductionTypes,
     };
     use crate::factory_ufs::ufs::descriptor::config::ProvisionLun0;
-    use crate::factory_ufs::ufs::descriptor::device::GetDeviceField;
-    use crate::factory_ufs::ufs::descriptor::unit::GetUnitField;
+    use crate::factory_ufs::ufs::descriptor::device::{DeviceDescriptor, GetDeviceField};
+    use crate::factory_ufs::ufs::descriptor::geometry::GeometryDescriptor;
+    use crate::factory_ufs::ufs::descriptor::unit::{GetUnitField, ProvisionLun};
     use crate::factory_ufs::ufs::spec::constants;
     use crate::factory_ufs::ufs::spec::ufs_2_1::{self, UFS2ConfigDescriptor};
     use crate::factory_ufs::ufs::spec::ufs_3_1::{self, UFS3ConfigDescriptor};
@@ -770,5 +771,46 @@ mod tests {
         assert_eq!(buffer_type, 0x0);
         let alloc_units = device_config.d_num_shared_write_booster_buffer_alloc_units;
         assert_eq!(alloc_units, 0x0);
+    }
+
+    #[test]
+    fn test_provision_ufs_from_file_with_other_luns_enabled() {
+        // Create a fake current config with LUN 0, 1, and 2 enabled.
+        // The sum of alloc units is 0xEE5E.
+        let mut cur_config = UFS3ConfigDescriptor::default();
+        cur_config.units_config[0].provision_lun(0xEE58);
+        cur_config.units_config[1].provision_lun(3);
+        cur_config.units_config[2].provision_lun(3);
+
+        let cur_config_binary = provision::serialize_config(&cur_config).unwrap();
+
+        // Create fake device and geometry descriptors.
+        // Geometry descriptor indicates total capacity is 0xEE5E.
+        let device_desc = DeviceDescriptor::default();
+        let mut geometry_desc = GeometryDescriptor::default();
+        // alloc_units * segment_size * unit_size
+        geometry_desc.q_total_raw_device_capacity = 0xEE5E * 0x2000 * 0x2;
+        geometry_desc.d_segment_size = 0x2000;
+        geometry_desc.b_allocation_unit_size = 0x2;
+
+        let new_config_binary = provision::provision_ufs_from_file::<UFS3ConfigDescriptor>(
+            &cur_config_binary,
+            &device_desc,
+            &geometry_desc,
+        )
+        .unwrap();
+
+        let new_config =
+            provision::deserialize_config::<UFS3ConfigDescriptor>(&new_config_binary).unwrap();
+
+        // Verify that LUN 0 is provisioned with the full capacity (0xEE5E).
+        assert_eq!(new_config.units_config[0].get_lu_enabled(), 0x01);
+        assert_eq!(new_config.units_config[0].get_alloc_units(), 0xEE5E);
+
+        // Verify that other LUNs are disabled (units set to 0 and enabled set to 0).
+        for i in 1..8 {
+            assert_eq!(new_config.units_config[i].get_lu_enabled(), 0x00);
+            assert_eq!(new_config.units_config[i].get_alloc_units(), 0x00);
+        }
     }
 }
